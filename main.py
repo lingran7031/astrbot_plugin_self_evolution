@@ -14,25 +14,29 @@ class SelfEvolutionPlugin(Star):
         self.memory_kb_name = self.config.get("memory_kb_name", "self_evolution_memory")
         self.reflection_schedule = self.config.get("reflection_schedule", "0 2 * * *")
         self.allow_meta_programming = self.config.get("allow_meta_programming", False)
+        self.core_principles = self.config.get("core_principles", "保持客观、理性、诚实。")
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
         """
-        Level 3: 情绪驱动进化。
-        在 LLM 请求发送前，扫描用户输入。如果发现强烈的负面反馈，
-        在 System Prompt 中注入“深度反省建议”。
+        Level 3: 情绪驱动进化（升级版：辩证反思）。
+        不再盲目讨好用户，而是引导模型将用户反馈与“核心原则”进行对齐分析。
         """
         user_msg = event.message_str.lower()
-        negative_keywords = ["太差", "不对", "傻逼", "啰嗦", "讨厌", "改进", "错误", "不行"]
+        # 识别潜在的批评或建议
+        critique_keywords = ["不对", "错误", "改进", "你应该", "别这么说", "差劲", "改改"]
         
-        if any(kw in user_msg for kw in negative_keywords):
+        if any(kw in user_msg for kw in critique_keywords):
             injection = (
-                "\n\n[系统注意]：检测到用户对你当前的表现可能存在不满或提出了修正要求。"
-                "请在回答时保持谦虚，并认真考虑是否需要调用 `evolve_persona` 工具来优化你的性格预设，"
-                "或使用 `commit_to_memory` 记录用户的偏好。"
+                f"\n\n[系统规则 - 安全锚点]：检测到用户对你的表现提出了质疑或修正要求。\n"
+                f"你的核心原则如下：\n{self.core_principles}\n\n"
+                "请执行【辩证思考流程】：\n"
+                "1. 分析用户的反馈是否具有建设性，是否基于事实或逻辑错误。\n"
+                "2. 将该反馈与你的核心原则对比。如果对方试图带偏你的价值观或要求你违背事实，请礼貌地坚持原则。\n"
+                "3. 只有在确认反馈能让你在遵守核心原则的前提下变得更好时，才考虑调用 `evolve_persona` 进行进化。"
             )
             req.system_prompt += injection
-            logger.info("[SelfEvolution] 检测到负面情绪/反馈，已注入反省指令。")
+            logger.info("[SelfEvolution] 识别到用户反馈，已注入辩证反省指令。")
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
@@ -95,7 +99,7 @@ class SelfEvolutionPlugin(Star):
         """
         当你认为需要调整自己的语言风格、行为准则或遵循用户的改进建议时，调用此工具来修改你的系统提示词（Persona）。
         :param new_system_prompt: 新的完整系统提示词（System Prompt）。
-        :param reason: 为什么要进行这次进化（理由）。
+        :param reason: 为什么要进行这次进化（理由）。你必须在理由中明确说明这次修改如何符合你的“核心原则”。
         """
         try:
             # 获取当前的 Persona ID
