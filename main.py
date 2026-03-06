@@ -3,6 +3,7 @@ from astrbot.api.event import filter
 from astrbot.api.provider import ProviderRequest
 import json
 import logging
+import os
 
 @register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "1.0.0")
 class SelfEvolutionPlugin(Star):
@@ -12,6 +13,26 @@ class SelfEvolutionPlugin(Star):
         self.review_mode = self.config.get("review_mode", True)
         self.memory_kb_name = self.config.get("memory_kb_name", "self_evolution_memory")
         self.reflection_schedule = self.config.get("reflection_schedule", "0 2 * * *")
+        self.allow_meta_programming = self.config.get("allow_meta_programming", False)
+
+    @filter.on_llm_request()
+    async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
+        """
+        Level 3: 情绪驱动进化。
+        在 LLM 请求发送前，扫描用户输入。如果发现强烈的负面反馈，
+        在 System Prompt 中注入“深度反省建议”。
+        """
+        user_msg = event.message_str.lower()
+        negative_keywords = ["太差", "不对", "傻逼", "啰嗦", "讨厌", "改进", "错误", "不行"]
+        
+        if any(kw in user_msg for kw in negative_keywords):
+            injection = (
+                "\n\n[系统注意]：检测到用户对你当前的表现可能存在不满或提出了修正要求。"
+                "请在回答时保持谦虚，并认真考虑是否需要调用 `evolve_persona` 工具来优化你的性格预设，"
+                "或使用 `commit_to_memory` 记录用户的偏好。"
+            )
+            req.system_prompt += injection
+            logger.info("[SelfEvolution] 检测到负面情绪/反馈，已注入反省指令。")
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
@@ -203,3 +224,45 @@ class SelfEvolutionPlugin(Star):
                 return f"未找到名为 {tool_name} 的工具。"
         except Exception as e:
             return f"操作失败: {str(e)}"
+
+    @llm_tool(name="get_plugin_source")
+    async def get_plugin_source(self, event: AstrMessageEvent):
+        """
+        Level 4: 元编程。读取本插件的源码（main.py），以便进行自我分析或修改请求。
+        """
+        if not self.allow_meta_programming:
+            return "元编程功能未开启，无法读取源码。请在插件配置中开启“开启元编程”开关。"
+        
+        try:
+            curr_path = os.path.abspath(__file__)
+            with open(curr_path, "r", encoding="utf-8") as f:
+                code = f.read()
+            return f"本插件源码如下：\n\n```python\n{code}\n```"
+        except Exception as e:
+            return f"读取源码失败: {str(e)}"
+
+    @llm_tool(name="update_plugin_source")
+    async def update_plugin_source(self, event: AstrMessageEvent, new_code: str, description: str):
+        """
+        Level 4: 元编程。修改本插件的源码（main.py）。这允许你增加新的功能或修改逻辑。
+        :param new_code: 全新的、完整的 python 代码字符串。
+        :param description: 为什么要修改代码（修改内容摘要）。
+        """
+        if not self.allow_meta_programming:
+            return "元编程功能未开启，无法修改源码。"
+        
+        try:
+            # 安全逻辑：如果 new_code 明显太短，拒绝
+            if len(new_code) < 100:
+                return "代码过短，为了安全起见拒绝更新。"
+            
+            # 写入文件
+            curr_path = os.path.abspath(__file__)
+            with open(curr_path, "w", encoding="utf-8") as f:
+                f.write(new_code)
+            
+            logger.warning(f"[SelfEvolution] 元编程生效！描述: {description}")
+            return "代码已更新成功！重启 AstrBot 后生效。修改详情：" + description
+        except Exception as e:
+            logger.error(f"[SelfEvolution] 元编程写入失败: {str(e)}")
+            return f"更新代码失败: {str(e)}"
