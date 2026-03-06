@@ -76,3 +76,28 @@ class SelfEvolutionPlugin(Star):
         except Exception as e:
             logger.error(f"[SelfEvolution] 存入记忆失败: {str(e)}")
             return f"存入记忆时出错: {str(e)}"
+
+    @llm_tool(name="recall_memories")
+    async def recall_memories(self, event: AstrMessageEvent, query: str):
+        """
+        当你需要回想起以前记住的事情、用户的偏好或过去的约定知识时，调用此工具。
+        :param query: 搜索关键词或问题。
+        """
+        try:
+            kb_manager = self.context.kb_manager
+            results = await kb_manager.retrieve(
+                query=query,
+                kb_names=[self.memory_kb_name],
+                top_m_final=5
+            )
+            
+            if not results or not results.get("results"):
+                return "在长期记忆库中未找到相关信息。"
+            
+            context_text = results.get("context_text", "")
+            logger.info(f"[SelfEvolution] 记忆检索成功。查询: {query}")
+            return f"从我的长期记忆中找到了以下内容：\n\n{context_text}"
+            
+        except Exception as e:
+            logger.error(f"[SelfEvolution] 检索记忆失败: {str(e)}")
+            return f"检索记忆时出错: {str(e)}"
