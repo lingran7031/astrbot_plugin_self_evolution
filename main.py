@@ -14,6 +14,7 @@ from datetime import datetime
 ANCHOR_MARKER = "Core Safety Anchor"
 PROTECTED_TOOLS = frozenset({"toggle_tool", "list_tools", "evolve_persona", "recall_memories", "review_evolutions", "approve_evolution"})
 MAX_PROPOSAL_FILES = 50
+PAGE_LIMIT = 10
 
 DAILY_REFLECTION_PROMPT = (
     "进行每日自我反思。请执行以下步骤：\n"
@@ -50,7 +51,6 @@ class SelfEvolutionPlugin(Star):
         
         # 定义高性能 SQLite 数据库替代方案 (aiosqlite)，避免并发 locked 错误
         self.db_path = self.data_dir / "pending_evolutions.db"
-        self.db_conn = None
         # 修复多用户并发导致的精神分裂漏洞：使用 session_id 隔离反省状态
         self.pending_reflections: dict[str, bool] = {}
 
@@ -58,24 +58,24 @@ class SelfEvolutionPlugin(Star):
         logger.info(f"[SelfEvolution] 数据存储路径加载至: {self.data_dir}")
         
     async def _init_db(self):
-        """异步初始化建议列表所用的长期复用 SQLite 连接"""
+        """异步初始化建议列表所用的 SQLite 数据库，使用短连接防止重载资源泄露"""
         try:
-            self.db_conn = await aiosqlite.connect(self.db_path)
-            self.db_conn.row_factory = aiosqlite.Row
-            await self.db_conn.execute('''
-                CREATE TABLE IF NOT EXISTS pending_evolutions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    persona_id TEXT NOT NULL,
-                    new_prompt TEXT NOT NULL,
-                    reason TEXT NOT NULL,
-                    status TEXT NOT NULL
-                )
-            ''')
-            await self.db_conn.commit()
-            logger.info("[SelfEvolution] 成功建立长期数据库连接池并就绪表结构。")
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                await db.execute('''
+                    CREATE TABLE IF NOT EXISTS pending_evolutions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        persona_id TEXT NOT NULL,
+                        new_prompt TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        status TEXT NOT NULL
+                    )
+                ''')
+                await db.commit()
+            logger.info("[SelfEvolution] 成功建立按需数据库结构。")
         except aiosqlite.Error as e:
-            logger.error(f"[SelfEvolution] 初始化 aiosqlite 数据库长连接失败: {e}")
+            logger.error(f"[SelfEvolution] 初始化 aiosqlite 数据库失败: {e}")
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
@@ -153,11 +153,12 @@ class SelfEvolutionPlugin(Star):
         yield event.plain_result("后台自省协议已就绪，将在下一次对话时无缝切入大模型思维链路。")
 
     @filter.llm_tool(name="evolve_persona")
-    async def evolve_persona(self, event: AstrMessageEvent, new_system_prompt: str, reason: str):
+    async def evolve_persona(self, event: AstrMessageEvent, new_system_prompt: str, reason: str) -> str:
         """
         当你认为需要调整自己的语言风格、行为准则或遵循用户的改进建议时，调用此工具来修改你的系统提示词（Persona）。
         :param str new_system_prompt: 新的完整系统提示词（System Prompt）。
         :param str reason: 为什么要进行这次进化（理由）。你必须在理由中明确说明这次修改如何符合你的“核心原则”。
+        :return: 进化结果反馈字符串。
         """
         curr_persona_id = event.persona_id
         if not curr_persona_id or curr_persona_id == "default":
@@ -166,15 +167,14 @@ class SelfEvolutionPlugin(Star):
         
         if self.review_mode:
             try:
-                # 复用全局长连接写入数据，大幅降低连接池开销与并发创建开销
-                if not self.db_conn:
-                    await self._init_db()
-                await self.db_conn.execute(
-                    "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (datetime.now().isoformat(), curr_persona_id, new_system_prompt, reason, "pending_approval")
-                )
-                await self.db_conn.commit()
+                # 恢复按需短连接，防范因框架插件禁用/重载而引发的底层句柄泄露灾难
+                async with aiosqlite.connect(self.db_path) as db:
+                    await db.execute(
+                        "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (datetime.now().isoformat(), curr_persona_id, new_system_prompt, reason, "pending_approval")
+                    )
+                    await db.commit()
 
                 logger.warning(f"[SelfEvolution] EVOLVE_QUEUED: 收到进化请求，已加入审核队列。原因: {reason}")
                 return f"进化请求已录入系统审核队列，等待管理员确认。进化理由：{reason}"
@@ -201,12 +201,12 @@ class SelfEvolutionPlugin(Star):
         :param int page: 请求列表的翻页页码
         """
         try:
-            limit = 10
+            limit = PAGE_LIMIT
             offset = (max(1, page) - 1) * limit
-            if not self.db_conn:
-                await self._init_db()
-            async with self.db_conn.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
-                rows = await cursor.fetchall()
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
+                    rows = await cursor.fetchall()
             
             if not rows:
                 if page == 1:
@@ -231,25 +231,26 @@ class SelfEvolutionPlugin(Star):
         【管理员接口】批准指定 ID 的人格进化请求。
         """
         try:
-            # 阶段 1: 复用长连接快速读取数据
-            if not self.db_conn:
-                await self._init_db()
-            async with self.db_conn.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
-                row = await cursor.fetchone()
+            # 阶段 1: 建立快闪短连接读取关键数据，读完火速闭包
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
+                    row = await cursor.fetchone()
                 
             if not row:
                 yield event.plain_result(f"找不到待处理的请求 ID {request_id}。")
                 return
             
-            # 阶段 2: 执行耗时/外部 API 更新，得益于长连接与 asyncio 架构，它不需要反复握手创建连接池开销
+            # 阶段 2: 执行耗时/外部 API 更新，得益于上文的脱离上下文特性，此时SQLite连接资源已被释放，杜绝串扰
             await self.context.persona_manager.update_persona(
                 persona_id=row['persona_id'],
                 system_prompt=row['new_prompt']
             )
             
-            # 阶段 3: 执行快速状态更新
-            await self.db_conn.execute("UPDATE pending_evolutions SET status = 'approved' WHERE id = ?", (request_id,))
-            await self.db_conn.commit()
+            # 阶段 3: 重新挂载执行快速状态更新
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("UPDATE pending_evolutions SET status = 'approved' WHERE id = ?", (request_id,))
+                await db.commit()
                 
             logger.info(f"[SelfEvolution] 管理员批准了进化请求 ID: {request_id}")
             yield event.plain_result(f"成功批准了进化请求 {request_id}，大模型人格已更新！")
@@ -261,17 +262,21 @@ class SelfEvolutionPlugin(Star):
             yield event.plain_result("系统执行审批与人格变更时遭遇故障，请查阅日志。")
 
     @filter.llm_tool(name="commit_to_memory")
-    async def commit_to_memory(self, event: AstrMessageEvent, fact: str):
+    async def commit_to_memory(self, event: AstrMessageEvent, fact: str) -> str:
         """
         当你发现了一些关于用户的重要的、需要永久记住的事实时，调用此工具将该事实存入你的长期记忆库。
         :param str fact: 需要记住的具体事实或信息。
+        :return: 库位存入状态字符串。
         """
         kb_manager = self.context.kb_manager
         try:
             kb_helper = await kb_manager.get_kb_by_name(self.memory_kb_name)
+        except (LookupError, KeyError) as e:
+            logger.error(f"[SelfEvolution] 记忆检索时未找到知识库索引或环境失效: {e}")
+            return "遭遇字典键值回溯错误，未能获取到知识库管理器。"
         except Exception as e:
-            logger.error(f"[SelfEvolution] 获取知识库失败: {e}")
-            return "获取知识库时遇到系统异常。"
+            logger.error(f"[SelfEvolution] 获取知识库广义失败: {e}")
+            return "系统运行时发生无法预测的中断异常。"
         
         if not kb_helper:
             logger.warning(f"[SelfEvolution] 记忆知识库 '{self.memory_kb_name}' 不存在。")
@@ -286,15 +291,19 @@ class SelfEvolutionPlugin(Star):
             )
             logger.info(f"[SelfEvolution] MEMORY_COMMIT: 成功存入一条长期记忆: {fact[:30]}...")
             return "事实已成功存入长期记忆库，我以后会记得这件事的。"
+        except (TimeoutError, ConnectionError) as e:
+            logger.error(f"[SelfEvolution] 存入记忆网络通讯中断/超时: {e}")
+            return "与知识库服务器建立通讯失败，无法写入新数据。"
         except Exception as e:
             logger.error(f"[SelfEvolution] 存入记忆失败: {str(e)}")
-            return "存入记忆时出现操作异常，请通知管理员检查日志。"
+            return "存入记忆时出现未知级别异常，请通知排查。"
 
     @filter.llm_tool(name="recall_memories")
-    async def recall_memories(self, event: AstrMessageEvent, query: str):
+    async def recall_memories(self, event: AstrMessageEvent, query: str) -> str:
         """
         当你需要回想起以前记住的事情、用户的偏好或过去的约定知识时，调用此工具。
         :param str query: 搜索关键词或问题。
+        :return: 包含命中历史的字符串数据流。
         """
         kb_manager = self.context.kb_manager
         try:
@@ -316,17 +325,19 @@ class SelfEvolutionPlugin(Star):
         return f"从我的长期记忆中找到了以下内容：\n\n{context_text}"
 
     @filter.llm_tool(name="list_tools")
-    async def list_tools(self, event: AstrMessageEvent):
+    async def list_tools(self, event: AstrMessageEvent) -> str:
         """
         列出当前所有已注册的工具及其激活状态。
+        :return: 带有详细激活态的格式化字符串报表。
         """
         try:
             tool_mgr = self.context.get_llm_tool_manager()
-            if not hasattr(tool_mgr, 'func_list'):
-                logger.error("[SelfEvolution] 底层 API 异常: 工具管理器的 func_list 接口不可用。")
-                return "安全保护：框架底层结构发生异常，无法获取当前激活状态。"
+            # 防范框架内部API隐藏变迁的安全调用:
+            tools = getattr(tool_mgr, 'func_list', None)
+            if tools is None:
+                logger.error("[SelfEvolution] 底层 API 警告: 工具管理器的内部注册字段 func_list 已失踪被移除。")
+                return "安全预警：AstrBot框架核心架构已历经改组，原预期的内置参数消失，受限于降级运行。"
                 
-            tools = tool_mgr.func_list
             result = ["当前工具列表："]
             for t in tools:
                 status = "✅ 激活" if getattr(t, 'active', True) else "❌ 停用"
