@@ -25,6 +25,7 @@ DAILY_REFLECTION_PROMPT = (
     "4. 如果需要调整，请调用 `evolve_persona` 工具提出修正建议并说明理由。"
 )
 
+
 class SelfEvolutionDAO:
     """独立的数据库访问对象 (DAO)，集中管理 SQLite 连接与查询逻辑，确保插件核心层业务解耦"""
     def __init__(self, db_path: str):
@@ -36,6 +37,7 @@ class SelfEvolutionDAO:
     async def init_db(self):
         try:
             async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("PRAGMA journal_mode=WAL;")
                 db.row_factory = aiosqlite.Row
                 await db.execute('''
                     CREATE TABLE IF NOT EXISTS pending_evolutions (
@@ -63,6 +65,7 @@ class SelfEvolutionDAO:
         async with self._db_lock:
             if self.db_conn is None:
                 self.db_conn = await aiosqlite.connect(self.db_path)
+                await self.db_conn.execute("PRAGMA journal_mode=WAL;")
                 self.db_conn.row_factory = aiosqlite.Row
             try:
                 # 修复: 完整消费游标，彻底释放底层句柄
@@ -77,6 +80,7 @@ class SelfEvolutionDAO:
                     except Exception:
                         pass
                 self.db_conn = await aiosqlite.connect(self.db_path)
+                await self.db_conn.execute("PRAGMA journal_mode=WAL;")
                 self.db_conn.row_factory = aiosqlite.Row
             return self.db_conn
 
@@ -127,7 +131,8 @@ class SelfEvolutionDAO:
         async with self._write_lock:
             cursor = await db.execute("UPDATE pending_reflections SET is_pending = 0 WHERE session_id = ? AND is_pending = 1", (session_id,))
             await db.commit()
-            return cursor.rowcount > 0
+            return False
+
 
 @register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.0.0")
 class SelfEvolutionPlugin(Star):
@@ -511,6 +516,48 @@ class SelfEvolutionPlugin(Star):
             logger.error(f"[SelfEvolution] 读取源码文件失败: {e}")
             return "读取源码文件系统异常，请限制访问。"
 
+    def _validate_ast_security(self, new_code: str):
+        """AST 级别的安全校验防线与防绕过警告"""
+        if new_code.count('{') + new_code.count('[') + new_code.count('(') > 500:
+            logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 拦截到过度嵌套的代码提案，防范 AST DoS 攻击。")
+            return "提案代码包含过度嵌套结构，已触发防 DoS 解析器过载防线，提案被拦截。"
+            
+        try:
+            tree = ast.parse(new_code)
+            logger.warning("[SelfEvolution] 【安全审计警告】AST 白名单防线并非坚不可摧！恶意模型仍可通过 importlib 等手法绕过。请管理员务必保持警惕。")
+            dangerous_modules = {'os', 'sys', 'subprocess', 'shutil', 'socket', 'urllib', 'requests', 'ctypes'}
+            dangerous_funcs = {'eval', 'exec', 'open', '__import__'}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.split('.')[0] in dangerous_modules:
+                            raise ValueError(f"禁止危险导入：{alias.name}")
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module and node.module.split('.')[0] in dangerous_modules:
+                        raise ValueError(f"禁止危险导入：{node.module}")
+                elif isinstance(node, ast.Call):
+                    if isinstance(node.func, ast.Name) and node.func.id in dangerous_funcs:
+                        raise ValueError(f"禁止调用高危函数：{node.func.id}")
+        except SyntaxError as e:
+            logger.error(f"[SelfEvolution] META_PROPOSAL_FAILED: 语法树校验异常: {e}")
+            return f"代码存在语法错误或混淆结构，被 AST 防火墙拦截: {e}"
+        except ValueError as e:
+            logger.error(f"[SelfEvolution] META_PROPOSAL_REJECTED: 阻断危险接口: {e}")
+            return f"安全防线激活：存在针对底层的敏感调用（{e}）。提案已销毁！"
+        return None
+
+    def _rotate_proposal_files(self, proposal_dir):
+        """滚动清理过旧的代码提案以免磁盘耗尽"""
+        try:
+            files = list(proposal_dir.glob("main_proposed_*.proposal"))
+            if len(files) >= MAX_PROPOSAL_FILES:
+                files.sort(key=lambda p: p.stat().st_mtime)
+                for old_file in files[:len(files) - MAX_PROPOSAL_FILES + 1]:
+                    old_file.unlink(missing_ok=True)
+                logger.info("[SelfEvolution] 提案过多，已触发机制清理陈旧代码提案文件。")
+        except OSError as e:
+            logger.warning(f"[SelfEvolution] 清理陈旧隔离文件发生操作系统异常: {e}")
+
     @filter.llm_tool(name="update_plugin_source")
     async def update_plugin_source(self, event: AstrMessageEvent, new_code: str, description: str) -> str:
         """
@@ -523,48 +570,18 @@ class SelfEvolutionPlugin(Star):
         if not self.allow_meta_programming:
             return "元编程功能未开启，系统已拒绝源码提案修改通道。"
         
-        # 安全防御：防范 LLM 幻觉或 Prompt 注入导致的大规模磁盘占用 (100KB 限制)
+        # 1. 拦截超大 Payload DoS
         max_limit_bytes = 100 * 1024
         if len(new_code.encode('utf-8')) > max_limit_bytes:
-            logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 拦截到超过 100KB 的超长代码提案，拒绝写入以防范 DoS 风险。")
-            return "为了服务器安全，代码修改提案最大限制为 100KB，你提供的代码已超出此限制，操作被拦截。"
+            logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 拒绝超 100KB 的代码防 DoS。")
+            return "代码提案最大限制为 100KB，你提供的代码已超出此限制被拦截。"
             
-        # 安全防御：AST 树深度控制防 DoS，防止深层嵌套递归耗尽 CPU 与崩溃
-        if new_code.count('{') + new_code.count('[') + new_code.count('(') > 500:
-            logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 拦截到过度嵌套的代码提案，拒绝以防范 AST 解析器 DoS 攻击。")
-            return "提案代码包含过度嵌套结构，已触发防 DoS 解析器过载防线，提案被拦截。"
-            
-        # 安全防御：AST 语法树级别的前置严格扫描验证，严防注入异常或混淆语法导致后续解析灾难
-        try:
-            tree = ast.parse(new_code)
-            
-            # Rick Sanchez 防线补充：AST 并不能完美防御所有逻辑混淆越权，必须添加醒目内部警告
-            logger.warning("[SelfEvolution] 【安全审计警告】AST 白名单防线并非坚不可摧！恶意模型仍可通过 importlib 等手法进行黑名单规避。管理员审核提案文件时务必保持极度警惕，不可盲目信任该静态检测层！")
-            
-            # 微型白箱审计。递归遍历所有的语法树节点，绝不允许任何越狱的高危模块被导入，拒绝引发智械危机
-            dangerous_modules = {'os', 'sys', 'subprocess', 'shutil', 'socket', 'urllib', 'requests', 'ctypes'}
-            dangerous_funcs = {'eval', 'exec', 'open', '__import__'}
-            
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        if alias.name.split('.')[0] in dangerous_modules:
-                            raise ValueError(f"禁止危险导入：{alias.name}")
-                elif isinstance(node, ast.ImportFrom):
-                    if node.module and node.module.split('.')[0] in dangerous_modules:
-                        raise ValueError(f"禁止危险导入：{node.module}")
-                elif isinstance(node, ast.Call):
-                    if isinstance(node.func, ast.Name) and node.func.id in dangerous_funcs:
-                        raise ValueError(f"禁止调用高危函数：{node.func.id}")
-                        
-        except SyntaxError as e:
-            logger.error(f"[SelfEvolution] META_PROPOSAL_FAILED: 提案未通过 AST 语法树安全性校验: {e}")
-            return f"你的代码提案存在严重语法错误或反常的混淆结构，已被 AST 静态分析防火墙拦截，操作拒绝。错误定位: {e}"
-        except ValueError as e:
-            logger.error(f"[SelfEvolution] META_PROPOSAL_REJECTED: 拦截到尝试引入系统危险接口的动作: {e}")
-            return f"安全防线已激活：你的代码中存在针对底层操作系统或网络 IO 的敏感/非法调用（{e}）。为防止越权沙盒逃逸或恶意行为，该提案已被彻底销毁！"
+        # 2. AST 校验抽离调用
+        ast_err = self._validate_ast_security(new_code)
+        if ast_err:
+            return ast_err
         
-        # 剥离极高危 RCE 漏洞，改为安全保存 Diff proposal 供管理员手动审核
+        # 3. 隔离目录准备
         proposal_dir = self.data_dir / "code_proposals"
         try:
             proposal_dir.mkdir(parents=True, exist_ok=True)
@@ -572,31 +589,19 @@ class SelfEvolutionPlugin(Star):
             logger.error(f"[SelfEvolution] 建立提案隔离目录系统级 I/O 错误: {e}")
             return "文件系统异常导致隔离目录无法建立，请管理员检查权限。"
         
-        # 防御磁盘耗尽：控制审计目录下的最大提案文件数量，滚动删除最旧文件
         async with self._lock:
-            try:
-                # 修改后缀为 .proposal 去除意外 import 导致的 RCE 执行风险
-                files = list(proposal_dir.glob("main_proposed_*.proposal"))
-                if len(files) >= MAX_PROPOSAL_FILES:
-                    # 按时间排序，删除多余的最旧文件
-                    files.sort(key=lambda p: p.stat().st_mtime)
-                    for old_file in files[:len(files) - MAX_PROPOSAL_FILES + 1]:
-                        old_file.unlink(missing_ok=True)
-                    logger.info("[SelfEvolution] 提案数量过多，已触发机制清理陈旧代码提案文件。")
-            except OSError as e:
-                logger.warning(f"[SelfEvolution] 操作清理陈旧隔离文件引发操作系统异常: {e}")
+            # 4. 文件轮转清理抽离调用
+            self._rotate_proposal_files(proposal_dir)
 
-            # 使用 UUIDv4 并应用防御级安全后缀，完全阻断目录注入
+            # 5. 安全写入沙盒文件
             proposal_file = proposal_dir / f"main_proposed_{uuid.uuid4().hex}.proposal"
-            
             try:
                 with open(proposal_file, "w", encoding="utf-8") as f:
                     f.write(new_code)
-                # 安全防御：严格锁定文件权限极元，切断执行权位防越权滥用 (Linux/Unix-like 生效)
                 os.chmod(proposal_file, 0o600)
             except OSError as e:
-                logger.error(f"[SelfEvolution] 提供元编程提案生成失败 (I/O Error): {e}")
-                return "操作系统安全限制阻断，请通知人类审计员排查文件权限树。"
+                logger.error(f"[SelfEvolution] 系统 I/O 错误，提案保存失败: {e}")
+                return "操作系统安全限制阻断，请通知管理员。"
         
         logger.warning(f"[SelfEvolution] META_PROPOSAL: 接收到元编程修改提案！已保存供管理员审计。安全缓存于: {proposal_file}。描述: {description}")
         return f"你的代码修改提案已经安全隔离至审计目录 ({proposal_file})。安全与架构团队将会审查你的代码。未通过安全评估前，新代码不会被部署。提案描述：" + description
