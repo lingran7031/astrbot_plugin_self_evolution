@@ -334,18 +334,27 @@ class SelfEvolutionPlugin(Star):
         :param str reason: 为什么要进行这次进化（理由）。你必须在理由中明确说明这次修改如何符合你的“核心原则”。
         :return: 进化结果反馈字符串。
         """
-        # 兼容性修复：部分平台（如 Aiocqhttp）的 event 对象可能没有 persona_id 属性
+        # 兼容性修复：尝试获取当前人格 ID。部分平台 event 对象可能没有 persona_id 属性
         curr_persona_id = getattr(event, "persona_id", None)
         if not curr_persona_id:
             try:
-                # 尝试从会话管理器中动态获取当前人格 ID
+                # 使用框架标准方法解析当前生效的人格 ID (处理会话、平台、全局继承)
                 conv_mgr = self.context.conversation_manager
                 umo = event.unified_msg_origin
                 cid = await conv_mgr.get_curr_conversation_id(umo)
                 conversation = await conv_mgr.get_conversation(umo, cid) if cid else None
-                curr_persona_id = conversation.persona_id if conversation else "default"
+                conversation_persona_id = conversation.persona_id if conversation else None
+                
+                cfg = self.context.get_config(umo=umo).get("provider_settings", {})
+                
+                (curr_persona_id, _, _, _) = await self.context.persona_manager.resolve_selected_persona(
+                    umo=umo,
+                    conversation_persona_id=conversation_persona_id,
+                    platform_name=event.get_platform_name(),
+                    provider_settings=cfg,
+                )
             except Exception as e:
-                logger.error(f"[SelfEvolution] 获取当前人格 ID 失败: {e}")
+                logger.error(f"[SelfEvolution] 使用 resolve_selected_persona 获取人格 ID 失败: {e}")
                 curr_persona_id = "default"
 
         if not curr_persona_id or curr_persona_id == "default":
