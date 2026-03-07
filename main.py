@@ -3,6 +3,7 @@ from astrbot.api.event import filter
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import StarTools
 from astrbot.api import logger
+import ast
 import os
 import time
 import asyncio
@@ -51,6 +52,7 @@ class SelfEvolutionPlugin(Star):
         
         # 定义高性能 SQLite 数据库替代方案 (aiosqlite)，避免并发 locked 错误
         self.db_path = self.data_dir / "pending_evolutions.db"
+        self.db_conn = None
         # 修复多用户并发导致的精神分裂漏洞：使用 session_id 隔离反省状态
         self.pending_reflections: dict[str, bool] = {}
 
@@ -76,6 +78,20 @@ class SelfEvolutionPlugin(Star):
             logger.info("[SelfEvolution] 成功建立按需数据库结构。")
         except aiosqlite.Error as e:
             logger.error(f"[SelfEvolution] 初始化 aiosqlite 数据库失败: {e}")
+
+    async def _get_db_conn(self):
+        """带有存活检测的全局连接获取器，兼顾长连接性能与雪崩恢复"""
+        if self.db_conn is None:
+            self.db_conn = await aiosqlite.connect(self.db_path)
+            self.db_conn.row_factory = aiosqlite.Row
+        try:
+            # 保活探测
+            await self.db_conn.execute("SELECT 1")
+        except Exception:
+            logger.warning("[SelfEvolution] 侦测到 SQLite 长连接句柄丢失或断裂，尝试热重连机制...")
+            self.db_conn = await aiosqlite.connect(self.db_path)
+            self.db_conn.row_factory = aiosqlite.Row
+        return self.db_conn
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
@@ -167,14 +183,14 @@ class SelfEvolutionPlugin(Star):
         
         if self.review_mode:
             try:
-                # 恢复按需短连接，防范因框架插件禁用/重载而引发的底层句柄泄露灾难
-                async with aiosqlite.connect(self.db_path) as db:
-                    await db.execute(
-                        "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (datetime.now().isoformat(), curr_persona_id, new_system_prompt, reason, "pending_approval")
-                    )
-                    await db.commit()
+                # 采用带保活治愈机制的常驻连接，解决短连接锁文件与框架重载造成的双面性系统难题
+                db = await self._get_db_conn()
+                await db.execute(
+                    "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (datetime.now().isoformat(), curr_persona_id, new_system_prompt, reason, "pending_approval")
+                )
+                await db.commit()
 
                 logger.warning(f"[SelfEvolution] EVOLVE_QUEUED: 收到进化请求，已加入审核队列。原因: {reason}")
                 return f"进化请求已录入系统审核队列，等待管理员确认。进化理由：{reason}"
@@ -203,10 +219,9 @@ class SelfEvolutionPlugin(Star):
         try:
             limit = PAGE_LIMIT
             offset = (max(1, page) - 1) * limit
-            async with aiosqlite.connect(self.db_path) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
-                    rows = await cursor.fetchall()
+            db = await self._get_db_conn()
+            async with db.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
+                rows = await cursor.fetchall()
             
             if not rows:
                 if page == 1:
@@ -231,11 +246,10 @@ class SelfEvolutionPlugin(Star):
         【管理员接口】批准指定 ID 的人格进化请求。
         """
         try:
-            # 阶段 1: 建立快闪短连接读取关键数据，读完火速闭包
-            async with aiosqlite.connect(self.db_path) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
-                    row = await cursor.fetchone()
+            # 阶段 1: 建立快闪调用，读取关键数据
+            db = await self._get_db_conn()
+            async with db.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
+                row = await cursor.fetchone()
                 
             if not row:
                 yield event.plain_result(f"找不到待处理的请求 ID {request_id}。")
@@ -248,9 +262,8 @@ class SelfEvolutionPlugin(Star):
             )
             
             # 阶段 3: 重新挂载执行快速状态更新
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute("UPDATE pending_evolutions SET status = 'approved' WHERE id = ?", (request_id,))
-                await db.commit()
+            await db.execute("UPDATE pending_evolutions SET status = 'approved' WHERE id = ?", (request_id,))
+            await db.commit()
                 
             logger.info(f"[SelfEvolution] 管理员批准了进化请求 ID: {request_id}")
             yield event.plain_result(f"成功批准了进化请求 {request_id}，大模型人格已更新！")
@@ -270,7 +283,11 @@ class SelfEvolutionPlugin(Star):
         """
         kb_manager = self.context.kb_manager
         try:
-            kb_helper = await kb_manager.get_kb_by_name(self.memory_kb_name)
+            # 防御隐性网络延迟，施加硬超时
+            kb_helper = await asyncio.wait_for(kb_manager.get_kb_by_name(self.memory_kb_name), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.error("[SelfEvolution] 记忆库装载严重超时。")
+            return "与知识引擎服务器建立信道超时，中断存入以维持会话流畅。"
         except (LookupError, KeyError) as e:
             logger.error(f"[SelfEvolution] 记忆检索时未找到知识库索引或环境失效: {e}")
             return "遭遇字典键值回溯错误，未能获取到知识库管理器。"
@@ -307,11 +324,18 @@ class SelfEvolutionPlugin(Star):
         """
         kb_manager = self.context.kb_manager
         try:
-            results = await kb_manager.retrieve(
-                query=query,
-                kb_names=[self.memory_kb_name],
-                top_m_final=5
+            # 添加防御性 Timeout 机制防引发大模型阻塞 (Hang)
+            results = await asyncio.wait_for(
+                kb_manager.retrieve(
+                    query=query,
+                    kb_names=[self.memory_kb_name],
+                    top_m_final=5
+                ),
+                timeout=12.0
             )
+        except asyncio.TimeoutError:
+            logger.error("[SelfEvolution] 检索记忆网络通信卡死/超时。")
+            return "检索长期记忆时与核心向量库层通信严重超时，为防止阻塞当前对话流，已强制中止操作。"
         except Exception as e:
             logger.error(f"[SelfEvolution] 检索记忆请求失败: {e}")
             return "检索长期记忆时发生接口异常，请通知管理员检查日志。"
@@ -332,8 +356,15 @@ class SelfEvolutionPlugin(Star):
         """
         try:
             tool_mgr = self.context.get_llm_tool_manager()
-            # 防范框架内部API隐藏变迁的安全调用:
-            tools = getattr(tool_mgr, 'func_list', None)
+            
+            # 兼容性寻找官方标准公开 API，若无则平滑降级到底层私有 func_list 属性
+            if hasattr(tool_mgr, 'get_registered_tools'):
+                tools = tool_mgr.get_registered_tools()
+            elif hasattr(tool_mgr, 'get_all_tools'):
+                tools = tool_mgr.get_all_tools()
+            else:
+                tools = getattr(tool_mgr, 'func_list', None)
+                
             if tools is None:
                 logger.error("[SelfEvolution] 底层 API 警告: 工具管理器的内部注册字段 func_list 已失踪被移除。")
                 return "安全预警：AstrBot框架核心架构已历经改组，原预期的内置参数消失，受限于降级运行。"
@@ -421,6 +452,13 @@ class SelfEvolutionPlugin(Star):
         if len(new_code.encode('utf-8')) > max_limit_bytes:
             logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 拦截到超过 100KB 的超长代码提案，拒绝写入以防范 DoS 风险。")
             return "为了服务器安全，代码修改提案最大限制为 100KB，你提供的代码已超出此限制，操作被拦截。"
+            
+        # 安全防御：AST 语法树级别的前置严格扫描验证，严防注入异常或混淆语法导致后续解析灾难
+        try:
+            ast.parse(new_code)
+        except SyntaxError as e:
+            logger.error(f"[SelfEvolution] META_PROPOSAL_FAILED: 提案未通过 AST 语法树安全性校验: {e}")
+            return f"你的代码提案存在严重语法错误或反常的混淆结构，已被 AST 静态分析防火墙拦截，操作拒绝。错误定位: {e}"
         
         # 剥离极高危 RCE 漏洞，改为安全保存 Diff proposal 供管理员手动审核
         proposal_dir = self.data_dir / "code_proposals"
@@ -450,6 +488,8 @@ class SelfEvolutionPlugin(Star):
             try:
                 with open(proposal_file, "w", encoding="utf-8") as f:
                     f.write(new_code)
+                # 安全防御：严格锁定文件权限极元，切断执行权位防越权滥用 (Linux/Unix-like 生效)
+                os.chmod(proposal_file, 0o600)
             except OSError as e:
                 logger.error(f"[SelfEvolution] 提供元编程提案生成失败 (I/O Error): {e}")
                 return "操作系统安全限制阻断，请通知人类审计员排查文件权限树。"
