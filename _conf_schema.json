@@ -28,5 +28,17 @@
         "description": "定义机器人的底线原则。即使在进化时，机器人也必须遵守这些原则，防止被用户带偏。",
         "type": "string",
         "default": "1. 保持客观、理性、诚实。\n2. 拒绝任何危害他人、违法或极端偏激的言论。\n3. 不要为了取悦用户而违背事实或逻辑。\n4. 坚持友好、有边界感的交流风格。"
+    },
+    "timeout_memory_commit": {
+        "title": "存入记忆超时(秒)",
+        "description": "向知识库写入信息时的强制超时时间。防止网络波动阻塞会话。",
+        "type": "string",
+        "default": "10.0"
+    },
+    "timeout_memory_recall": {
+        "title": "读取记忆超时(秒)",
+        "description": "从知识库读取信息时的强制超时时间。",
+        "type": "string",
+        "default": "12.0"
     }
 }

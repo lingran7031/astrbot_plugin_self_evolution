@@ -54,8 +54,8 @@ class SelfEvolutionDAO:
     def __init__(self, db_path: str):
         self.db_path = db_path
         self.db_conn = None
-        self._db_lock = asyncio.Lock()
-        self._write_lock = asyncio.Lock()
+        self._db_lock = None
+        self._write_lock = None
 
     async def init_db(self):
         """兼容旧接口，内部实际上已融入 get_conn 的连接池锁机制，从而规避初始化并发造成的 WAL 锁定冲突"""
@@ -87,6 +87,11 @@ class SelfEvolutionDAO:
 
     async def get_conn(self):
         """带有存活检测的全局连接获取器，兼顾长连接性能与雪崩恢复，防阻塞分离读写锁"""
+        if self._db_lock is None:
+            self._db_lock = asyncio.Lock()
+        if self._write_lock is None:
+            self._write_lock = asyncio.Lock()
+            
         async with self._db_lock:
             if self.db_conn is None:
                 self.db_conn = await aiosqlite.connect(self.db_path)
@@ -124,13 +129,14 @@ class SelfEvolutionDAO:
         return self.db_conn
 
     async def close(self):
-        async with self._db_lock:
-            if self.db_conn is not None:
-                try:
-                    await self.db_conn.close()
-                except Exception:
-                    pass
-                self.db_conn = None
+        if self._db_lock is not None:
+            async with self._db_lock:
+                if self.db_conn is not None:
+                    try:
+                        await self.db_conn.close()
+                    except Exception:
+                        pass
+                    self.db_conn = None
 
     @with_db_retry()
     async def add_pending_evolution(self, persona_id: str, new_prompt: str, reason: str):
@@ -202,10 +208,12 @@ class SelfEvolutionPlugin(Star):
         self.allow_meta_programming = self._parse_bool(self.config.get("allow_meta_programming", False), False)
         self.core_principles = self.config.get("core_principles", "保持客观、理性、诚实。")
         self.admin_users = [str(u) for u in self.config.get("admin_users", [])]
+        self.timeout_memory_commit = self.config.get("timeout_memory_commit", 10.0)
+        self.timeout_memory_recall = self.config.get("timeout_memory_recall", 12.0)
 
         self.data_dir = StarTools.get_data_dir() / "self_evolution"
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self._lock = asyncio.Lock() # 用于文件并发写入的锁
+        self._lock = None # 延迟初始化，防范无事件循环导致的 RuntimeError
         
         # 实例化统一的 DAO 层对象
         db_path = self.data_dir / "pending_evolutions.db"
@@ -417,8 +425,8 @@ class SelfEvolutionPlugin(Star):
         """
         kb_manager = self.context.kb_manager
         try:
-            # 防御隐性网络延迟，施加硬超时
-            kb_helper = await asyncio.wait_for(kb_manager.get_kb_by_name(self.memory_kb_name), timeout=10.0)
+            # 防御隐性网络延迟，动态读取配置的硬超时
+            kb_helper = await asyncio.wait_for(kb_manager.get_kb_by_name(self.memory_kb_name), timeout=self.timeout_memory_commit)
         except asyncio.TimeoutError:
             logger.error("[SelfEvolution] 记忆库装载严重超时。")
             return "与知识引擎服务器建立信道超时，中断存入以维持会话流畅。"
@@ -464,7 +472,7 @@ class SelfEvolutionPlugin(Star):
                     kb_names=[self.memory_kb_name],
                     top_m_final=5
                 ),
-                timeout=12.0
+                timeout=self.timeout_memory_recall
             )
         except asyncio.TimeoutError:
             logger.error("[SelfEvolution] 检索记忆网络通信卡死/超时。")
@@ -649,6 +657,8 @@ class SelfEvolutionPlugin(Star):
             logger.error(f"[SelfEvolution] 建立提案隔离目录系统级 I/O 错误: {e}")
             return "文件系统异常导致隔离目录无法建立，请管理员检查权限。"
         
+        if self._lock is None:
+            self._lock = asyncio.Lock()
         async with self._lock:
             # 4. 文件轮转清理抽离调用
             self._rotate_proposal_files(proposal_dir)
