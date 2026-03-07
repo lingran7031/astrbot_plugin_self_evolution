@@ -25,6 +25,85 @@ DAILY_REFLECTION_PROMPT = (
     "4. 如果需要调整，请调用 `evolve_persona` 工具提出修正建议并说明理由。"
 )
 
+class SelfEvolutionDAO:
+    """独立的数据库访问对象 (DAO)，集中管理 SQLite 连接与查询逻辑，确保插件核心层业务解耦"""
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self.db_conn = None
+        self._db_lock = asyncio.Lock()
+
+    async def init_db(self):
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                await db.execute('''
+                    CREATE TABLE IF NOT EXISTS pending_evolutions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        persona_id TEXT NOT NULL,
+                        new_prompt TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        status TEXT NOT NULL
+                    )
+                ''')
+                await db.commit()
+            logger.info("[SelfEvolution] DAO: 成功建立按需数据库结构。")
+        except aiosqlite.Error as e:
+            logger.error(f"[SelfEvolution] DAO: 初始化 aiosqlite 数据库失败: {e}")
+
+    async def get_conn(self):
+        """带有存活检测的全局连接获取器，兼顾长连接性能与雪崩恢复，受协程并发锁严密保护"""
+        async with self._db_lock:
+            if self.db_conn is None:
+                self.db_conn = await aiosqlite.connect(self.db_path)
+                self.db_conn.row_factory = aiosqlite.Row
+            try:
+                # 保活探测。显式包裹在 async with 游标上下文中，防止 heartbeat 频繁调用产生未回收的 cursor 游离句柄
+                async with self.db_conn.execute("SELECT 1"):
+                    pass
+            except Exception:
+                logger.warning("[SelfEvolution] DAO: 侦测到 SQLite 长连接句柄丢失或断裂，尝试热重连机制...")
+                if self.db_conn:
+                    try:
+                        # 显式关闭旧连接，确保操作系统回收底层文件描述符，防范泄露炸弹
+                        await self.db_conn.close()
+                    except Exception:
+                        pass
+                self.db_conn = await aiosqlite.connect(self.db_path)
+                self.db_conn.row_factory = aiosqlite.Row
+            return self.db_conn
+
+    async def close(self):
+        if self.db_conn is not None:
+            try:
+                await self.db_conn.close()
+            except Exception:
+                pass
+
+    async def add_pending_evolution(self, persona_id: str, new_prompt: str, reason: str):
+        db = await self.get_conn()
+        await db.execute(
+            "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (datetime.now().isoformat(), persona_id, new_prompt, reason, "pending_approval")
+        )
+        await db.commit()
+
+    async def get_pending_evolutions(self, limit: int, offset: int):
+        db = await self.get_conn()
+        async with db.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
+            return await cursor.fetchall()
+
+    async def get_evolution(self, request_id: int):
+        db = await self.get_conn()
+        async with db.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
+            return await cursor.fetchone()
+
+    async def update_evolution_status(self, request_id: int, status: str):
+        db = await self.get_conn()
+        await db.execute("UPDATE pending_evolutions SET status = ? WHERE id = ?", (status, request_id))
+        await db.commit()
+
 @register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.0.0")
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -49,11 +128,11 @@ class SelfEvolutionPlugin(Star):
         self.data_dir = StarTools.get_data_dir() / "self_evolution"
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._lock = asyncio.Lock() # 用于文件并发写入的锁
-        self._db_lock = asyncio.Lock() # 用于数据库连接池的并发生成锁
         
-        # 定义高性能 SQLite 数据库替代方案 (aiosqlite)，避免并发 locked 错误
-        self.db_path = self.data_dir / "pending_evolutions.db"
-        self.db_conn = None
+        # 实例化统一的 DAO 层对象
+        db_path = self.data_dir / "pending_evolutions.db"
+        self.dao = SelfEvolutionDAO(db_path)
+        
         # 修复多用户并发导致的精神分裂漏洞：使用 session_id 隔离反省状态
         self.pending_reflections: dict[str, bool] = {}
 
@@ -62,55 +141,13 @@ class SelfEvolutionPlugin(Star):
         
     def __del__(self):
         """拦截框架卸载、热重载或垃圾回收时的析构事件，关闭游离数据库连接文件句柄以彻底防范泄露"""
-        if getattr(self, 'db_conn', None) is not None:
+        if getattr(self, 'dao', None) is not None:
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    loop.create_task(self.db_conn.close())
+                    loop.create_task(self.dao.close())
             except Exception:
                 pass
-
-    async def _init_db(self):
-        """异步初始化建议列表所用的 SQLite 数据库，使用短连接防止重载资源泄露"""
-        try:
-            async with aiosqlite.connect(self.db_path) as db:
-                db.row_factory = aiosqlite.Row
-                await db.execute('''
-                    CREATE TABLE IF NOT EXISTS pending_evolutions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        timestamp TEXT NOT NULL,
-                        persona_id TEXT NOT NULL,
-                        new_prompt TEXT NOT NULL,
-                        reason TEXT NOT NULL,
-                        status TEXT NOT NULL
-                    )
-                ''')
-                await db.commit()
-            logger.info("[SelfEvolution] 成功建立按需数据库结构。")
-        except aiosqlite.Error as e:
-            logger.error(f"[SelfEvolution] 初始化 aiosqlite 数据库失败: {e}")
-
-    async def _get_db_conn(self):
-        """带有存活检测的全局连接获取器，兼顾长连接性能与雪崩恢复，受协程并发锁严密保护"""
-        async with self._db_lock:
-            if self.db_conn is None:
-                self.db_conn = await aiosqlite.connect(self.db_path)
-                self.db_conn.row_factory = aiosqlite.Row
-            try:
-                # 保活探测。显式包裹在 async with 游标上下文中，防止 heartbeat 频繁调用产生未回收的 cursor 游离句柄
-                async with self.db_conn.execute("SELECT 1"):
-                    pass
-            except Exception:
-                logger.warning("[SelfEvolution] 侦测到 SQLite 长连接句柄丢失或断裂，尝试热重连机制...")
-                if self.db_conn:
-                    try:
-                        # 显式关闭旧连接，确保操作系统回收底层文件描述符，防范泄露炸弹
-                        await self.db_conn.close()
-                    except Exception:
-                        pass
-                self.db_conn = await aiosqlite.connect(self.db_path)
-                self.db_conn.row_factory = aiosqlite.Row
-            return self.db_conn
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
@@ -176,7 +213,7 @@ class SelfEvolutionPlugin(Star):
             logger.error(f"[SelfEvolution] 注册定时任务失败: {e}")
         
         # 异步初始化长期存储
-        await self._init_db()
+        await self.dao.init_db()
 
     @filter.command("reflect")
     async def manual_reflect(self, event: AstrMessageEvent):
@@ -202,14 +239,7 @@ class SelfEvolutionPlugin(Star):
         
         if self.review_mode:
             try:
-                # 采用带保活治愈机制的常驻连接，解决短连接锁文件与框架重载造成的双面性系统难题
-                db = await self._get_db_conn()
-                await db.execute(
-                    "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (datetime.now().isoformat(), curr_persona_id, new_system_prompt, reason, "pending_approval")
-                )
-                await db.commit()
+                await self.dao.add_pending_evolution(curr_persona_id, new_system_prompt, reason)
 
                 logger.warning(f"[SelfEvolution] EVOLVE_QUEUED: 收到进化请求，已加入审核队列。原因: {reason}")
                 return f"进化请求已录入系统审核队列，等待管理员确认。进化理由：{reason}"
@@ -238,9 +268,7 @@ class SelfEvolutionPlugin(Star):
         try:
             limit = PAGE_LIMIT
             offset = (max(1, page) - 1) * limit
-            db = await self._get_db_conn()
-            async with db.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
-                rows = await cursor.fetchall()
+            rows = await self.dao.get_pending_evolutions(limit, offset)
             
             if not rows:
                 if page == 1:
@@ -266,29 +294,30 @@ class SelfEvolutionPlugin(Star):
         """
         try:
             # 阶段 1: 建立快闪调用，读取关键数据
-            db = await self._get_db_conn()
-            async with db.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
-                row = await cursor.fetchone()
+            row = await self.dao.get_evolution(request_id)
                 
             if not row:
                 yield event.plain_result(f"找不到待处理的请求 ID {request_id}。")
                 return
             
-            # 阶段 2: 执行耗时/外部 API 更新，得益于上文的脱离上下文特性，此时SQLite连接资源已被释放，杜绝串扰
+            # 阶段 2: 执行耗时/外部 API 更新，得益于 DAO 抽象，此时不必担忧底层连接
             await self.context.persona_manager.update_persona(
                 persona_id=row['persona_id'],
                 system_prompt=row['new_prompt']
             )
             
-            # 阶段 3: 重新挂载执行快速状态更新
-            await db.execute("UPDATE pending_evolutions SET status = 'approved' WHERE id = ?", (request_id,))
-            await db.commit()
+            # 阶段 3: DAO 状态更新包裹异常捕获防“脏状态”
+            try:
+                await self.dao.update_evolution_status(request_id, 'approved')
+                logger.info(f"[SelfEvolution] 管理员批准了进化请求 ID: {request_id}")
+                yield event.plain_result(f"成功批准了进化请求 {request_id}，大模型人格已更新！")
+            except aiosqlite.Error as e:
+                logger.error(f"[SelfEvolution] 致命异常：大模型人格已更新成功，但在同步数据库状态时失败: {e}")
+                yield event.plain_result(f"⚠️ 警告：大模型核心人格已经成功进化！但由于数据库操作中断，审批状态列表（ID {request_id}）未能正确刷新为已批准，请管理员知悉以防重复批准引发困惑。")
                 
-            logger.info(f"[SelfEvolution] 管理员批准了进化请求 ID: {request_id}")
-            yield event.plain_result(f"成功批准了进化请求 {request_id}，大模型人格已更新！")
         except aiosqlite.Error as e:
-            logger.error(f"[SelfEvolution] 批准进化请求发生数据库操作阻断: {e}")
-            yield event.plain_result("批准请求期间出现数据库系统异常，请查阅日志。")
+            logger.error(f"[SelfEvolution] 读取/状态更新发生数据库操作阻断: {e}")
+            yield event.plain_result("处理请求期间出现底层数据库异常，请查阅日志。")
         except Exception as e:
             logger.error(f"[SelfEvolution] 批准进化请求发生泛用异常: {e}")
             yield event.plain_result("系统执行审批与人格变更时遭遇故障，请查阅日志。")
