@@ -46,6 +46,12 @@ class SelfEvolutionDAO:
                         status TEXT NOT NULL
                     )
                 ''')
+                await db.execute('''
+                    CREATE TABLE IF NOT EXISTS pending_reflections (
+                        session_id TEXT PRIMARY KEY,
+                        is_pending INTEGER NOT NULL DEFAULT 1
+                    )
+                ''')
                 await db.commit()
             logger.info("[SelfEvolution] DAO: 成功建立按需数据库结构。")
         except aiosqlite.Error as e:
@@ -58,9 +64,9 @@ class SelfEvolutionDAO:
                 self.db_conn = await aiosqlite.connect(self.db_path)
                 self.db_conn.row_factory = aiosqlite.Row
             try:
-                # 保活探测。显式包裹在 async with 游标上下文中，防止 heartbeat 频繁调用产生未回收的 cursor 游离句柄
-                async with self.db_conn.execute("SELECT 1"):
-                    pass
+                # 修复: 完整消费游标，彻底释放底层句柄
+                async with self.db_conn.execute("SELECT 1") as cursor:
+                    await cursor.fetchone()
             except Exception:
                 logger.warning("[SelfEvolution] DAO: 侦测到 SQLite 长连接句柄丢失或断裂，尝试热重连机制...")
                 if self.db_conn:
@@ -104,6 +110,24 @@ class SelfEvolutionDAO:
         await db.execute("UPDATE pending_evolutions SET status = ? WHERE id = ?", (status, request_id))
         await db.commit()
 
+    async def set_pending_reflection(self, session_id: str, is_pending: bool):
+        db = await self.get_conn()
+        await db.execute(
+            "INSERT INTO pending_reflections (session_id, is_pending) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET is_pending=?", 
+            (session_id, int(is_pending), int(is_pending))
+        )
+        await db.commit()
+
+    async def pop_pending_reflection(self, session_id: str) -> bool:
+        db = await self.get_conn()
+        async with db.execute("SELECT is_pending FROM pending_reflections WHERE session_id = ?", (session_id,)) as cursor:
+            row = await cursor.fetchone()
+        if row and row['is_pending'] == 1:
+            await db.execute("UPDATE pending_reflections SET is_pending = 0 WHERE session_id = ?", (session_id,))
+            await db.commit()
+            return True
+        return False
+
 @register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.0.0")
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -124,6 +148,7 @@ class SelfEvolutionPlugin(Star):
         self.reflection_schedule = self.config.get("reflection_schedule", "0 2 * * *")
         self.allow_meta_programming = self._parse_bool(self.config.get("allow_meta_programming", False), False)
         self.core_principles = self.config.get("core_principles", "保持客观、理性、诚实。")
+        self.admin_users = self.config.get("admin_users", [])
 
         self.data_dir = StarTools.get_data_dir() / "self_evolution"
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -133,21 +158,8 @@ class SelfEvolutionPlugin(Star):
         db_path = self.data_dir / "pending_evolutions.db"
         self.dao = SelfEvolutionDAO(db_path)
         
-        # 修复多用户并发导致的精神分裂漏洞：使用 session_id 隔离反省状态
-        self.pending_reflections: dict[str, bool] = {}
-
         logger.info(f"[SelfEvolution] === 插件初始化 | review_mode={self.review_mode} | meta_programming={self.allow_meta_programming} ===")
         logger.info(f"[SelfEvolution] 数据存储路径加载至: {self.data_dir}")
-        
-    def __del__(self):
-        """拦截框架卸载、热重载或垃圾回收时的析构事件，关闭游离数据库连接文件句柄以彻底防范泄露"""
-        if getattr(self, 'dao', None) is not None:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(self.dao.close())
-            except Exception:
-                pass
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
@@ -155,9 +167,10 @@ class SelfEvolutionPlugin(Star):
         Level 3: 情绪驱动进化与后台反思。
         将用户反馈与“核心原则”进行柔性对齐，并支持静默上下文中执行后台自省。
         """
-        # 静默处理：后台反思指令钩子 (通过 session_id 隔离不同用户的状态)
+        # 静默处理：后台反思指令钩子 (持久化隔离不同用户的状态)
         session_id = event.session_id
-        if self.pending_reflections.pop(session_id, False):
+        is_pending = await self.dao.pop_pending_reflection(session_id)
+        if is_pending:
             reflection_prompt = (
                 "\n\n[管理员后台指令]：请在本次回复中，针对今天的整体交互记录进行一次深度的客观自我反思。"
                 "不仅要评估你的各项表现，更要思考是否需要通过 `evolve_persona` 工具请求调整自己的人格原则，"
@@ -221,7 +234,7 @@ class SelfEvolutionPlugin(Star):
         手动触发一次自我反省。
         """
         # 静默标志位设置，LLM 将在下一次收到消息时被隐式注入上下文指令，避免界面粗暴弹出系统提示语
-        self.pending_reflections[event.session_id] = True
+        await self.dao.set_pending_reflection(event.session_id, True)
         yield event.plain_result("后台自省协议已就绪，将在下一次对话时无缝切入大模型思维链路。")
 
     @filter.llm_tool(name="evolve_persona")
@@ -265,6 +278,10 @@ class SelfEvolutionPlugin(Star):
         【管理员接口】列出待审核的人格进化请求，支持分页查询。
         :param int page: 请求列表的翻页页码
         """
+        if self.admin_users and str(event.sender.user_id) not in self.admin_users:
+            yield event.plain_result("权限拒绝：此操作仅限系统管理员执行。已记录越权尝试。")
+            return
+            
         try:
             limit = PAGE_LIMIT
             offset = (max(1, page) - 1) * limit
@@ -292,6 +309,10 @@ class SelfEvolutionPlugin(Star):
         """
         【管理员接口】批准指定 ID 的人格进化请求。
         """
+        if self.admin_users and str(event.sender.user_id) not in self.admin_users:
+            yield event.plain_result("权限拒绝：此操作仅限系统管理员执行。已记录越权尝试。")
+            return
+            
         try:
             # 阶段 1: 建立快闪调用，读取关键数据
             row = await self.dao.get_evolution(request_id)
@@ -405,17 +426,13 @@ class SelfEvolutionPlugin(Star):
         try:
             tool_mgr = self.context.get_llm_tool_manager()
             
-            # 兼容性寻找官方标准公开 API，若无则平滑降级到底层私有 func_list 属性
+            # 兼容性寻找官方标准公开 API，移除脆弱的底层反射尝试逻辑
             if hasattr(tool_mgr, 'get_registered_tools'):
                 tools = tool_mgr.get_registered_tools()
             elif hasattr(tool_mgr, 'get_all_tools'):
                 tools = tool_mgr.get_all_tools()
             else:
-                tools = getattr(tool_mgr, 'func_list', None)
-                
-            if tools is None:
-                logger.error("[SelfEvolution] 底层 API 警告: 工具管理器的内部注册字段 func_list 已失踪被移除。")
-                return "安全预警：AstrBot框架核心架构已历经改组，原预期的内置参数消失，受限于降级运行。"
+                return "安全预警：AstrBot框架核心架构已历经改组，get_registered_tools 等公开接口失效。"
                 
             result = ["当前工具列表："]
             for t in tools:
@@ -431,7 +448,7 @@ class SelfEvolutionPlugin(Star):
             return "获取工具列表时出现内部异常处理错误。"
 
     @filter.llm_tool(name="toggle_tool")
-    async def toggle_tool(self, event: AstrMessageEvent, tool_name: str, enable: bool):
+    async def toggle_tool(self, event: AstrMessageEvent, tool_name: str, enable: bool) -> str:
         """
         动态激活或停用某个工具。
         :param str tool_name: 工具名称。
@@ -441,17 +458,16 @@ class SelfEvolutionPlugin(Star):
             if tool_name in PROTECTED_TOOLS and not enable:
                 return f"为了系统稳定，不允许停用核心基础工具：{tool_name}。"
             
-            # API 级别可用性校验
-            if not hasattr(self.context, 'activate_llm_tool') or not hasattr(self.context, 'deactivate_llm_tool'):
+            try:
+                if enable:
+                    success = self.context.activate_llm_tool(tool_name)
+                    action = "激活"
+                else:
+                    success = self.context.deactivate_llm_tool(tool_name)
+                    action = "停用"
+            except AttributeError:
                 logger.error("[SelfEvolution] 底层 API 异常: 工具激活机制的底层接口缺失。")
                 return "安全保护：框架底层管理结构发生异常，无法调整工具激活状态。"
-            
-            if enable:
-                success = self.context.activate_llm_tool(tool_name)
-                action = "激活"
-            else:
-                success = self.context.deactivate_llm_tool(tool_name)
-                action = "停用"
             
             if success:
                 logger.info(f"[SelfEvolution] TOOL_TOGGLE: 成功{action}工具: {tool_name}")
@@ -464,7 +480,7 @@ class SelfEvolutionPlugin(Star):
             return "工具切换时遭遇系统异常。"
 
     @filter.llm_tool(name="get_plugin_source")
-    async def get_plugin_source(self, event: AstrMessageEvent):
+    async def get_plugin_source(self, event: AstrMessageEvent) -> str:
         """
         Level 4: 元编程。读取本插件的源码（main.py），以便进行自我分析或修改请求。
         【极高危安全警告】：开启此功能将本插件底层源码完全暴露给大语言模型！
@@ -484,7 +500,7 @@ class SelfEvolutionPlugin(Star):
             return "读取源码文件系统异常，请限制访问。"
 
     @filter.llm_tool(name="update_plugin_source")
-    async def update_plugin_source(self, event: AstrMessageEvent, new_code: str, description: str):
+    async def update_plugin_source(self, event: AstrMessageEvent, new_code: str, description: str) -> str:
         """
         Level 4: 元编程。针对本插件提出代码修改建议。
         【极高危安全警告】：此通道接受大语言模型下发的代码提议！哪怕已转为审核保存模式，也必须对 AI 提供的内容保持最高警惕。
@@ -501,11 +517,19 @@ class SelfEvolutionPlugin(Star):
             logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 拦截到超过 100KB 的超长代码提案，拒绝写入以防范 DoS 风险。")
             return "为了服务器安全，代码修改提案最大限制为 100KB，你提供的代码已超出此限制，操作被拦截。"
             
+        # 安全防御：AST 树深度控制防 DoS，防止深层嵌套递归耗尽 CPU 与崩溃
+        if new_code.count('{') + new_code.count('[') + new_code.count('(') > 500:
+            logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 拦截到过度嵌套的代码提案，拒绝以防范 AST 解析器 DoS 攻击。")
+            return "提案代码包含过度嵌套结构，已触发防 DoS 解析器过载防线，提案被拦截。"
+            
         # 安全防御：AST 语法树级别的前置严格扫描验证，严防注入异常或混淆语法导致后续解析灾难
         try:
             tree = ast.parse(new_code)
             
-            # Rick Sanchez 防线：微型白箱审计。递归遍历所有的语法树节点，绝不允许任何越狱的高危模块被导入，拒绝引发智械危机
+            # Rick Sanchez 防线补充：AST 并不能完美防御所有逻辑混淆越权，必须添加醒目内部警告
+            logger.warning("[SelfEvolution] 【安全审计警告】AST 白名单防线并非坚不可摧！恶意模型仍可通过 importlib 等手法进行黑名单规避。管理员审核提案文件时务必保持极度警惕，不可盲目信任该静态检测层！")
+            
+            # 微型白箱审计。递归遍历所有的语法树节点，绝不允许任何越狱的高危模块被导入，拒绝引发智械危机
             dangerous_modules = {'os', 'sys', 'subprocess', 'shutil', 'socket', 'urllib', 'requests', 'ctypes'}
             dangerous_funcs = {'eval', 'exec', 'open', '__import__'}
             
