@@ -31,6 +31,7 @@ class SelfEvolutionDAO:
         self.db_path = db_path
         self.db_conn = None
         self._db_lock = asyncio.Lock()
+        self._write_lock = asyncio.Lock()
 
     async def init_db(self):
         try:
@@ -88,12 +89,13 @@ class SelfEvolutionDAO:
 
     async def add_pending_evolution(self, persona_id: str, new_prompt: str, reason: str):
         db = await self.get_conn()
-        await db.execute(
-            "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (datetime.now().isoformat(), persona_id, new_prompt, reason, "pending_approval")
-        )
-        await db.commit()
+        async with self._write_lock:
+            await db.execute(
+                "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (datetime.now().isoformat(), persona_id, new_prompt, reason, "pending_approval")
+            )
+            await db.commit()
 
     async def get_pending_evolutions(self, limit: int, offset: int):
         db = await self.get_conn()
@@ -107,26 +109,25 @@ class SelfEvolutionDAO:
 
     async def update_evolution_status(self, request_id: int, status: str):
         db = await self.get_conn()
-        await db.execute("UPDATE pending_evolutions SET status = ? WHERE id = ?", (status, request_id))
-        await db.commit()
+        async with self._write_lock:
+            await db.execute("UPDATE pending_evolutions SET status = ? WHERE id = ?", (status, request_id))
+            await db.commit()
 
     async def set_pending_reflection(self, session_id: str, is_pending: bool):
         db = await self.get_conn()
-        await db.execute(
-            "INSERT INTO pending_reflections (session_id, is_pending) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET is_pending=?", 
-            (session_id, int(is_pending), int(is_pending))
-        )
-        await db.commit()
+        async with self._write_lock:
+            await db.execute(
+                "INSERT INTO pending_reflections (session_id, is_pending) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET is_pending=?", 
+                (session_id, int(is_pending), int(is_pending))
+            )
+            await db.commit()
 
     async def pop_pending_reflection(self, session_id: str) -> bool:
         db = await self.get_conn()
-        async with db.execute("SELECT is_pending FROM pending_reflections WHERE session_id = ?", (session_id,)) as cursor:
-            row = await cursor.fetchone()
-        if row and row['is_pending'] == 1:
-            await db.execute("UPDATE pending_reflections SET is_pending = 0 WHERE session_id = ?", (session_id,))
+        async with self._write_lock:
+            cursor = await db.execute("UPDATE pending_reflections SET is_pending = 0 WHERE session_id = ? AND is_pending = 1", (session_id,))
             await db.commit()
-            return True
-        return False
+            return cursor.rowcount > 0
 
 @register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.0.0")
 class SelfEvolutionPlugin(Star):
@@ -327,14 +328,25 @@ class SelfEvolutionPlugin(Star):
                 system_prompt=row['new_prompt']
             )
             
-            # 阶段 3: DAO 状态更新包裹异常捕获防“脏状态”
-            try:
-                await self.dao.update_evolution_status(request_id, 'approved')
+            # 阶段 3: DAO 状态更新包裹异常捕获防“脏状态”，引入队列补偿与重试机制防拥堵死锁
+            db_success = False
+            db_err = None
+            for attempt in range(3):
+                try:
+                    await self.dao.update_evolution_status(request_id, 'approved')
+                    db_success = True
+                    break
+                except aiosqlite.Error as e:
+                    db_err = e
+                    if attempt < 2:
+                        await asyncio.sleep(0.5)
+
+            if db_success:
                 logger.info(f"[SelfEvolution] 管理员批准了进化请求 ID: {request_id}")
                 yield event.plain_result(f"成功批准了进化请求 {request_id}，大模型人格已更新！")
-            except aiosqlite.Error as e:
-                logger.error(f"[SelfEvolution] 致命异常：大模型人格已更新成功，但在同步数据库状态时失败: {e}")
-                yield event.plain_result(f"⚠️ 警告：大模型核心人格已经成功进化！但由于数据库操作中断，审批状态列表（ID {request_id}）未能正确刷新为已批准，请管理员知悉以防重复批准引发困惑。")
+            else:
+                logger.error(f"[SelfEvolution] 致命异常：大模型人格已更新成功，但在同步数据库状态时重试 3 次均失败: {db_err}")
+                yield event.plain_result(f"⚠️ 警告：大模型核心人格已经成功进化！但由于数据库操作中断，审批状态列表（ID {request_id}）未能正确刷新为已批准。底层接口具备幂等性，请管理员排查环境后稍后尝试重复操作以补齐状态。")
                 
         except aiosqlite.Error as e:
             logger.error(f"[SelfEvolution] 读取/状态更新发生数据库操作阻断: {e}")
