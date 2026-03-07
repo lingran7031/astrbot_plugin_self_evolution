@@ -240,8 +240,8 @@ class SelfEvolutionPlugin(Star):
         logger.info(f"[SelfEvolution] === 插件初始化 | review_mode={self.review_mode} | meta_programming={self.allow_meta_programming} ===")
         logger.info(f"[SelfEvolution] 数据存储路径加载至: {self.data_dir}")
 
-    @filter.on_plugin_unload()
-    async def on_plugin_unload(self, event: AstrMessageEvent):
+    @filter.on_plugin_unloaded()
+    async def on_plugin_unloaded(self, event: AstrMessageEvent):
         """
         拦截框架卸载/热重载钩子，执行资源闭环收尾以防止高并发下的 SQLite database is locked
         """
