@@ -334,9 +334,22 @@ class SelfEvolutionPlugin(Star):
         :param str reason: 为什么要进行这次进化（理由）。你必须在理由中明确说明这次修改如何符合你的“核心原则”。
         :return: 进化结果反馈字符串。
         """
-        curr_persona_id = event.persona_id
+        # 兼容性修复：部分平台（如 Aiocqhttp）的 event 对象可能没有 persona_id 属性
+        curr_persona_id = getattr(event, "persona_id", None)
+        if not curr_persona_id:
+            try:
+                # 尝试从会话管理器中动态获取当前人格 ID
+                conv_mgr = self.context.conversation_manager
+                umo = event.unified_msg_origin
+                cid = await conv_mgr.get_curr_conversation_id(umo)
+                conversation = await conv_mgr.get_conversation(umo, cid) if cid else None
+                curr_persona_id = conversation.persona_id if conversation else "default"
+            except Exception as e:
+                logger.error(f"[SelfEvolution] 获取当前人格 ID 失败: {e}")
+                curr_persona_id = "default"
+
         if not curr_persona_id or curr_persona_id == "default":
-            logger.debug("[SelfEvolution] 进化被拒绝：当前为默认人格。")
+            logger.debug(f"[SelfEvolution] 进化被拒绝：当前人格 ID 为 {curr_persona_id}，无法进化默认人格。")
             return "当前未设置自定义人格 (Persona)，无法进行进化。请先在 AstrBot 后台创建并激活一个人格。"
         
         if self.review_mode:
