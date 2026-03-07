@@ -2,13 +2,13 @@ from astrbot.api.all import Context, AstrMessageEvent, Star, register
 from astrbot.api.event import filter
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import StarTools
+from astrbot.api import logger
 import json
 import os
 import time
-import ast
-import shutil
 import asyncio
 import uuid
+import sqlite3
 from datetime import datetime
 @register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.0.0")
 class SelfEvolutionPlugin(Star):
@@ -21,13 +21,35 @@ class SelfEvolutionPlugin(Star):
         self.allow_meta_programming = self.config.get("allow_meta_programming", False)
         self.core_principles = self.config.get("core_principles", "保持客观、理性、诚实。")
 
-        # 数据持久化目录规范化
         self.data_dir = StarTools.get_data_dir() / "self_evolution"
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._lock = asyncio.Lock()
+        
+        # 初始化高性能 SQLite 数据库替代之前的单一 JSON 文件，以缓解长时间审核队列积压导致的性能噩梦
+        self.db_path = self.data_dir / "pending_evolutions.db"
+        self._init_db()
 
         logger.info(f"[SelfEvolution] === 插件初始化 | review_mode={self.review_mode} | meta_programming={self.allow_meta_programming} ===")
         logger.info(f"[SelfEvolution] 数据存储路径加载至: {self.data_dir}")
+        
+    def _init_db(self):
+        """初始化建议列表所用的 SQLite 数据库"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS pending_evolutions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        persona_id TEXT NOT NULL,
+                        new_prompt TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        status TEXT NOT NULL
+                    )
+                ''')
+                conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"[SelfEvolution] 初始化 SQLite 数据库失败: {e}")
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
         """
@@ -113,33 +135,22 @@ class SelfEvolutionPlugin(Star):
             return "当前未设置自定义人格 (Persona)，无法进行进化。请先在 AstrBot 后台创建并激活一个人格。"
         
         if self.review_mode:
-            queue_path = self.data_dir / "pending_evolutions.json"
             try:
                 async with self._lock:
-                    pending = []
-                    if queue_path.exists():
-                        try:
-                            with open(queue_path, "r", encoding="utf-8") as f:
-                                pending = json.load(f)
-                        except json.JSONDecodeError:
-                            logger.warning("[SelfEvolution] pending_evolutions.json 格式损坏，已重置。")
-                            pending = []
-                    
-                    pending.append({
-                        "timestamp": datetime.now().isoformat(),
-                        "persona_id": curr_persona_id,
-                        "new_prompt": new_system_prompt,
-                        "reason": reason,
-                        "status": "pending_approval"
-                    })
-                    with open(queue_path, "w", encoding="utf-8") as f:
-                        json.dump(pending, f, ensure_ascii=False, indent=2)
+                    with sqlite3.connect(self.db_path) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
+                            "VALUES (?, ?, ?, ?, ?)",
+                            (datetime.now().isoformat(), curr_persona_id, new_system_prompt, reason, "pending_approval")
+                        )
+                        conn.commit()
 
                 logger.warning(f"[SelfEvolution] EVOLVE_QUEUED: 收到进化请求，已加入审核队列。原因: {reason}")
                 return f"进化请求已录入系统审核队列，等待管理员确认。进化理由：{reason}"
-            except OSError as e:
-                logger.error(f"[SelfEvolution] EVOLVE_FAILED: 写入审核队列时发生文件异常: {e}")
-                return "写入审核队列时发生文件系统异常，请告知管理员。"
+            except sqlite3.Error as e:
+                logger.error(f"[SelfEvolution] EVOLVE_FAILED: 写入审核队列时发生数据库异常: {e}")
+                return "写入审核队列时发生持久化存储异常，请告知管理员。"
         
         # 执行更新
         try:
@@ -288,6 +299,12 @@ class SelfEvolutionPlugin(Star):
         """
         if not self.allow_meta_programming:
             return "元编程功能未开启，系统已拒绝源码提案修改通道。"
+        
+        # 安全防御：防范 LLM 幻觉或 Prompt 注入导致的大规模磁盘占用 (100KB 限制)
+        max_limit_bytes = 100 * 1024
+        if len(new_code.encode('utf-8')) > max_limit_bytes:
+            logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 拦截到超过 100KB 的超长代码提案，拒绝写入以防范 DoS 风险。")
+            return "为了服务器安全，代码修改提案最大限制为 100KB，你提供的代码已超出此限制，操作被拦截。"
         
         try:
             # 剥离极高危 RCE 漏洞，改为安全保存 Diff proposal 供管理员手动审核
