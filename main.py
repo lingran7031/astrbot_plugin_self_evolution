@@ -58,28 +58,10 @@ class SelfEvolutionDAO:
         self._write_lock = asyncio.Lock()
 
     async def init_db(self):
+        """兼容旧接口，内部实际上已融入 get_conn 的连接池锁机制，从而规避初始化并发造成的 WAL 锁定冲突"""
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute("PRAGMA journal_mode=WAL;")
-                db.row_factory = aiosqlite.Row
-                await db.execute('''
-                    CREATE TABLE IF NOT EXISTS pending_evolutions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        timestamp TEXT NOT NULL,
-                        persona_id TEXT NOT NULL,
-                        new_prompt TEXT NOT NULL,
-                        reason TEXT NOT NULL,
-                        status TEXT NOT NULL
-                    )
-                ''')
-                await db.execute('''
-                    CREATE TABLE IF NOT EXISTS pending_reflections (
-                        session_id TEXT PRIMARY KEY,
-                        is_pending INTEGER NOT NULL DEFAULT 1
-                    )
-                ''')
-                await db.commit()
-            logger.info("[SelfEvolution] DAO: 成功建立按需数据库结构。")
+            await self.get_conn()
+            logger.info("[SelfEvolution] DAO: 成功在长连接池状态机的保护下建立/验证数据库。")
         except aiosqlite.Error as e:
             logger.error(f"[SelfEvolution] DAO: 初始化 aiosqlite 数据库失败: {e}")
 
@@ -90,6 +72,25 @@ class SelfEvolutionDAO:
                 self.db_conn = await aiosqlite.connect(self.db_path)
                 await self.db_conn.execute("PRAGMA journal_mode=WAL;")
                 self.db_conn.row_factory = aiosqlite.Row
+                
+                # 初始化表结构，统一在全局 _db_lock 的保护下执行
+                await self.db_conn.execute('''
+                    CREATE TABLE IF NOT EXISTS pending_evolutions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        persona_id TEXT NOT NULL,
+                        new_prompt TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        status TEXT NOT NULL
+                    )
+                ''')
+                await self.db_conn.execute('''
+                    CREATE TABLE IF NOT EXISTS pending_reflections (
+                        session_id TEXT PRIMARY KEY,
+                        is_pending INTEGER NOT NULL DEFAULT 1
+                    )
+                ''')
+                await self.db_conn.commit()
             try:
                 # 修复: 完整消费游标，彻底释放底层句柄
                 async with self.db_conn.execute("SELECT 1") as cursor:
@@ -183,7 +184,7 @@ class SelfEvolutionPlugin(Star):
         self.reflection_schedule = self.config.get("reflection_schedule", "0 2 * * *")
         self.allow_meta_programming = self._parse_bool(self.config.get("allow_meta_programming", False), False)
         self.core_principles = self.config.get("core_principles", "保持客观、理性、诚实。")
-        self.admin_users = self.config.get("admin_users", [])
+        self.admin_users = [str(u) for u in self.config.get("admin_users", [])]
 
         self.data_dir = StarTools.get_data_dir() / "self_evolution"
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -562,9 +563,10 @@ class SelfEvolutionPlugin(Star):
                     if isinstance(node.func, ast.Name) and node.func.id in dangerous_funcs:
                         raise ValueError(f"禁止调用高危/反射函数：{node.func.id}")
                 elif isinstance(node, ast.Attribute):
-                    # 防御利用 __class__.__bases__ 等魔术属性的沙盒逃逸
-                    if node.attr.startswith('__') and node.attr.endswith('__'):
-                        raise ValueError(f"禁止直接访问魔术属性进行越界探测：{node.attr}")
+                    # 仅防御高危底层魔术属性沙盒逃逸，放开对 __class__ 或 __dict__ 的限制以支持高级面向对象编程
+                    dangerous_magic_attrs = {'__bases__', '__subclasses__', '__mro__', '__globals__', '__builtins__', '__code__', '__closure__'}
+                    if node.attr in dangerous_magic_attrs:
+                        raise ValueError(f"禁止直接访问高危魔术属性进行越界探测：{node.attr}")
         except RecursionError:
             logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 触发 AST 解析过载堆栈深度限制防线。")
             return "代码包含恶意深层嵌套或无限递归结构，已触发拒绝服务（DoS）深度限制防线，提案被拦截。"
