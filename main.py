@@ -106,6 +106,25 @@ class SelfEvolutionDAO:
                 self.db_conn = await aiosqlite.connect(self.db_path)
                 await self.db_conn.execute("PRAGMA journal_mode=WAL;")
                 self.db_conn.row_factory = aiosqlite.Row
+
+                # 必须重修 DDL 以防止因为物理 .db 逃逸移除导致的新空库直接报 "no such table" 错
+                await self.db_conn.execute('''
+                    CREATE TABLE IF NOT EXISTS pending_evolutions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        persona_id TEXT NOT NULL,
+                        new_prompt TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        status TEXT NOT NULL
+                    )
+                ''')
+                await self.db_conn.execute('''
+                    CREATE TABLE IF NOT EXISTS pending_reflections (
+                        session_id TEXT PRIMARY KEY,
+                        is_pending INTEGER NOT NULL DEFAULT 1
+                    )
+                ''')
+                await self.db_conn.commit()
             return self.db_conn
 
     async def close(self):
@@ -246,11 +265,10 @@ class SelfEvolutionPlugin(Star):
             jobs = await cron_mgr.list_jobs(job_type="active_agent")
             job_name = "SelfEvolution_DailyReflection"
             
-            exists = any(job.name == job_name for job in jobs)
-            if exists:
+            target_job = next((job for job in jobs if job.name == job_name), None)
+            if target_job:
                 # 如果存在，可以更新它（比如用户改了 Cron 表达式）
                 # 这里简单处理：如果已存在且表达式变化，则删除重加
-                target_job = next(job for job in jobs if job.name == job_name)
                 if target_job.cron_expression != self.reflection_schedule:
                     await cron_mgr.delete_job(target_job.job_id)
                 else:
@@ -544,7 +562,7 @@ class SelfEvolutionPlugin(Star):
             logger.error(f"[SelfEvolution] 动态读取所在模块源码失败 (环境限制/编译闭源): {e}")
             return "动态读取源码模块失败，可能是部署在了受限或闭源预编译的 Python 环境中。"
 
-    def _validate_ast_security(self, new_code: str):
+    def _validate_ast_security(self, new_code: str) -> str | None:
         """AST 级别的安全校验防线与防绕过警告"""
         try:
             tree = ast.parse(new_code)
@@ -583,7 +601,13 @@ class SelfEvolutionPlugin(Star):
         try:
             files = list(proposal_dir.glob("main_proposed_*.proposal"))
             if len(files) >= MAX_PROPOSAL_FILES:
-                files.sort(key=lambda p: p.stat().st_mtime)
+                def safe_mtime(p):
+                    try:
+                        return p.stat().st_mtime
+                    except FileNotFoundError:
+                        return 0
+                
+                files.sort(key=safe_mtime)
                 # 安全的强截断保证只剩下最新的 MAX_PROPOSAL_FILES - 1 个文件
                 files_to_delete = files[:max(0, len(files) - MAX_PROPOSAL_FILES + 1)]
                 for old_file in files_to_delete:
