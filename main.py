@@ -461,7 +461,7 @@ class SelfEvolutionPlugin(Star):
         try:
             await kb_helper.upload_document(
                 file_name=f"memory_{int(time.time() * 1000)}.txt",
-                file_content=None,
+                file_content=b"",
                 file_type="txt",
                 pre_chunked_text=[fact]
             )
