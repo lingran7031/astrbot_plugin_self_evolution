@@ -32,13 +32,13 @@
     "timeout_memory_commit": {
         "title": "存入记忆超时(秒)",
         "description": "向知识库写入信息时的强制超时时间。防止网络波动阻塞会话。",
-        "type": "string",
-        "default": "10.0"
+        "type": "float",
+        "default": 10.0
     },
     "timeout_memory_recall": {
         "title": "读取记忆超时(秒)",
         "description": "从知识库读取信息时的强制超时时间。",
-        "type": "string",
-        "default": "12.0"
+        "type": "float",
+        "default": 12.0
     }
 }

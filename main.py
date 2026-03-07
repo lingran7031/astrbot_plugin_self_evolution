@@ -226,8 +226,8 @@ class SelfEvolutionPlugin(Star):
         self.allow_meta_programming = self._parse_bool(self.config.get("allow_meta_programming", False), False)
         self.core_principles = self.config.get("core_principles", "保持客观、理性、诚实。")
         self.admin_users = [str(u) for u in self.config.get("admin_users", [])]
-        self.timeout_memory_commit = self.config.get("timeout_memory_commit", 10.0)
-        self.timeout_memory_recall = self.config.get("timeout_memory_recall", 12.0)
+        self.timeout_memory_commit = float(self.config.get("timeout_memory_commit", 10.0))
+        self.timeout_memory_recall = float(self.config.get("timeout_memory_recall", 12.0))
 
         self.data_dir = StarTools.get_data_dir() / "self_evolution"
         self.data_dir.mkdir(parents=True, exist_ok=True)
