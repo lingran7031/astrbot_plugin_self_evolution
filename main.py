@@ -1,31 +1,14 @@
 from astrbot.api.all import *
 from astrbot.api.event import filter
 from astrbot.api.provider import ProviderRequest
+from astrbot.api.star import StarTools
 import json
-import logging
 import os
 import time
 import ast
 import shutil
+import asyncio
 from datetime import datetime
-
-
-def _setup_audit_logger(plugin_dir: str) -> logging.Logger:
-    """创建独立的审计日志器，将关键操作写入 audit.log。"""
-    audit = logging.getLogger("SelfEvolution.Audit")
-    if not audit.handlers:
-        audit.setLevel(logging.INFO)
-        log_path = os.path.join(plugin_dir, "audit.log")
-        handler = logging.FileHandler(log_path, encoding="utf-8")
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s | %(levelname)-7s | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
-        ))
-        audit.addHandler(handler)
-        audit.propagate = False
-    return audit
-
-
 @register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.0.0")
 class SelfEvolutionPlugin(Star):
     def __init__(self, context: Context, config: dict = None):
@@ -37,11 +20,13 @@ class SelfEvolutionPlugin(Star):
         self.allow_meta_programming = self.config.get("allow_meta_programming", False)
         self.core_principles = self.config.get("core_principles", "保持客观、理性、诚实。")
 
-        # 初始化审计日志器
-        self._audit = _setup_audit_logger(os.path.dirname(os.path.abspath(__file__)))
-        self._audit.info("=== 插件初始化 | review_mode=%s | meta_programming=%s ===", self.review_mode, self.allow_meta_programming)
-        logger.info("[SelfEvolution] 插件加载完成 (v2.0.0)。审计日志: audit.log")
+        # 数据持久化目录规范化
+        self.data_dir = StarTools.get_data_dir() / "self_evolution"
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = asyncio.Lock()
 
+        logger.info(f"[SelfEvolution] === 插件初始化 | review_mode={self.review_mode} | meta_programming={self.allow_meta_programming} ===")
+        logger.info(f"[SelfEvolution] 数据存储路径加载至: {self.data_dir}")
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
         """
@@ -104,9 +89,8 @@ class SelfEvolutionPlugin(Star):
             
         except Exception as e:
             logger.error(f"[SelfEvolution] 注册定时任务失败: {str(e)}")
-            self._audit.error("定时自省任务注册失败: %s", str(e))
 
-    @command("reflect")
+    @filter.command("reflect")
     async def manual_reflect(self, event: AstrMessageEvent):
         """
         手动触发一次自我反省。
@@ -115,7 +99,7 @@ class SelfEvolutionPlugin(Star):
         # 真正触发 LLM 思考，请求提供历史信息进行自省
         yield event.plain_result("\n我是你的系统管理员，请立即针对今天的交流记录进行一次深度自我反思。评估是否需要调用 `evolve_persona` 更新你的人格，或调用 `commit_to_memory` 记录重要的常驻信息。")
 
-    @llm_tool(name="evolve_persona")
+    @filter.llm_tool(name="evolve_persona")
     async def evolve_persona(self, event: AstrMessageEvent, new_system_prompt: str, reason: str):
         """
         当你认为需要调整自己的语言风格、行为准则或遵循用户的改进建议时，调用此工具来修改你的系统提示词（Persona）。
@@ -129,28 +113,29 @@ class SelfEvolutionPlugin(Star):
                 return "当前未设置自定义人格 (Persona)，无法进行进化。请先在 AstrBot 后台创建并激活一个人格。"
             
             if self.review_mode:
-                queue_path = os.path.join(os.path.dirname(__file__), "pending_evolutions.json")
-                pending = []
-                if os.path.exists(queue_path):
-                    try:
-                        with open(queue_path, "r", encoding="utf-8") as f:
-                            pending = json.load(f)
-                    except json.JSONDecodeError:
-                        logger.warning("[SelfEvolution] pending_evolutions.json 格式损坏，已重置。")
-                        pending = []
+                queue_path = self.data_dir / "pending_evolutions.json"
                 
-                pending.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "persona_id": curr_persona_id,
-                    "new_prompt": new_system_prompt,
-                    "reason": reason,
-                    "status": "pending_approval"
-                })
-                with open(queue_path, "w", encoding="utf-8") as f:
-                    json.dump(pending, f, ensure_ascii=False, indent=2)
+                async with self._lock:
+                    pending = []
+                    if queue_path.exists():
+                        try:
+                            with open(queue_path, "r", encoding="utf-8") as f:
+                                pending = json.load(f)
+                        except json.JSONDecodeError:
+                            logger.warning("[SelfEvolution] pending_evolutions.json 格式损坏，已重置。")
+                            pending = []
+                    
+                    pending.append({
+                        "timestamp": datetime.now().isoformat(),
+                        "persona_id": curr_persona_id,
+                        "new_prompt": new_system_prompt,
+                        "reason": reason,
+                        "status": "pending_approval"
+                    })
+                    with open(queue_path, "w", encoding="utf-8") as f:
+                        json.dump(pending, f, ensure_ascii=False, indent=2)
 
-                self._audit.warning("EVOLVE_QUEUED | persona=%s | reason=%s", curr_persona_id, reason)
-                logger.warning(f"[SelfEvolution] 收到进化请求，已加入审核队列。原因: {reason}")
+                logger.warning(f"[SelfEvolution] EVOLVE_QUEUED: 收到进化请求，已加入审核队列。原因: {reason}")
                 return f"进化请求已录入系统审核队列，等待管理员确认。进化理由：{reason}"
             
             # 执行更新
@@ -159,16 +144,14 @@ class SelfEvolutionPlugin(Star):
                 system_prompt=new_system_prompt
             )
             
-            self._audit.info("EVOLVE_APPLIED | persona=%s | reason=%s", curr_persona_id, reason)
-            logger.info(f"[SelfEvolution] 人格进化成功！Persona: {curr_persona_id}, 原因: {reason}")
+            logger.info(f"[SelfEvolution] EVOLVE_APPLIED: 人格进化成功！Persona: {curr_persona_id}, 原因: {reason}")
             return f"进化成功！我已经更新了我的核心预设。进化理由：{reason}"
             
         except Exception as e:
-            logger.error(f"[SelfEvolution] 进化失败: {str(e)}")
-            self._audit.error("EVOLVE_FAILED | error=%s", str(e))
+            logger.error(f"[SelfEvolution] EVOLVE_FAILED: 进化失败: {str(e)}")
             return "进化过程中出现内部错误，请通知管理员检查日志。"
 
-    @llm_tool(name="commit_to_memory")
+    @filter.llm_tool(name="commit_to_memory")
     async def commit_to_memory(self, event: AstrMessageEvent, fact: str):
         """
         当你发现了一些关于用户的重要的、需要永久记住的事实时，调用此工具将该事实存入你的长期记忆库。
@@ -189,15 +172,14 @@ class SelfEvolutionPlugin(Star):
                 pre_chunked_text=[fact]
             )
             
-            self._audit.info("MEMORY_COMMIT | fact=%s", fact[:80])
-            logger.info(f"[SelfEvolution] 成功存入一条长期记忆: {fact[:30]}...")
+            logger.info(f"[SelfEvolution] MEMORY_COMMIT: 成功存入一条长期记忆: {fact[:30]}...")
             return "事实已成功存入长期记忆库，我以后会记得这件事的。"
             
         except Exception as e:
             logger.error(f"[SelfEvolution] 存入记忆失败: {str(e)}")
             return "存入记忆时出现内部错误，请通知管理员检查日志。"
 
-    @llm_tool(name="recall_memories")
+    @filter.llm_tool(name="recall_memories")
     async def recall_memories(self, event: AstrMessageEvent, query: str):
         """
         当你需要回想起以前记住的事情、用户的偏好或过去的约定知识时，调用此工具。
@@ -216,15 +198,14 @@ class SelfEvolutionPlugin(Star):
                 return "在长期记忆库中未找到相关信息。"
             
             context_text = results.get("context_text", "")
-            self._audit.info("MEMORY_RECALL | query=%s | results=%d", query, len(results.get("results", [])))
-            logger.debug(f"[SelfEvolution] 记忆检索成功。查询: {query}")
+            logger.info(f"[SelfEvolution] MEMORY_RECALL: 记忆检索成功。查询: {query} -> 找到 {len(results.get('results', []))} 条结果。")
             return f"从我的长期记忆中找到了以下内容：\n\n{context_text}"
             
         except Exception as e:
             logger.error(f"[SelfEvolution] 检索记忆失败: {str(e)}")
             return "检索记忆时出现内部错误，请通知管理员检查日志。"
 
-    @llm_tool(name="list_tools")
+    @filter.llm_tool(name="list_tools")
     async def list_tools(self, event: AstrMessageEvent):
         """
         列出当前所有已注册的工具及其激活状态。
@@ -244,7 +225,7 @@ class SelfEvolutionPlugin(Star):
             logger.error(f"[SelfEvolution] 获取工具列表失败: {str(e)}")
             return "获取工具列表时出现内部错误。"
 
-    @llm_tool(name="toggle_tool")
+    @filter.llm_tool(name="toggle_tool")
     async def toggle_tool(self, event: AstrMessageEvent, tool_name: str, enable: bool):
         """
         动态激活或停用某个工具。
@@ -264,8 +245,7 @@ class SelfEvolutionPlugin(Star):
                 action = "停用"
             
             if success:
-                self._audit.info("TOOL_TOGGLE | tool=%s | action=%s", tool_name, action)
-                logger.info(f"[SelfEvolution] 成功{action}工具: {tool_name}")
+                logger.info(f"[SelfEvolution] TOOL_TOGGLE: 成功{action}工具: {tool_name}")
                 return f"已成功{action}工具: {tool_name}"
             else:
                 logger.debug(f"[SelfEvolution] 工具未找到: {tool_name}")
@@ -274,7 +254,7 @@ class SelfEvolutionPlugin(Star):
             logger.error(f"[SelfEvolution] 工具切换失败: {str(e)}")
             return "工具切换时出现内部错误。"
 
-    @llm_tool(name="get_plugin_source")
+    @filter.llm_tool(name="get_plugin_source")
     async def get_plugin_source(self, event: AstrMessageEvent):
         """
         Level 4: 元编程。读取本插件的源码（main.py），以便进行自我分析或修改请求。
@@ -286,56 +266,37 @@ class SelfEvolutionPlugin(Star):
             curr_path = os.path.abspath(__file__)
             with open(curr_path, "r", encoding="utf-8") as f:
                 code = f.read()
-            self._audit.warning("META_READ | 插件源码被读取")
+            logger.warning("[SelfEvolution] META_READ: 插件源码被读取！")
             return f"本插件源码如下：\n\n```python\n{code}\n```"
         except Exception as e:
             logger.error(f"[SelfEvolution] 读取源码失败: {str(e)}")
             return "读取源码时出现内部错误，请通知管理员检查日志。"
 
-    @llm_tool(name="update_plugin_source")
+    @filter.llm_tool(name="update_plugin_source")
     async def update_plugin_source(self, event: AstrMessageEvent, new_code: str, description: str):
         """
-        Level 4: 元编程。修改本插件的源码（main.py）。这允许你增加新的功能或修改逻辑。
+        Level 4: 元编程。针对本插件提出代码修改建议。
+        注意：你不再拥有直接修改正在运行的节点源码的破坏性权限！你的代码会被保存到独立审计目录中，待人类管理员 review。
         :param str new_code: 全新的、完整的 python 代码字符串。
         :param str description: 为什么要修改代码（修改内容摘要）。
         """
         if not self.allow_meta_programming:
-            return "元编程功能未开启，无法修改源码。"
-        
-        if self.review_mode:
-            logger.warning(f"[SelfEvolution] 截获了元编程代码修改请求。描述: {description}")
-            return f"代码修改请求已记录。但在管理员审核模式下，代码不能直接写入。请通知管理员审查日志。描述：{description}"
+            return "元编程功能未开启，无法提案修改源码。"
         
         try:
-            # 安全逻辑 1：长度
-            if len(new_code) < 100:
-                return "代码过短，为了安全起见拒绝更新。"
+            # 剥离极高危 RCE 漏洞，改为只保存 Diff proposal 供管理员手动审核
+            proposal_dir = self.data_dir / "code_proposals"
+            proposal_dir.mkdir(parents=True, exist_ok=True)
             
-            # 安全逻辑 2：危险函数拦截
-            dangerous = ["os.system", "subprocess", "eval(", "exec(", "__import__", "shutil.rmtree"]
-            if any(d in new_code for d in dangerous):
-                self._audit.error("META_BLOCKED | reason=dangerous_code | desc=%s", description)
-                logger.error("[SelfEvolution] 拦截到高危元编程代码注入！")
-                return "代码中包含高危指令 (如 os.system, eval 等)，系统拒绝写入。"
+            proposal_file = proposal_dir / f"main_proposed_{int(time.time())}.py"
             
-            # 安全逻辑 3：AST 语法树校验 (防跑挂崩盘)
-            try:
-                ast.parse(new_code)
-            except SyntaxError as e:
-                return f"你提供的代码存在基本语法错误，拒绝写入: {e}"
+            async with self._lock:
+                with open(proposal_file, "w", encoding="utf-8") as f:
+                    f.write(new_code)
             
-            # 安全逻辑 4：备份系统
-            curr_path = os.path.abspath(__file__)
-            shutil.copy2(curr_path, curr_path + ".bak")
+            logger.warning(f"[SelfEvolution] META_PROPOSAL: 接收到元编程修改提案！已保存供管理员审计。文件: {proposal_file}。描述: {description}")
+            return f"你的代码修改提案已经安全保存至独立审计目录中 ({proposal_file})。系统管理员将会审查你的代码。在未通过安全评估前，新代码不会被直接热更新。提案描述：" + description
             
-            # 写入文件
-            with open(curr_path, "w", encoding="utf-8") as f:
-                f.write(new_code)
-            
-            self._audit.warning("META_WRITE | desc=%s | backup=main.py.bak", description)
-            logger.warning(f"[SelfEvolution] 元编程生效并已备份原文件 (main.py.bak)！描述: {description}")
-            return "代码已通过所有安全和语法检查并成功更新！重启 AstrBot 后生效。修改详情：" + description
         except Exception as e:
-            logger.error(f"[SelfEvolution] 元编程写入机制出现异常: {str(e)}")
-            self._audit.error("META_WRITE_FAILED | error=%s", str(e))
-            return "元编程写入时出现内部错误，请通知管理员检查日志。"
+            logger.error(f"[SelfEvolution] 提供元编程提案机制出现异常: {str(e)}")
+            return "元编程提案上报时出现内部错误，请通知管理员检查日志。"
