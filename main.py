@@ -187,6 +187,14 @@ class SelfEvolutionDAO:
             await db.commit()
 
     @with_db_retry()
+    async def clear_pending_evolutions(self):
+        """批量清理（标记为已清除）所有待审批的进化请求"""
+        db = await self.get_conn()
+        async with self._write_lock:
+            await db.execute("UPDATE pending_evolutions SET status = 'cleared' WHERE status = 'pending_approval'")
+            await db.commit()
+
+    @with_db_retry()
     async def set_pending_reflection(self, session_id: str, is_pending: bool):
         db = await self.get_conn()
         async with self._write_lock:
@@ -205,7 +213,7 @@ class SelfEvolutionDAO:
             return cursor.rowcount > 0
 
 
-@register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.0.0")
+@register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.1.0")
 class SelfEvolutionPlugin(Star):
     @staticmethod
     def _parse_bool(val, default):
@@ -455,6 +463,40 @@ class SelfEvolutionPlugin(Star):
                 raise  # 防止吞噬掉代码层面的严格结构异常
             logger.error(f"[SelfEvolution] 批准进化请求发生泛用(外部/业务)异常: {e}")
             yield event.plain_result(f"执行审批与人格变更时遭遇异常({e.__class__.__name__})，请查阅日志。")
+
+    @filter.command("reject_evolution")
+    async def reject_evolution(self, event: AstrMessageEvent, request_id: int):
+        """
+        【管理员接口】拒绝指定 ID 的人格进化请求。
+        """
+        if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
+            yield event.plain_result("权限拒绝：此操作仅限系统管理员执行。")
+            return
+            
+        try:
+            await self.dao.update_evolution_status(request_id, 'rejected')
+            logger.info(f"[SelfEvolution] 管理员拒绝了进化请求 ID: {request_id}")
+            yield event.plain_result(f"已成功拒绝并清理进化请求 {request_id}。")
+        except Exception as e:
+            logger.error(f"[SelfEvolution] 拒绝进化请求失败: {e}")
+            yield event.plain_result(f"拒绝请求时发生异常: {e}")
+
+    @filter.command("clear_evolutions")
+    async def clear_evolutions(self, event: AstrMessageEvent):
+        """
+        【管理员接口】一键清空所有待审核的进化请求。
+        """
+        if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
+            yield event.plain_result("权限拒绝：此操作仅限系统管理员执行。")
+            return
+            
+        try:
+            await self.dao.clear_pending_evolutions()
+            logger.info("[SelfEvolution] 管理员清空了所有待审核的进化请求。")
+            yield event.plain_result("所有待审核的进化请求已成功清空（标记为已忽略）。")
+        except Exception as e:
+            logger.error(f"[SelfEvolution] 清空进化请求失败: {e}")
+            yield event.plain_result(f"清空审核列表时发生异常: {e}")
 
     @filter.llm_tool(name="commit_to_memory")
     async def commit_to_memory(self, event: AstrMessageEvent, fact: str) -> str:
