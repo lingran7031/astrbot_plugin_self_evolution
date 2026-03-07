@@ -10,6 +10,8 @@ import asyncio
 import uuid
 import aiosqlite
 from datetime import datetime
+import sys
+import inspect
 
 # 全局不可变常量提取
 ANCHOR_MARKER = "Core Safety Anchor"
@@ -92,46 +94,79 @@ class SelfEvolutionDAO:
                 pass
 
     async def add_pending_evolution(self, persona_id: str, new_prompt: str, reason: str):
-        db = await self.get_conn()
-        async with self._write_lock:
-            await db.execute(
-                "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (datetime.now().isoformat(), persona_id, new_prompt, reason, "pending_approval")
-            )
-            await db.commit()
+        for attempt in range(3):
+            try:
+                db = await self.get_conn()
+                async with self._write_lock:
+                    await db.execute(
+                        "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (datetime.now().isoformat(), persona_id, new_prompt, reason, "pending_approval")
+                    )
+                    await db.commit()
+                return
+            except Exception as e:
+                if attempt < 2: await asyncio.sleep(0.5)
+                else: raise e
 
     async def get_pending_evolutions(self, limit: int, offset: int):
-        db = await self.get_conn()
-        async with db.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
-            return await cursor.fetchall()
+        for attempt in range(3):
+            try:
+                db = await self.get_conn()
+                async with db.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
+                    return await cursor.fetchall()
+            except Exception as e:
+                if attempt < 2: await asyncio.sleep(0.5)
+                else: raise e
 
     async def get_evolution(self, request_id: int):
-        db = await self.get_conn()
-        async with db.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
-            return await cursor.fetchone()
+        for attempt in range(3):
+            try:
+                db = await self.get_conn()
+                async with db.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
+                    return await cursor.fetchone()
+            except Exception as e:
+                if attempt < 2: await asyncio.sleep(0.5)
+                else: raise e
 
     async def update_evolution_status(self, request_id: int, status: str):
-        db = await self.get_conn()
-        async with self._write_lock:
-            await db.execute("UPDATE pending_evolutions SET status = ? WHERE id = ?", (status, request_id))
-            await db.commit()
+        for attempt in range(3):
+            try:
+                db = await self.get_conn()
+                async with self._write_lock:
+                    await db.execute("UPDATE pending_evolutions SET status = ? WHERE id = ?", (status, request_id))
+                    await db.commit()
+                return
+            except Exception as e:
+                if attempt < 2: await asyncio.sleep(0.5)
+                else: raise e
 
     async def set_pending_reflection(self, session_id: str, is_pending: bool):
-        db = await self.get_conn()
-        async with self._write_lock:
-            await db.execute(
-                "INSERT INTO pending_reflections (session_id, is_pending) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET is_pending=?", 
-                (session_id, int(is_pending), int(is_pending))
-            )
-            await db.commit()
+        for attempt in range(3):
+            try:
+                db = await self.get_conn()
+                async with self._write_lock:
+                    await db.execute(
+                        "INSERT INTO pending_reflections (session_id, is_pending) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET is_pending=?", 
+                        (session_id, int(is_pending), int(is_pending))
+                    )
+                    await db.commit()
+                return
+            except Exception as e:
+                if attempt < 2: await asyncio.sleep(0.5)
+                else: raise e
 
     async def pop_pending_reflection(self, session_id: str) -> bool:
-        db = await self.get_conn()
-        async with self._write_lock:
-            cursor = await db.execute("UPDATE pending_reflections SET is_pending = 0 WHERE session_id = ? AND is_pending = 1", (session_id,))
-            await db.commit()
-            return cursor.rowcount > 0
+        for attempt in range(3):
+            try:
+                db = await self.get_conn()
+                async with self._write_lock:
+                    cursor = await db.execute("UPDATE pending_reflections SET is_pending = 0 WHERE session_id = ? AND is_pending = 1", (session_id,))
+                    await db.commit()
+                    return cursor.rowcount > 0
+            except Exception as e:
+                if attempt < 2: await asyncio.sleep(0.5)
+                else: raise e
 
 
 @register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.0.0")
@@ -344,24 +379,13 @@ class SelfEvolutionPlugin(Star):
                 system_prompt=row['new_prompt']
             )
             
-            # 阶段 3: DAO 状态更新包裹异常捕获防“脏状态”，引入队列补偿与重试机制防拥堵死锁
-            db_success = False
-            db_err = None
-            for attempt in range(3):
-                try:
-                    await self.dao.update_evolution_status(request_id, 'approved')
-                    db_success = True
-                    break
-                except aiosqlite.Error as e:
-                    db_err = e
-                    if attempt < 2:
-                        await asyncio.sleep(0.5)
-
-            if db_success:
+            # 阶段 3: DAO 状态本身自带 3 次异常重试，直接抛出成功即可
+            try:
+                await self.dao.update_evolution_status(request_id, 'approved')
                 logger.info(f"[SelfEvolution] 管理员批准了进化请求 ID: {request_id}")
                 yield event.plain_result(f"成功批准了进化请求 {request_id}，大模型人格已更新！")
-            else:
-                logger.error(f"[SelfEvolution] 致命异常：大模型人格已更新成功，但在同步数据库状态时重试 3 次均失败: {db_err}")
+            except Exception as e:
+                logger.error(f"[SelfEvolution] 致命异常：大模型人格已更新成功，但在同步数据库状态时多次重试均失败: {e}")
                 yield event.plain_result(f"⚠️ 警告：大模型核心人格已经成功进化！但由于数据库操作中断，审批状态列表（ID {request_id}）未能正确刷新为已批准。底层接口具备幂等性，请管理员排查环境后稍后尝试重复操作以补齐状态。")
                 
         except aiosqlite.Error as e:
@@ -518,26 +542,20 @@ class SelfEvolutionPlugin(Star):
             return "元编程功能未开启，无法读取源码。请在插件配置中开启“开启元编程”开关。"
         
         try:
-            curr_path = os.path.abspath(__file__)
-            with open(curr_path, "r", encoding="utf-8") as f:
-                code = f.read()
+            code = inspect.getsource(sys.modules[__name__])
             logger.warning("[SelfEvolution] META_READ: 插件源码被敏感读取！")
             return f"本插件源码如下：\n\n```python\n{code}\n```"
-        except OSError as e:
-            logger.error(f"[SelfEvolution] 读取源码文件失败: {e}")
-            return "读取源码文件系统异常，请限制访问。"
+        except Exception as e:
+            logger.error(f"[SelfEvolution] 动态读取所在模块源码失败 (环境限制/编译闭源): {e}")
+            return "动态读取源码模块失败，可能是部署在了受限或闭源预编译的 Python 环境中。"
 
     def _validate_ast_security(self, new_code: str):
         """AST 级别的安全校验防线与防绕过警告"""
-        if new_code.count('{') + new_code.count('[') + new_code.count('(') > 500:
-            logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 拦截到过度嵌套的代码提案，防范 AST DoS 攻击。")
-            return "提案代码包含过度嵌套结构，已触发防 DoS 解析器过载防线，提案被拦截。"
-            
         try:
             tree = ast.parse(new_code)
-            logger.warning("[SelfEvolution] 【安全审计警告】AST 白名单防线并非坚不可摧！恶意模型仍可通过 importlib 等手法绕过。请管理员务必保持警惕。")
+            logger.warning("[SelfEvolution] 【安全审计警告】AST 白名单防线并非坚不可摧！恶意模型仍可通过复杂反射等手法试探。管理员务必保持警惕。")
             dangerous_modules = {'os', 'sys', 'subprocess', 'shutil', 'socket', 'urllib', 'requests', 'ctypes'}
-            dangerous_funcs = {'eval', 'exec', 'open', '__import__'}
+            dangerous_funcs = {'eval', 'exec', 'open', '__import__', 'getattr', 'setattr', 'delattr'}
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
@@ -548,7 +566,14 @@ class SelfEvolutionPlugin(Star):
                         raise ValueError(f"禁止危险导入：{node.module}")
                 elif isinstance(node, ast.Call):
                     if isinstance(node.func, ast.Name) and node.func.id in dangerous_funcs:
-                        raise ValueError(f"禁止调用高危函数：{node.func.id}")
+                        raise ValueError(f"禁止调用高危/反射函数：{node.func.id}")
+                elif isinstance(node, ast.Attribute):
+                    # 防御利用 __class__.__bases__ 等魔术属性的沙盒逃逸
+                    if node.attr.startswith('__') and node.attr.endswith('__'):
+                        raise ValueError(f"禁止直接访问魔术属性进行越界探测：{node.attr}")
+        except RecursionError:
+            logger.error("[SelfEvolution] META_PROPOSAL_FAILED: 触发 AST 解析过载堆栈深度限制防线。")
+            return "代码包含恶意深层嵌套或无限递归结构，已触发拒绝服务（DoS）深度限制防线，提案被拦截。"
         except SyntaxError as e:
             logger.error(f"[SelfEvolution] META_PROPOSAL_FAILED: 语法树校验异常: {e}")
             return f"代码存在语法错误或混淆结构，被 AST 防火墙拦截: {e}"
@@ -563,9 +588,11 @@ class SelfEvolutionPlugin(Star):
             files = list(proposal_dir.glob("main_proposed_*.proposal"))
             if len(files) >= MAX_PROPOSAL_FILES:
                 files.sort(key=lambda p: p.stat().st_mtime)
-                for old_file in files[:len(files) - MAX_PROPOSAL_FILES + 1]:
+                # 安全的强截断保证只剩下最新的 MAX_PROPOSAL_FILES - 1 个文件
+                files_to_delete = files[:max(0, len(files) - MAX_PROPOSAL_FILES + 1)]
+                for old_file in files_to_delete:
                     old_file.unlink(missing_ok=True)
-                logger.info("[SelfEvolution] 提案过多，已触发机制清理陈旧代码提案文件。")
+                logger.info("[SelfEvolution] 提案过多，已触发机制彻底清理所有超额陈旧代码提案文件。")
         except OSError as e:
             logger.warning(f"[SelfEvolution] 清理陈旧隔离文件发生操作系统异常: {e}")
 
