@@ -28,8 +28,29 @@ DAILY_REFLECTION_PROMPT = (
 )
 
 
+from functools import wraps
+
+def with_db_retry(retries=3, delay=0.5):
+    """
+    异步指数退避重试装饰器，用于封装 DAO 的数据库读写。
+    消除重复样板代码，提升可维护性和 DRY 性。
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            for attempt in range(retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    if attempt < retries - 1:
+                        await asyncio.sleep(delay)
+                    else:
+                        raise e
+        return wrapper
+    return decorator
+
+
 class SelfEvolutionDAO:
-    """独立的数据库访问对象 (DAO)，集中管理 SQLite 连接与查询逻辑，确保插件核心层业务解耦"""
     def __init__(self, db_path: str):
         self.db_path = db_path
         self.db_conn = None
@@ -93,80 +114,53 @@ class SelfEvolutionDAO:
             except Exception:
                 pass
 
+    @with_db_retry()
     async def add_pending_evolution(self, persona_id: str, new_prompt: str, reason: str):
-        for attempt in range(3):
-            try:
-                db = await self.get_conn()
-                async with self._write_lock:
-                    await db.execute(
-                        "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (datetime.now().isoformat(), persona_id, new_prompt, reason, "pending_approval")
-                    )
-                    await db.commit()
-                return
-            except Exception as e:
-                if attempt < 2: await asyncio.sleep(0.5)
-                else: raise e
+        db = await self.get_conn()
+        async with self._write_lock:
+            await db.execute(
+                "INSERT INTO pending_evolutions (timestamp, persona_id, new_prompt, reason, status) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (datetime.now().isoformat(), persona_id, new_prompt, reason, "pending_approval")
+            )
+            await db.commit()
 
+    @with_db_retry()
     async def get_pending_evolutions(self, limit: int, offset: int):
-        for attempt in range(3):
-            try:
-                db = await self.get_conn()
-                async with db.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
-                    return await cursor.fetchall()
-            except Exception as e:
-                if attempt < 2: await asyncio.sleep(0.5)
-                else: raise e
+        db = await self.get_conn()
+        async with db.execute("SELECT id, persona_id, reason, status FROM pending_evolutions WHERE status = 'pending_approval' ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
+            return await cursor.fetchall()
 
+    @with_db_retry()
     async def get_evolution(self, request_id: int):
-        for attempt in range(3):
-            try:
-                db = await self.get_conn()
-                async with db.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
-                    return await cursor.fetchone()
-            except Exception as e:
-                if attempt < 2: await asyncio.sleep(0.5)
-                else: raise e
+        db = await self.get_conn()
+        async with db.execute("SELECT persona_id, new_prompt FROM pending_evolutions WHERE id = ? AND status = 'pending_approval'", (request_id,)) as cursor:
+            return await cursor.fetchone()
 
+    @with_db_retry()
     async def update_evolution_status(self, request_id: int, status: str):
-        for attempt in range(3):
-            try:
-                db = await self.get_conn()
-                async with self._write_lock:
-                    await db.execute("UPDATE pending_evolutions SET status = ? WHERE id = ?", (status, request_id))
-                    await db.commit()
-                return
-            except Exception as e:
-                if attempt < 2: await asyncio.sleep(0.5)
-                else: raise e
+        db = await self.get_conn()
+        async with self._write_lock:
+            await db.execute("UPDATE pending_evolutions SET status = ? WHERE id = ?", (status, request_id))
+            await db.commit()
 
+    @with_db_retry()
     async def set_pending_reflection(self, session_id: str, is_pending: bool):
-        for attempt in range(3):
-            try:
-                db = await self.get_conn()
-                async with self._write_lock:
-                    await db.execute(
-                        "INSERT INTO pending_reflections (session_id, is_pending) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET is_pending=?", 
-                        (session_id, int(is_pending), int(is_pending))
-                    )
-                    await db.commit()
-                return
-            except Exception as e:
-                if attempt < 2: await asyncio.sleep(0.5)
-                else: raise e
+        db = await self.get_conn()
+        async with self._write_lock:
+            await db.execute(
+                "INSERT INTO pending_reflections (session_id, is_pending) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET is_pending=?", 
+                (session_id, int(is_pending), int(is_pending))
+            )
+            await db.commit()
 
+    @with_db_retry()
     async def pop_pending_reflection(self, session_id: str) -> bool:
-        for attempt in range(3):
-            try:
-                db = await self.get_conn()
-                async with self._write_lock:
-                    cursor = await db.execute("UPDATE pending_reflections SET is_pending = 0 WHERE session_id = ? AND is_pending = 1", (session_id,))
-                    await db.commit()
-                    return cursor.rowcount > 0
-            except Exception as e:
-                if attempt < 2: await asyncio.sleep(0.5)
-                else: raise e
+        db = await self.get_conn()
+        async with self._write_lock:
+            cursor = await db.execute("UPDATE pending_reflections SET is_pending = 0 WHERE session_id = ? AND is_pending = 1", (session_id,))
+            await db.commit()
+            return cursor.rowcount > 0
 
 
 @register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.0.0")
@@ -638,8 +632,12 @@ class SelfEvolutionPlugin(Star):
                     f.write(new_code)
                 os.chmod(proposal_file, 0o600)
             except OSError as e:
-                logger.error(f"[SelfEvolution] 系统 I/O 错误，提案保存失败: {e}")
-                return "操作系统安全限制阻断，请通知管理员。"
+                logger.error(f"[SelfEvolution] 保存提议代码失败: {e}")
+                return "沙盒系统异常，无法保存提案到磁盘。"
         
-        logger.warning(f"[SelfEvolution] META_PROPOSAL: 接收到元编程修改提案！已保存供管理员审计。安全缓存于: {proposal_file}。描述: {description}")
-        return f"你的代码修改提案已经安全隔离至审计目录 ({proposal_file})。安全与架构团队将会审查你的代码。未通过安全评估前，新代码不会被部署。提案描述：" + description
+        logger.info(f"[SelfEvolution] 源码提议已生成并隔离至: {proposal_file.name}")
+        return (f"你的代码修改提议已经成功保存为 {proposal_file.name} 供管理员慢慢审查。\n"
+                "⚠️【AST 自动化拦截防线脆弱性免责申明】：\n"
+                "虽然我们启用了白名单防御，但鉴于 Python 黑名单极易被高级反射手段、花块混淆和大模型魔法字符串等拼接绕过，"
+                "本插件从根本上放弃了“自动化检测能包打一切”的虚假安全感理念。\n"
+                "在此明确忠告系统管理员：对于 LLM 大模型生成的任意 Python 文件，请您【必须进行肉眼代码复审】！任何后果由管理员全盘承受。")
