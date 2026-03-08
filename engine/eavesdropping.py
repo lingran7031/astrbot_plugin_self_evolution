@@ -96,5 +96,3 @@ class EavesdroppingEngine:
                 logger.error(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
         finally:
             self.plugin.processing_sessions.discard(session_id)
-
-```
