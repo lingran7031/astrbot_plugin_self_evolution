@@ -61,18 +61,26 @@ class SelfEvolutionPlugin(Star):
         self.timeout_memory_commit = float(config.get("timeout_memory_commit", 10.0))
         self.timeout_memory_recall = float(config.get("timeout_memory_recall", 12.0))
         
-        # CognitionCore 3.0: 缓冲池配置
-        self.buffer_threshold = int(config.get("buffer_threshold", 8))
-        self.max_buffer_size = int(config.get("max_buffer_size", 20))
-        self.critical_keywords = config.get("critical_keywords", "黑塔|空间站|人偶|天才|模拟宇宙|研究|论文|技术|算力|数据")
-        self.persona_name = config.get("persona_name", "黑塔")
-        self.persona_title = config.get("persona_title", "人偶负责人")
-        self.persona_style = config.get("persona_style", "理性、犀利且专业")
-        self.interjection_desire = int(config.get("interjection_desire", 5))
+        # CognitionCore 3.0: 状态容器
         self.active_buffers = {} # {session_id: [msg_list]}
         self.processing_sessions = set()
         self._lock = None # 用于元编程写锁
         self.daily_reflection_pending = False
+
+    @property
+    def persona_name(self): return self.config.get("persona_name", "黑塔")
+    @property
+    def persona_title(self): return self.config.get("persona_title", "人偶负责人")
+    @property
+    def persona_style(self): return self.config.get("persona_style", "理性、犀利且专业")
+    @property
+    def interjection_desire(self): return int(self.config.get("interjection_desire", 5))
+    @property
+    def critical_keywords(self): return self.config.get("critical_keywords", "黑塔|空间站|人偶|天才|模拟宇宙|研究|论文|技术|算力|数据")
+    @property
+    def buffer_threshold(self): return int(self.config.get("buffer_threshold", 8))
+    @property
+    def max_buffer_size(self): return int(self.config.get("max_buffer_size", 20))
         
         logger.info(f"[SelfEvolution] === 插件初始化完成 | 模式: {'审核' if self.review_mode else '自动'} | 元编程: {self.allow_meta_programming} ===")
 
