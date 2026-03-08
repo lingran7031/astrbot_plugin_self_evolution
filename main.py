@@ -37,7 +37,7 @@ PAGE_LIMIT = 10
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "具备主动环境感知及插嘴引擎的 CognitionCore 3.0 数字生命。",
-    "3.2.10",
+    "3.2.11",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -74,7 +74,6 @@ class SelfEvolutionPlugin(Star):
         self._lock = None  # 用于元编程写锁
         self.daily_reflection_pending = False
         self._just_stored_memory = False  # 这次存储，下次检索
-        self._memory_cool_down = {}  # {user_id: last_store_time} 防止频繁存储
 
     @property
     def persona_name(self):
@@ -142,10 +141,6 @@ class SelfEvolutionPlugin(Star):
     @property
     def max_memory_entries(self):
         return int(self.config.get("max_memory_entries", 100))
-
-    @property
-    def memory_cool_down(self):
-        return int(self.config.get("memory_cool_down", 600))
 
     def _post_init(self):
         logger.info(
@@ -341,37 +336,33 @@ class SelfEvolutionPlugin(Star):
         if not is_key_scene and any(kw in msg_text for kw in preference_keywords):
             is_key_scene = True
 
-        # 如果是关键场景，自动提取记忆
-        if is_key_scene:
-            try:
-                sender_id = event.get_sender_id()
-                current_time = time.time()
-                cool_down_seconds = self.memory_cool_down  # 从配置读取冷却时间
+        # 自动记录聊天历史到文件（按群号/用户ID）
+        await self._append_chat_history(event)
 
-                # 检查冷却时间
-                last_store_time = self._memory_cool_down.get(sender_id, 0)
-                if current_time - last_store_time < cool_down_seconds:
-                    logger.info(f"[SelfEvolution] 自动学习：冷却中，跳过存储。")
-                    return
+    async def _append_chat_history(self, event: AstrMessageEvent):
+        """将消息追加到聊天历史文件"""
+        try:
+            group_id = event.get_group_id()
+            user_id = event.get_sender_id()
+            user_name = event.get_sender_name() or "未知用户"
+            msg_text = event.message_str
+            msg_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                key_info = f"用户说: {msg_text}"
-                sender_name = event.get_sender_name() or "未知用户"
-                formatted_fact = (
-                    f"【记忆条目-自动学习】\n"
-                    f"来源: {event.unified_msg_origin}\n"
-                    f"说话者: {sender_name} (ID: {sender_id})\n"
-                    f"群/私聊: {event.get_group_id() or '私聊'}\n"
-                    f"内容: {msg_text}\n"
-                    f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                )
-                await self._do_commit_memory(event, formatted_fact, is_auto=True)
-                self._just_stored_memory = True  # 设置标志，下次对话时再检索
-                self._memory_cool_down[sender_id] = current_time  # 更新冷却时间
-                logger.info(
-                    f"[SelfEvolution] 自动学习：已提取关键内容: {msg_text[:30]}..."
-                )
-            except Exception as e:
-                logger.warning(f"[SelfEvolution] 自动学习触发失败: {e}")
+            # 确定文件路径：群聊用群号，私聊用用户ID
+            if group_id:
+                chat_id = f"group_{group_id}"
+            else:
+                chat_id = f"private_{user_id}"
+
+            chat_file = self.data_dir / f"{chat_id}.txt"
+
+            # 追加消息
+            with open(chat_file, "a", encoding="utf-8") as f:
+                f.write(f"[{msg_time}] {user_name}({user_id}): {msg_text}\n")
+
+            logger.debug(f"[SelfEvolution] 已记录聊天历史到 {chat_file}")
+        except Exception as e:
+            logger.warning(f"[SelfEvolution] 记录聊天历史失败: {e}")
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
@@ -1009,6 +1000,43 @@ class SelfEvolutionPlugin(Star):
             f"----------------\n"
             f"以上是与你当前话题相关的记忆，请结合这些信息回复用户。"
         )
+
+    @filter.llm_tool(name="read_chat_history")
+    async def read_chat_history(self, event: AstrMessageEvent, lines: int = 50) -> str:
+        """
+        读取当前群聊或私聊的聊天历史记录，以便了解上下文或进行总结学习。
+        :param int lines: 读取最近多少行记录，默认50行。
+        :return: 聊天历史记录内容。
+        """
+        try:
+            group_id = event.get_group_id()
+            user_id = event.get_sender_id()
+
+            if group_id:
+                chat_id = f"group_{group_id}"
+            else:
+                chat_id = f"private_{user_id}"
+
+            chat_file = self.data_dir / f"{chat_id}.txt"
+
+            if not chat_file.exists():
+                return "暂无聊天历史记录。"
+
+            with open(chat_file, "r", encoding="utf-8") as f:
+                all_lines = f.readlines()
+                recent_lines = (
+                    all_lines[-lines:] if len(all_lines) > lines else all_lines
+                )
+
+            if not recent_lines:
+                return "聊天历史为空。"
+
+            chat_content = "".join(recent_lines)
+            logger.info(f"[SelfEvolution] 已读取聊天历史 {len(recent_lines)} 行")
+            return f"【最近聊天记录】\n{chat_content}"
+        except Exception as e:
+            logger.warning(f"[SelfEvolution] 读取聊天历史失败: {e}")
+            return f"读取聊天历史失败: {e}"
 
     @filter.llm_tool(name="list_tools")
     async def list_tools(self, event: AstrMessageEvent) -> str:
