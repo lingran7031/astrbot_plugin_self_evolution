@@ -6,6 +6,8 @@ from astrbot.api import logger
 import asyncio
 import uuid
 import os
+import time
+import aiosqlite
 from datetime import datetime
 import inspect
 
@@ -38,9 +40,14 @@ class SelfEvolutionPlugin(Star):
         db_path = os.path.join(self.data_dir, "self_evolution.db")
         
         # 初始化模块化组件
-        self.dao = SelfEvolutionDAO(db_path)
-        self.eavesdropping = EavesdroppingEngine(self)
-        self.meta_infra = MetaInfra(self)
+        try:
+            self.dao = SelfEvolutionDAO(db_path)
+            self.eavesdropping = EavesdroppingEngine(self)
+            self.meta_infra = MetaInfra(self)
+            logger.info("[SelfEvolution] 核心组件 (DAO, Eavesdropping, MetaInfra) 初始化完成。")
+        except Exception as e:
+            logger.error(f"[SelfEvolution] 核心组件初始化失败: {e}")
+            raise e
         
         # 配置与状态加载
         self.review_mode = self._parse_bool(config.get("review_mode"), True)
