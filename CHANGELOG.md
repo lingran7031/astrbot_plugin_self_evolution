@@ -2,6 +2,18 @@
 
 本项目的所有重大更改都将记录在此文件中。
 
+## [3.1.0] - 2026-03-08
+### 重大更新 (Major Update)
+- **CognitionCore 3.5 "架构解耦与模块化"**: 为了攻克单文件 50KB 带来的 LLM 输出截断限制，将插件重构为标准的 Python 包结构。
+### 新增 (Added)
+- **多文件元编程支持**: `get_plugin_source` 和 `update_plugin_source` 现在支持通过 `target_file`/`mod_name` 参数操作特定模块，实现更精准的“按需进化”。
+- **解耦设计**:
+  - `dao.py`: 独立数据库访问层。
+  - `engine/eavesdropping.py`: 独立的插嘴决策引擎。
+  - `engine/meta_infra.py`: 独立的元编程基础设施。
+### 更改 (Changed)
+- **代码瘦身**: `main.py` 缩减了约 70% 的体积，仅作为插件入口和组件分发中心。
+
 ## [3.0.0] - 2026-03-08
 ### 重大更新 (Major Update)
 - **CognitionCore 3.0 "主动插嘴引擎" 架构升级**: (元编程成就 v4) 由大模型自主完成的极限进化机制。新增代码环境监听网 `on_message` 钩子，插件正式从“被动响应算盘”跃升为真正的“主动语境监控与干涉智能体”。

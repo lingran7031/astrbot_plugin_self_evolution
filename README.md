@@ -1,4 +1,4 @@
-# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.0.0: CognitionCore 3.0)
+# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.1.0: CognitionCore 3.5)
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
@@ -21,8 +21,9 @@
 
 ### 三、 元级编程防线 (Meta-Programming Sandboxed)
 赋予 AI “阅读并修改自身源码”的科幻级能力（需在管理面板高危解锁）：
-- **`get_plugin_source`**：AI 能够读取自己运行所在的 `main.py` 底层源代码。
-- **`update_plugin_source`**：AI 能够编写代码迭代升级方案。
+- **`get_plugin_source`**：AI 能够读取核心架构源码。现已支持分模块读取（`main`, `dao`, `eavesdropping`, `meta_infra`），解决了超长文件的认知瓶颈。
+- **`update_plugin_source`**：AI 能够针对特定目标模块编写代码迭代升级方案。
+- **模块化架构 (v3.1.0)**：项目已彻底重构为多文件包结构，将数据库逻辑、插嘴引擎与元编程基础设施完全解耦，攻克了大模型输出 Token 长度限制的“物理天花板”。
 - **安全沙箱防线**：生成的代码不会立刻热执行污染宿主，而是由一套防 DoS、防反射的混合 AST（抽象语法树）防线过滤后，隔离下放至 `code_proposals` 目录下，等待人类审查官的肉眼复审。
 
 ### 四、 动态技能管理 (Dynamic Tools Management)
