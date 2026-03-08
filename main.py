@@ -404,7 +404,9 @@ class SelfEvolutionPlugin(Star):
         self.processing_sessions.add(session_id)
         try:
             buffer = self.active_buffers[session_id]
-            chat_history = "\n".join(buffer)
+            # 获取当前快照的快照长度
+            snap_len = len(buffer)
+            chat_history = "\n".join(buffer[:snap_len])
             
             # 构建决策指令
             decision_prompt = (
@@ -435,8 +437,8 @@ class SelfEvolutionPlugin(Star):
             else:
                 logger.debug(f"[CognitionCore] 插嘴评估完毕：判断为无聊水群，选择潜水。")
                 
-            # 发言或评估后清空缓冲，避免陷入循环
-            self.active_buffers[session_id] = []
+            # 发言或评估后清空缓冲，【仅清空已处理的消息切片】，保留处理期间新产生的消息
+            self.active_buffers[session_id] = self.active_buffers[session_id][snap_len:]
         except Exception as e:
             logger.error(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
         finally:
