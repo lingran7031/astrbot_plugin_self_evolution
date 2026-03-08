@@ -94,8 +94,8 @@ class EavesdroppingEngine:
             reply_text = res.completion_text.strip()
             
             # 增加元评论硬过滤防线：防止 LLM 以“监测报告”形式回复
-            meta_indicators = ["监测", "监控", "信息密度", "忽略协议", "评估结果", "当前对话"]
-            is_meta = any(indicator in reply_text for indicator in meta_indicators) and len(reply_text) > 15
+            meta_indicators = ["监测", "监控", "信息密度", "忽略协议", "评估结果", "当前对话", "冗余", "标注", "发现值得", "数据片段"]
+            is_meta = any(indicator in reply_text for indicator in meta_indicators) and len(reply_text) > 10
             
             if reply_text and "[IGNORE]" not in reply_text and not is_meta:
                 logger.info(f"[CognitionCore] 插嘴评估通过！响应: {reply_text}")
