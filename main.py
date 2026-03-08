@@ -16,6 +16,8 @@ import inspect
 from .dao import SelfEvolutionDAO
 from .engine.eavesdropping import EavesdroppingEngine
 from .engine.meta_infra import MetaInfra
+from .engine.memory import MemoryManager
+from .engine.persona import PersonaManager
 
 
 # 全局不可变常量提取 (迁移至主类管理)
@@ -61,8 +63,10 @@ class SelfEvolutionPlugin(Star):
             self.dao = SelfEvolutionDAO(db_path)
             self.eavesdropping = EavesdroppingEngine(self)
             self.meta_infra = MetaInfra(self)
+            self.memory = MemoryManager(self)
+            self.persona = PersonaManager(self)
             logger.info(
-                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, MetaInfra) 初始化完成。"
+                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, MetaInfra, Memory, Persona) 初始化完成。"
             )
         except Exception as e:
             logger.error(f"[SelfEvolution] 核心组件初始化失败: {e}")
@@ -73,7 +77,6 @@ class SelfEvolutionPlugin(Star):
         self.processing_sessions = set()
         self._lock = None  # 用于元编程写锁
         self.daily_reflection_pending = False
-        self._just_stored_memory = False  # 这次存储，下次检索
 
     @property
     def persona_name(self):
@@ -245,166 +248,16 @@ class SelfEvolutionPlugin(Star):
             logger.debug("[SelfEvolution] 已在上下文中注入常驻辩证反省指令。")
 
         # 4. 自动记忆检索与注入 (Auto-Recall)
-        await self._auto_recall_inject(event, req)
-
-    async def _auto_recall_inject(self, event: AstrMessageEvent, req: ProviderRequest):
-        """自动检索记忆并注入到 LLM 上下文中"""
-        # 如果这次刚存储了记忆，跳过检索（延迟到下次对话）
-        if self._just_stored_memory:
-            logger.info(
-                "[SelfEvolution] 刚存储记忆，跳过本次检索，等待下次对话时回忆。"
-            )
-            self._just_stored_memory = False
-            return
-
-        try:
-            kb_manager = self.context.kb_manager
-            query = event.message_str
-            group_id = event.get_group_id()
-            user_id = event.get_sender_id()
-
-            if not query or len(query.strip()) < 2:
-                return
-
-            # 确定需要检索的文档名称列表
-            if group_id:
-                # 群聊时：检索群记忆 + 说话人画像
-                target_docs = [f"memory_group_{group_id}", f"memory_user_{user_id}"]
-            else:
-                # 私聊时：只检索用户画像
-                target_docs = [f"memory_user_{user_id}"]
-
-            results = await asyncio.wait_for(
-                kb_manager.retrieve(
-                    query=query, kb_names=[self.memory_kb_name], top_m_final=5
-                ),
-                timeout=self.timeout_memory_recall,
-            )
-
-            if results and results.get("results"):
-                # 过滤：只保留目标用户/群的记忆
-                filtered_results = [
-                    r
-                    for r in results["results"]
-                    if any(r.get("doc_name", "").startswith(doc) for doc in target_docs)
-                ]
-
-                if filtered_results:
-                    # 重新构建 context_text
-                    context_parts = []
-                    for r in filtered_results:
-                        doc_name = r.get("doc_name", "")
-                        content = r.get("content", "")
-                        context_parts.append(f"[来源:{doc_name}]\n{content}")
-
-                    context_text = "\n---\n".join(context_parts)
-
-                    memory_injection = (
-                        f"\n\n[长期记忆检索结果]：\n{context_text}\n"
-                        "请结合以上记忆信息回复用户。注意区分不同来源："
-                        "【群共亓记忆】是当前群的历史对话，【个人画像】是该用户的个人偏好。"
-                    )
-                    req.system_prompt += memory_injection
-                    logger.info(
-                        f"[SelfEvolution] 自动记忆注入成功：{len(filtered_results)} 条相关记忆"
-                    )
-        except asyncio.TimeoutError:
-            logger.warning("[SelfEvolution] 自动记忆检索超时，已跳过注入。")
-        except Exception as e:
-            logger.warning(f"[SelfEvolution] 自动记忆检索失败: {e}")
+        await self.memory.auto_recall_inject(event, req)
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
         """CognitionCore 3.0: 被动监听转发至 EavesdroppingEngine"""
         # 自动学习触发：检测关键场景
-        await self._auto_learn_trigger(event)
+        await self.memory.auto_learn_trigger(event)
 
         async for result in self.eavesdropping.handle_message(event):
             yield result
-
-    async def _auto_learn_trigger(self, event: AstrMessageEvent):
-        """自动学习触发器：检测关键场景并自动提取记忆"""
-        msg_text = event.message_str
-        is_at = event.is_at_or_wake_command
-
-        # 检测是否为关键场景
-        is_key_scene = False
-
-        # 场景1: @AI 的消息
-        if is_at:
-            is_key_scene = True
-
-        # 场景2: 包含关键词
-        if not is_key_scene:
-            try:
-                critical_pattern = re.compile(
-                    f"({self.critical_keywords})", re.IGNORECASE
-                )
-                if critical_pattern.search(msg_text):
-                    is_key_scene = True
-            except Exception:
-                pass
-
-        # 场景3: 用户道别（记住这个用户要离开了）
-        goodbye_keywords = ["再见", "拜拜", "走了", "下线", "休息", "睡觉", "晚安"]
-        if not is_key_scene and any(kw in msg_text for kw in goodbye_keywords):
-            is_key_scene = True
-
-        # 场景4: 用户表达偏好（喜欢/讨厌/想要）
-        preference_keywords = [
-            "我喜欢",
-            "我讨厌",
-            "我想要",
-            "我喜欢",
-            "我不喜欢",
-            "我想要",
-        ]
-        if not is_key_scene and any(kw in msg_text for kw in preference_keywords):
-            is_key_scene = True
-
-        # 如果是关键场景，自动学习（按用户/群汇总存知识库）
-        if is_key_scene:
-            await self._learn_to_memory(event, msg_text)
-
-    async def _learn_to_memory(self, event: AstrMessageEvent, msg_text: str):
-        """按用户/群汇总存知识库"""
-        try:
-            group_id = event.get_group_id()
-            user_id = event.get_sender_id()
-            user_name = event.get_sender_name() or "未知用户"
-            msg_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            # 确定文档名称：群聊用群号，私聊用用户ID
-            if group_id:
-                doc_name = f"memory_group_{group_id}"
-            else:
-                doc_name = f"memory_user_{user_id}"
-
-            new_entry = f"[{msg_time}] {user_name}: {msg_text}"
-
-            kb_manager = self.context.kb_manager
-            kb_helper = await asyncio.wait_for(
-                kb_manager.get_kb_by_name(self.memory_kb_name),
-                timeout=self.timeout_memory_commit,
-            )
-
-            if not kb_helper:
-                logger.warning(f"[SelfEvolution] 知识库 {self.memory_kb_name} 不存在")
-                return
-
-            # 直接追加新内容到知识库（知识库会自动处理文档管理）
-            await kb_helper.upload_document(
-                file_name=f"{doc_name}.txt",
-                file_content=b"",
-                file_type="txt",
-                pre_chunked_text=[new_entry],
-            )
-
-            self._just_stored_memory = True
-            logger.info(f"[SelfEvolution] 自动学习：已追加记忆到 {doc_name}")
-
-        except Exception as e:
-            logger.warning(f"[SelfEvolution] 自动学习失败: {e}")
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
@@ -523,197 +376,27 @@ class SelfEvolutionPlugin(Star):
     async def evolve_persona(
         self, event: AstrMessageEvent, new_system_prompt: str, reason: str
     ) -> str:
-        """
-        当你认为需要调整自己的语言风格、行为准则或遵循用户的改进建议时，调用此工具来修改你的系统提示词（Persona）。
-        :param str new_system_prompt: 新的完整系统提示词（System Prompt）。
-        :param str reason: 为什么要进行这次进化（理由）。你必须在理由中明确说明这次修改如何符合你的"核心原则"。
-        :return: 进化结果反馈字符串。
-        """
-        # 兼容性修复：尝试获取当前人格 ID。部分平台 event 对象可能没有 persona_id 属性
-        curr_persona_id = getattr(event, "persona_id", None)
-        if not curr_persona_id:
-            try:
-                # 使用框架标准方法解析当前生效的人格 ID (处理会话、平台、全局继承)
-                conv_mgr = self.context.conversation_manager
-                umo = event.unified_msg_origin
-                cid = await conv_mgr.get_curr_conversation_id(umo)
-                conversation = (
-                    await conv_mgr.get_conversation(umo, cid) if cid else None
-                )
-                conversation_persona_id = (
-                    conversation.persona_id if conversation else None
-                )
-
-                cfg = self.context.get_config(umo=umo).get("provider_settings", {})
-
-                (
-                    curr_persona_id,
-                    _,
-                    _,
-                    _,
-                ) = await self.context.persona_manager.resolve_selected_persona(
-                    umo=umo,
-                    conversation_persona_id=conversation_persona_id,
-                    platform_name=event.get_platform_name(),
-                    provider_settings=cfg,
-                )
-            except Exception as e:
-                logger.error(
-                    f"[SelfEvolution] 使用 resolve_selected_persona 获取人格 ID 失败: {e}"
-                )
-                curr_persona_id = "default"
-
-        if not curr_persona_id or curr_persona_id == "default":
-            logger.debug(
-                f"[SelfEvolution] 进化被拒绝：当前人格 ID 为 {curr_persona_id}，无法进化默认人格。"
-            )
-            return "当前未设置自定义人格 (Persona)，无法进行进化。请先在 AstrBot 后台创建并激活一个人格。"
-
-        if self.review_mode:
-            try:
-                await self.dao.add_pending_evolution(
-                    curr_persona_id, new_system_prompt, reason
-                )
-
-                logger.warning(
-                    f"[SelfEvolution] EVOLVE_QUEUED: 收到进化请求，已加入审核队列。原因: {reason}"
-                )
-                return f"进化请求已录入系统审核队列，等待管理员确认。进化理由：{reason}"
-            except aiosqlite.Error as e:
-                logger.error(
-                    f"[SelfEvolution] EVOLVE_FAILED: 写入审核队列时发生异步数据库异常: {e}"
-                )
-                return "写入审核队列时发生持久化存储异常，请告知管理员。"
-
-        # 执行更新
-        try:
-            await self.context.persona_manager.update_persona(
-                persona_id=curr_persona_id, system_prompt=new_system_prompt
-            )
-            logger.info(
-                f"[SelfEvolution] EVOLVE_APPLIED: 人格进化成功！Persona: {curr_persona_id}, 原因: {reason}"
-            )
-            return f"进化成功！我已经更新了我的核心预设。进化理由：{reason}"
-        except Exception as e:
-            logger.error(f"[SelfEvolution] EVOLVE_FAILED: 进化失败: {str(e)}")
-            return "进化过程中出现内部错误，请通知管理员检查日志。"
+        """当你需要调整自己的语言风格或行为准则时，调用此工具来修改你的系统提示词。"""
+        return await self.persona.evolve_persona(event, new_system_prompt, reason)
 
     @filter.command("review_evolutions")
     async def review_evolutions(self, event: AstrMessageEvent, page: int = 1):
-        """
-        【管理员接口】列出待审核的人格进化请求，支持分页查询。
-        :param int page: 请求列表的翻页页码
-        """
-        if not event.is_admin() and (
-            not self.admin_users or str(event.get_sender_id()) not in self.admin_users
-        ):
-            yield event.plain_result(
-                "权限拒绝：此操作仅限系统管理员执行。已记录越权尝试。"
-            )
-            return
-
-        try:
-            limit = PAGE_LIMIT
-            offset = (max(1, page) - 1) * limit
-            rows = await self.dao.get_pending_evolutions(limit, offset)
-
-            if not rows:
-                if page == 1:
-                    yield event.plain_result("当前没有待审核的进化请求。")
-                else:
-                    yield event.plain_result(f"第 {page} 页尚未发现待审核的进化请求。")
-                return
-
-            result = [f"待审核的进化请求列表 (第 {page} 页):"]
-            for row in rows:
-                result.append(
-                    f"ID: {row['id']} | Persona: {row['persona_id']}\n理由: {row['reason'][:50]}"
-                )
-
-            result.append(
-                "\n如需批准，请调用 '/approve_evolution <ID>'。如需翻看下一页，请调用 '/review_evolutions <页码>'"
-            )
-            yield event.plain_result("\n".join(result))
-        except aiosqlite.Error as e:
-            logger.error(f"[SelfEvolution] 获取审核列表失败 (DB Error): {e}")
-            yield event.plain_result("获取审核列表失败，数据库发生异常，请查看日志。")
+        """【管理员接口】列出待审核的人格进化请求，支持分页查询。"""
+        return await self.persona.review_evolutions(event, page)
 
     @filter.command("approve_evolution")
     async def approve_evolution(self, event: AstrMessageEvent, request_id: int):
-        """
-        【管理员接口】批准指定 ID 的人格进化请求。
-        """
-        if not event.is_admin() and (
-            not self.admin_users or str(event.get_sender_id()) not in self.admin_users
-        ):
-            yield event.plain_result(
-                "权限拒绝：此操作仅限系统管理员执行。已记录越权尝试。"
-            )
-            return
-
-        try:
-            # 阶段 1: 建立快闪调用，读取关键数据
-            row = await self.dao.get_evolution(request_id)
-
-            if not row:
-                yield event.plain_result(f"找不到待处理的请求 ID {request_id}。")
-                return
-
-            # 阶段 2: 执行耗时/外部 API 更新，得益于 DAO 抽象，此时不必担忧底层连接
-            await self.context.persona_manager.update_persona(
-                persona_id=row["persona_id"], system_prompt=row["new_prompt"]
-            )
-
-            # 阶段 3: DAO 状态本身自带 3 次异常重试，直接抛出成功即可
-            try:
-                await self.dao.update_evolution_status(request_id, "approved")
-                logger.info(f"[SelfEvolution] 管理员批准了进化请求 ID: {request_id}")
-                yield event.plain_result(
-                    f"成功批准了进化请求 {request_id}，大模型人格已更新！"
-                )
-            except Exception as e:
-                logger.error(
-                    f"[SelfEvolution] 致命异常：大模型人格已更新成功，但在同步数据库状态时多次重试均失败: {e}"
-                )
-                yield event.plain_result(
-                    f"⚠️ 警告：大模型核心人格已经成功进化！但由于数据库操作中断，审批状态列表（ID {request_id}）未能正确刷新为已批准。底层接口具备幂等性，请管理员排查环境后稍后尝试重复操作以补齐状态。"
-                )
-
-        except aiosqlite.Error as e:
-            logger.error(f"[SelfEvolution] 读取/状态更新发生数据库操作阻断: {e}")
-            yield event.plain_result("处理请求期间出现底层数据库异常，请查阅日志。")
-        except Exception as e:
-            if isinstance(e, (TypeError, ValueError)):
-                raise  # 防止吞噬掉代码层面的严格结构异常
-            logger.error(f"[SelfEvolution] 批准进化请求发生泛用(外部/业务)异常: {e}")
-            yield event.plain_result(
-                f"执行审批与人格变更时遭遇异常({e.__class__.__name__})，请查阅日志。"
-            )
+        """【管理员接口】批准指定 ID 的人格进化请求。"""
+        return await self.persona.approve_evolution(event, request_id)
 
     @filter.command("reject_evolution")
     async def reject_evolution(self, event: AstrMessageEvent, request_id: int):
-        """
-        【管理员接口】拒绝指定 ID 的人格进化请求。
-        """
-        if not event.is_admin() and (
-            not self.admin_users or str(event.get_sender_id()) not in self.admin_users
-        ):
-            yield event.plain_result("权限拒绝：此操作仅限系统管理员执行。")
-            return
-
-        try:
-            await self.dao.update_evolution_status(request_id, "rejected")
-            logger.info(f"[SelfEvolution] 管理员拒绝了进化请求 ID: {request_id}")
-            yield event.plain_result(f"已成功拒绝并清理进化请求 {request_id}。")
-        except Exception as e:
-            logger.error(f"[SelfEvolution] 拒绝进化请求失败: {e}")
-            yield event.plain_result(f"拒绝请求时发生异常: {e}")
+        """【管理员接口】拒绝指定 ID 的人格进化请求。"""
+        return await self.persona.reject_evolution(event, request_id)
 
     @filter.command("clear_evolutions")
     async def clear_evolutions(self, event: AstrMessageEvent):
-        """
-        【管理员接口】一键清空所有待审核的进化请求。
-        """
+        """【管理员接口】一键清空所有待审核的进化请求。"""
         if not event.is_admin() and (
             not self.admin_users or str(event.get_sender_id()) not in self.admin_users
         ):
@@ -730,318 +413,42 @@ class SelfEvolutionPlugin(Star):
 
     @filter.llm_tool(name="commit_to_memory")
     async def commit_to_memory(self, event: AstrMessageEvent, fact: str) -> str:
-        """
-        当你发现了一些关于用户的重要的、需要永久记住的事实时，调用此工具将该事实存入你的长期记忆库。
-        :param str fact: 需要记住的具体事实或信息。
-        :return: 库位存入状态字符串。
-        """
-        sender_id = event.get_sender_id()
-        sender_name = event.get_sender_name() or "未知用户"
-        group_id = event.get_group_id() or "私聊"
-        unified_msg_origin = event.unified_msg_origin
-
-        formatted_fact = (
-            f"【记忆条目】\n"
-            f"来源: {unified_msg_origin}\n"
-            f"说话者: {sender_name} (ID: {sender_id})\n"
-            f"群/私聊: {group_id}\n"
-            f"内容: {fact}\n"
-            f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-
-        return await self._do_commit_memory(event, formatted_fact)
-
-    async def _do_commit_memory(
-        self, event: AstrMessageEvent, formatted_fact: str, is_auto: bool = False
-    ) -> str:
-        """执行实际的存入记忆逻辑（包含去重和自动清理）"""
-        kb_manager = self.context.kb_manager
-        try:
-            kb_helper = await asyncio.wait_for(
-                kb_manager.get_kb_by_name(self.memory_kb_name),
-                timeout=self.timeout_memory_commit,
-            )
-        except asyncio.TimeoutError:
-            logger.error("[SelfEvolution] 记忆库装载严重超时。")
-            return "与知识引擎服务器建立信道超时，中断存入以维持会话流畅。"
-        except Exception as e:
-            if isinstance(e, (TypeError, ValueError)):
-                raise
-            logger.error(f"[SelfEvolution] 记忆检索或系统网络失效: {e}")
-            return "检索长期记忆时发生业务异常，请检查配置与联通状态。"
-
-        if not kb_helper:
-            logger.warning(
-                f"[SelfEvolution] 记忆知识库 '{self.memory_kb_name}' 不存在。"
-            )
-            return (
-                f"未找到名为 {self.memory_kb_name} 的记忆知识库，请先在后台手动创建它。"
-            )
-
-        try:
-            # 记忆去重：检查是否已存在相似内容
-            try:
-                check_results = await asyncio.wait_for(
-                    kb_manager.retrieve(
-                        query=formatted_fact[:100],
-                        kb_names=[self.memory_kb_name],
-                        top_m_final=3,
-                    ),
-                    timeout=5.0,
-                )
-                if check_results and check_results.get("results"):
-                    for r in check_results.get("results", []):
-                        if r.get("text") and formatted_fact[:50] in r.get("text", ""):
-                            logger.info(
-                                f"[SelfEvolution] 记忆去重：检测到相似内容已存在，跳过存入。"
-                            )
-                            return "已存在相似记忆，无需重复存储。"
-            except asyncio.TimeoutError:
-                pass
-            except Exception as e:
-                logger.warning(f"[SelfEvolution] 记忆去重检查失败: {e}")
-
-            # 自动清理：检查记忆数量，超过上限时删除最旧的
-            max_memory_entries = getattr(self, "max_memory_entries", 100)
-            try:
-                docs = await kb_helper.list_documents()
-                if docs and len(docs) >= max_memory_entries:
-                    oldest_doc = min(
-                        docs, key=lambda d: getattr(d, "created_at", "") or ""
-                    )
-                    doc_id = getattr(oldest_doc, "doc_id", None)
-                    if doc_id:
-                        await kb_helper.delete_document(doc_id)
-                        logger.info(
-                            f"[SelfEvolution] 自动清理：已删除最旧的记忆条目 {doc_id}"
-                        )
-            except Exception as e:
-                logger.warning(f"[SelfEvolution] 自动清理失败: {e}")
-
-            # 存入记忆
-            await kb_helper.upload_document(
-                file_name=f"memory_{int(time.time() * 1000)}.txt",
-                file_content=b"",
-                file_type="txt",
-                pre_chunked_text=[formatted_fact],
-            )
-            logger.info(
-                f"[SelfEvolution] MEMORY_COMMIT: 成功存入一条长期记忆: {formatted_fact[:50]}..."
-            )
-            return "事实已成功存入长期记忆库，我以后会记得这件事的。"
-        except (TimeoutError, ConnectionError) as e:
-            logger.error(f"[SelfEvolution] 存入记忆网络通讯中断/超时: {e}")
-            return "与知识库服务器建立通讯失败，无法写入新数据。"
-        except Exception as e:
-            logger.error(f"[SelfEvolution] 存入记忆失败: {str(e)}")
-            return "存入记忆时出现未知级别异常，请通知排查。"
+        """当你发现了一些关于用户的重要的、需要永久记住的事实时，调用此工具将该事实存入你的长期记忆库。"""
+        return await self.memory.commit_to_memory(event, fact)
 
     @filter.llm_tool(name="recall_memories")
     async def recall_memories(self, event: AstrMessageEvent, query: str) -> str:
-        """
-        当你需要回想起以前记住的事情、用户的偏好或过去的约定知识时，调用此工具。
-        :param str query: 搜索关键词或问题。
-        :return: 包含命中历史的字符串数据流。
-        """
-        kb_manager = self.context.kb_manager
-        try:
-            # 添加防御性 Timeout 机制防引发大模型阻塞 (Hang)
-            results = await asyncio.wait_for(
-                kb_manager.retrieve(
-                    query=query, kb_names=[self.memory_kb_name], top_m_final=5
-                ),
-                timeout=self.timeout_memory_recall,
-            )
-        except asyncio.TimeoutError:
-            logger.error("[SelfEvolution] 检索记忆网络通信卡死/超时。")
-            return "检索长期记忆时与核心向量库层通信严重超时，为防止阻塞当前对话流，已强制中止操作。"
-        except Exception as e:
-            logger.error(f"[SelfEvolution] 检索记忆请求失败: {e}")
-            return "检索长期记忆时发生接口异常，请通知管理员检查日志。"
-
-        if not results or not results.get("results"):
-            logger.debug(f"[SelfEvolution] 记忆检索无结果。查询: {query}")
-            return "在长期记忆库中未找到相关信息。"
-
-        context_text = results.get("context_text", "")
-        logger.info(
-            f"[SelfEvolution] MEMORY_RECALL: 记忆检索成功。查询: {query} -> 找到 {len(results.get('results', []))} 条结果。"
-        )
-        return f"从我的长期记忆中找到了以下内容：\n\n{context_text}"
+        """当你需要回想起以前记住的事情、用户的偏好或过去的约定知识时，调用此工具。"""
+        return await self.memory.recall_memories(event, query)
 
     @filter.llm_tool(name="learn_from_context")
     async def learn_from_context(
         self, event: AstrMessageEvent, key_info: str = ""
     ) -> str:
-        """
-        从当前对话中自动提取关键信息并存入长期记忆。当你发现用户表达了重要偏好、约定或事实时调用此工具。
-        :param str key_info: 需要记住的关键信息（如果留空，将自动提取当前对话中的关键内容）。
-        :return: 学习结果的状态字符串。
-        """
-        sender_name = event.get_sender_name() or "未知用户"
-        sender_id = event.get_sender_id()
-        group_id = event.get_group_id() or "私聊"
-        unified_msg_origin = event.unified_msg_origin
-        message_text = event.message_str
-
-        fact = key_info if key_info else f"用户在当前对话中提到: {message_text}"
-
-        formatted_fact = (
-            f"【记忆条目-对话学习】\n"
-            f"来源: {unified_msg_origin}\n"
-            f"说话者: {sender_name} (ID: {sender_id})\n"
-            f"群/私聊: {group_id}\n"
-            f"内容: {fact}\n"
-            f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-
-        return await self._do_commit_memory(event, formatted_fact, is_auto=True)
+        """从当前对话中自动提取关键信息并存入长期记忆。"""
+        return await self.memory.learn_from_context(event, key_info)
 
     @filter.llm_tool(name="clear_all_memory")
     async def clear_all_memory(
         self, event: AstrMessageEvent, confirm: bool = False
     ) -> str:
-        """
-        清空指定知识库中的所有记忆条目。谨慎使用！
-        :param bool confirm: 必须传入 true 才能执行清空操作（防止误操作）。
-        :return: 操作结果的状态字符串。
-        """
-        if not confirm:
-            return "请传入 confirm=true 确认要清空全部记忆，例如: clear_all_memory(confirm=true)"
-
-        kb_manager = self.context.kb_manager
-        try:
-            kb_helper = await asyncio.wait_for(
-                kb_manager.get_kb_by_name(self.memory_kb_name),
-                timeout=self.timeout_memory_commit,
-            )
-        except Exception as e:
-            logger.error(f"[SelfEvolution] 获取知识库失败: {e}")
-            return f"获取知识库失败: {e}"
-
-        if not kb_helper:
-            return f"未找到名为 {self.memory_kb_name} 的记忆知识库"
-
-        try:
-            docs = await kb_helper.list_documents()
-            if not docs:
-                return "记忆库已经是空的了。"
-
-            deleted_count = 0
-            for doc in docs:
-                try:
-                    doc_id = getattr(doc, "doc_id", None)
-                    if doc_id:
-                        await kb_helper.delete_document(doc_id)
-                        deleted_count += 1
-                except Exception as e:
-                    logger.warning(f"[SelfEvolution] 删除记忆条目失败: {e}")
-
-            logger.info(f"[SelfEvolution] 清空记忆：成功删除 {deleted_count} 条记忆")
-            return f"已成功清空 {deleted_count} 条记忆条目。"
-        except Exception as e:
-            logger.error(f"[SelfEvolution] 清空记忆失败: {e}")
-            return f"清空记忆失败: {e}"
+        """清空指定知识库中的所有记忆条目。谨慎使用！"""
+        return await self.memory.clear_all_memory(event, confirm)
 
     @filter.llm_tool(name="list_memories")
     async def list_memories(self, event: AstrMessageEvent, limit: int = 10) -> str:
-        """
-        列出当前存储在知识库中的记忆条目。
-        :param int limit: 最多显示的记忆条目数量，默认10条。
-        :return: 记忆条目列表。
-        """
-        kb_manager = self.context.kb_manager
-        try:
-            kb_helper = await asyncio.wait_for(
-                kb_manager.get_kb_by_name(self.memory_kb_name), timeout=5.0
-            )
-        except Exception as e:
-            return f"获取知识库失败: {e}"
-
-        if not kb_helper:
-            return f"未找到名为 {self.memory_kb_name} 的记忆知识库"
-
-        try:
-            docs = await kb_helper.list_documents()
-            if not docs:
-                return "记忆库中还没有任何记忆。"
-
-            docs = docs[:limit]
-            result = [f"当前记忆库共有 {len(docs)} 条记忆（显示前 {len(docs)} 条）："]
-            for i, doc in enumerate(docs, 1):
-                doc_name = getattr(doc, "doc_name", "未知")
-                created_at = getattr(doc, "created_at", "未知时间")
-                result.append(f"{i}. {doc_name} (创建于: {created_at})")
-
-            return "\n".join(result)
-        except Exception as e:
-            logger.error(f"[SelfEvolution] 列出记忆失败: {e}")
-            return f"列出记忆失败: {e}"
+        """列出当前存储在知识库中的记忆条目。"""
+        return await self.memory.list_memories(event, limit)
 
     @filter.llm_tool(name="delete_memory")
     async def delete_memory(self, event: AstrMessageEvent, doc_id: str) -> str:
-        """
-        删除知识库中的单条记忆。
-        :param str doc_id: 要删除的记忆条目ID。
-        :return: 操作结果的状态字符串。
-        """
-        kb_manager = self.context.kb_manager
-        try:
-            kb_helper = await asyncio.wait_for(
-                kb_manager.get_kb_by_name(self.memory_kb_name), timeout=5.0
-            )
-        except Exception as e:
-            return f"获取知识库失败: {e}"
-
-        if not kb_helper:
-            return f"未找到名为 {self.memory_kb_name} 的记忆知识库"
-
-        try:
-            await kb_helper.delete_document(doc_id)
-            logger.info(f"[SelfEvolution] 删除记忆：成功删除 doc_id={doc_id}")
-            return f"已成功删除记忆条目 {doc_id}。"
-        except Exception as e:
-            logger.error(f"[SelfEvolution] 删除记忆失败: {e}")
-            return f"删除记忆失败: {e}"
+        """删除知识库中的单条记忆。"""
+        return await self.memory.delete_memory(event, doc_id)
 
     @filter.llm_tool(name="auto_recall")
     async def auto_recall(self, event: AstrMessageEvent, topic: str = "") -> str:
-        """
-        当检测到当前对话涉及历史记忆时，主动将相关记忆注入上下文。
-        :param str topic: 当前对话涉及的话题关键词（如果留空，将使用当前消息内容）。
-        :return: 相关记忆内容或"无相关记忆"的提示。
-        """
-        query = topic if topic else event.message_str
-
-        kb_manager = self.context.kb_manager
-        try:
-            results = await asyncio.wait_for(
-                kb_manager.retrieve(
-                    query=query, kb_names=[self.memory_kb_name], top_m_final=3
-                ),
-                timeout=self.timeout_memory_recall,
-            )
-        except asyncio.TimeoutError:
-            return "检索记忆超时，请稍后重试。"
-        except Exception as e:
-            logger.error(f"[SelfEvolution] auto_recall 失败: {e}")
-            return "检索记忆时发生异常。"
-
-        if not results or not results.get("results"):
-            return "当前对话未涉及任何历史记忆。"
-
-        context_text = results.get("context_text", "")
-        logger.info(
-            f"[SelfEvolution] AUTO_RECALL: 找到 {len(results.get('results', []))} 条相关记忆"
-        )
-
-        return (
-            f"【相关记忆触发】\n"
-            f"当前话题: {query}\n"
-            f"--- 历史记忆 ---\n{context_text}\n"
-            f"----------------\n"
-            f"以上是与你当前话题相关的记忆，请结合这些信息回复用户。"
-        )
+        """当检测到当前对话涉及历史记忆时，主动将相关记忆注入上下文。"""
+        return await self.memory.auto_recall(event, topic)
 
     @filter.llm_tool(name="list_tools")
     async def list_tools(self, event: AstrMessageEvent) -> str:
