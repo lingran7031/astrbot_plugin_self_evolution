@@ -1,59 +1,69 @@
 import logging
+import re
 from astrbot.api.all import AstrMessageEvent
 
 logger = logging.getLogger("astrbot")
 
 class EavesdroppingEngine:
+    # 预定义的本体属性关键词（轻量级正则）
+    CRITICAL_KEYWORDS = re.compile(r"(黑塔|空间站|人偶|天才|模拟宇宙|研究|论文|技术|算力|数据)", re.IGNORECASE)
+
     def __init__(self, plugin):
         self.plugin = plugin
 
     async def handle_message(self, event: AstrMessageEvent):
-        """CognitionCore 3.0: 全环境被动监听与插嘴决策"""
-        # 排除黑名单、艾特机器人的消息（艾特已由常规流程处理）
+        """CognitionCore 4.5: 意图预扫描 (Intent Pre-scan) 拦截器"""
         if event.is_at_or_wake_command: return
         
+        msg_text = event.message_str
         session_id = event.session_id
         user_id = event.get_sender_id()
         score = await self.plugin.dao.get_affinity(user_id)
         
-        if score <= 0: return # 忽略黑名单用户的闲聊
-        
-        # 维护缓冲池
+        if score <= 0: return 
+
+        # --- 意图预扫描层 (Intent Pre-scan) ---
+        if self.CRITICAL_KEYWORDS.search(msg_text):
+            logger.debug(f"[CognitionCore] 预扫描命中：消息包含本体属性关键词，立即触发评估。")
+            async for result in self._evaluate_interjection(event, session_id, force_immediate=True):
+                yield result
+            return # 命中后直接处理，不再重复进入普通缓冲逻辑
+
+        # --- 缓冲池逻辑 ---
         if session_id not in self.plugin.active_buffers:
             self.plugin.active_buffers[session_id] = []
         
-        msg_text = event.message_str
         sender_name = event.get_sender_name() or "Unknown"
         self.plugin.active_buffers[session_id].append(f"{sender_name}({user_id}): {msg_text}")
         
-        # 防止溢出
         if len(self.plugin.active_buffers[session_id]) > self.plugin.max_buffer_size:
             self.plugin.active_buffers[session_id].pop(0)
             
-        # 触发评估决策
         if len(self.plugin.active_buffers[session_id]) >= self.plugin.buffer_threshold and session_id not in self.plugin.processing_sessions:
-            # 必须用 async for 迭代异步生成器，以便将其 Yield 传递给请求流水线
             async for result in self._evaluate_interjection(event, session_id):
                 yield result
 
-    async def _evaluate_interjection(self, event: AstrMessageEvent, session_id: str):
-        """插嘴评估层：决定是否发言"""
+    async def _evaluate_interjection(self, event: AstrMessageEvent, session_id: str, force_immediate: bool = False):
+        """插嘴评估层：增加强制立即评估逻辑，并保留安全风控加固"""
         self.plugin.processing_sessions.add(session_id)
         try:
-            buffer = self.plugin.active_buffers[session_id]
-            # 获取当前快照的快照长度
-            snap_len = len(buffer)
-            chat_history = "\n".join(buffer[:snap_len])
+            buffer = self.plugin.active_buffers.get(session_id, [])
             
-            # 构建决策指令
+            # 如果是强制立即评估，优先针对当前单条消息
+            if force_immediate:
+                chat_history = f"{event.get_sender_name()}({event.get_sender_id()}): {event.message_str}"
+            else:
+                snap_len = len(buffer)
+                chat_history = "\n".join(buffer[:snap_len])
+            
+            # 保留 v3.1.6 的安全加固提示词
             decision_prompt = (
                 f"你现在是黑塔（人偶负责人）。以下是实时群聊监控片段：\n\n{chat_history}\n\n"
-                "【执行指令】：作为高维观察者，由于当前属于静默监听模式，请评估是否有必要介入？\n"
+                "【执行指令】：作为高维观察者，由于当前属于监听模式，请评估是否有必要介入？\n"
                 "1. 如果属于无意义的闲聊、重复信息或与你无关，请务必回复：[IGNORE]\n"
                 "2. 如果发现具备深度讨论潜力的技术话题、错误信息或值得互动的有趣节点，请直接输出你的简练评论。语气保持理性、犀利且专业。禁止使用括号说明动作描述。"
             )
             
-            # 调用底层 LLM 接口
             llm_provider = self.plugin.context.get_using_provider(event.unified_msg_origin)
             if not llm_provider: return
             
@@ -65,18 +75,18 @@ class EavesdroppingEngine:
             
             reply_text = res.completion_text.strip()
             
-            # 只有当模型输出不是 IGNORE 时才真实下发到聊天框
             if reply_text and "[IGNORE]" not in reply_text:
                 logger.info(f"[CognitionCore] 主动插嘴触发！响应: {reply_text}")
                 yield event.plain_result(reply_text)
             else:
                 logger.debug(f"[CognitionCore] 插嘴评估完毕：判断为无需介入。")
                 
-            # 发言或评估后清空缓冲，【仅清空已处理的消息切片】，保留处理期间新产生的消息
-            self.plugin.active_buffers[session_id] = self.plugin.active_buffers[session_id][snap_len:]
+            # 非强制模式下才清空缓冲切片
+            if not force_immediate:
+                self.plugin.active_buffers[session_id] = self.plugin.active_buffers[session_id][snap_len:]
         except Exception as e:
             if "安全检查" in str(e) or "Safety" in str(e):
-                logger.warning(f"[CognitionCore] 插嘴评估被服务商安全策略拦截 (可能是历史消息包含敏感词)。已自动忽略。")
+                logger.warning(f"[CognitionCore] 插嘴评估被服务商安全策略拦截 (可能是消息包含敏感词)。已自动忽略。")
             else:
                 logger.error(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
         finally:
