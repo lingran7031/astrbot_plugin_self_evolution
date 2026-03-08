@@ -37,7 +37,7 @@ PAGE_LIMIT = 10
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "具备主动环境感知及插嘴引擎的 CognitionCore 3.0 数字生命。",
-    "3.2.12",
+    "3.2.13",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -260,13 +260,24 @@ class SelfEvolutionPlugin(Star):
         try:
             kb_manager = self.context.kb_manager
             query = event.message_str
+            group_id = event.get_group_id()
+            user_id = event.get_sender_id()
 
             if not query or len(query.strip()) < 2:
                 return
 
+            # 确定当前对话的上下文标识
+            if group_id:
+                context_filter = f"memory_group_{group_id}"
+            else:
+                context_filter = f"memory_user_{user_id}"
+
+            # 将上下文标识加入query，帮助RAG定位到正确的记忆
+            enhanced_query = f"{query} [上下文:{context_filter}]"
+
             results = await asyncio.wait_for(
                 kb_manager.retrieve(
-                    query=query, kb_names=[self.memory_kb_name], top_m_final=3
+                    query=enhanced_query, kb_names=[self.memory_kb_name], top_m_final=3
                 ),
                 timeout=self.timeout_memory_recall,
             )
