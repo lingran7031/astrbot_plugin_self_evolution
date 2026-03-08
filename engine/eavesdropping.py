@@ -47,6 +47,9 @@ class EavesdroppingEngine:
 
     async def _evaluate_interjection(self, event: AstrMessageEvent, session_id: str, force_immediate: bool = False):
         """插嘴评估层：增加强制立即评估逻辑，并保留安全风控加固"""
+        if session_id in self.plugin.processing_sessions:
+            return
+            
         self.plugin.processing_sessions.add(session_id)
         try:
             buffer = self.plugin.active_buffers.get(session_id, [])
@@ -92,4 +95,6 @@ class EavesdroppingEngine:
             else:
                 logger.error(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
         finally:
-            self.plugin.processing_sessions.remove(session_id)
+            self.plugin.processing_sessions.discard(session_id)
+
+```
