@@ -1,4 +1,4 @@
-# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.1.8: CognitionCore 4.5)
+# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.2.0: CognitionCore 5.0)
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
@@ -74,6 +74,16 @@
 
 ### 提示：关于元编程代码提议
 如果开启了元编程且 AI 成功通过了所有的层级风控，新代码将会被安全停驻在您的 `AstrBot/data/self_evolution/code_proposals/` 目录中。
+
+本项目的所有重大更改都将记录在此文件中。
+ 
+## [3.2.0] - 2026-03-08
+### 重大更新 (Major Update)
+- **CognitionCore 5.0 "人设去中心化"**: 彻底移除了代码中所有关于“黑塔”人设的硬编码字符串。现在支持通过配置面板自定义**机器人名称**、**身份头衔**以及**插嘴风格导语**，使插件能够适配任何虚拟人格。
+### 优化 (Optimization)
+- **参数化提示词**: 所有系统指令和评估模板均已升级为参数化模式，确保在更换人设后，逻辑依然严密且符合设定。
+
+## [3.1.8] - 2026-03-08
 
 ## ⚖️ 开源协议 (License)
 
