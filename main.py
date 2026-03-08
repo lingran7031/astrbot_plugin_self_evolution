@@ -165,19 +165,9 @@ class SelfEvolutionPlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
-        """CognitionCore 3.0: 广谱监听转发至 EavesdroppingEngine"""
-        try:
-            logger.critical(f"[SelfEvolution] !!! 捕获到原始消息事件 !!! 内容: '{event.message_str}' | EngineType: {type(self.eavesdropping)}")
-            if not hasattr(self.eavesdropping, "handle_message"):
-                logger.critical("[SelfEvolution] 错误：Engine 对象丢失 handle_message 方法！")
-                return
-                
-            async for result in self.eavesdropping.handle_message(event):
-                yield result
-        except Exception as e:
-            logger.critical(f"[SelfEvolution] 监听器内部执行崩溃: {e}")
-            import traceback
-            logger.critical(traceback.format_exc())
+        """CognitionCore 3.0: 被动监听转发至 EavesdroppingEngine"""
+        async for result in self.eavesdropping.handle_message(event):
+            yield result
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
