@@ -417,7 +417,7 @@ class SelfEvolutionPlugin(Star):
             # 调用底层 LLM 接口
             
             # 由于此处是后台静默请求，需要构造一个不触发前台回复的请求
-            llm_provider = self.context.get_current_provider()
+            llm_provider = self.context.get_using_provider(event.unified_msg_origin)
             if not llm_provider: return
             
             res = await llm_provider.text_chat(
