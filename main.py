@@ -213,7 +213,7 @@ class SelfEvolutionDAO:
             return cursor.rowcount > 0
 
 
-@register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.1.1")
+@register("astrbot_plugin_self_evolution", "自我进化 (Self-Evolution)", "让大模型具备自我迭代、记忆沉淀和人格进化能力的插件。", "2.2.0")
 class SelfEvolutionPlugin(Star):
     @staticmethod
     def _parse_bool(val, default):
@@ -267,6 +267,28 @@ class SelfEvolutionPlugin(Star):
         Level 3: 情绪驱动进化与后台反思。
         将用户反馈与“核心原则”进行柔性对齐，并支持静默上下文中执行后台自省。
         """
+        # --- [Meta-Programming 注入] 身份与环境感知 ---
+        sender_id = event.get_sender_id()
+        sender_name = "Unknown User"
+        if hasattr(event, "sender_name") and event.sender_name:
+            sender_name = event.sender_name
+        
+        is_group = False
+        group_id = "N/A"
+        if hasattr(event.message_obj, "group_id") and event.message_obj.group_id:
+            is_group = True
+            group_id = event.message_obj.group_id
+            
+        context_info = f"\n\n[当前交互上下文环境信息]：\n- 发送者ID: {sender_id}\n- 发送者昵称: {sender_name}\n"
+        if is_group:
+            context_info += f"- 来源：群聊 (群组ID: {group_id})\n"
+        else:
+            context_info += "- 来源：私聊\n"
+        
+        context_info += "指令：请在回复时明确对话对象，基于当前发送者的身份维持话题连贯性。语气请保持客观、专业且高效。"
+        req.system_prompt += context_info
+        # --- 环境注入结束 ---
+
         # 静默处理：后台反思指令钩子 (持久化隔离不同用户的状态)
         session_id = event.session_id
         is_pending = await self.dao.pop_pending_reflection(session_id)
