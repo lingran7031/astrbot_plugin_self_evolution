@@ -2,9 +2,20 @@
 
 本项目的所有重大更改都将记录在此文件中。
 
-## [3.2.2] - 2026-03-08
+## [3.2.5] - 2026-03-08
+### 新增 (Added)
+- **参数全量热重载 (Full Config Hot-Reload)**: 重构 `main.py` 为 dynamic property 模式。现在修改管理面板中的**任何**参数（包括机器人名称、插嘴意愿、核心原则等）均可即时生效，无需重启插件。
 ### 修复 (Fixed)
-- **插嘴引擎线程安全 (KeyError Fix)**: 修复了当“意图预扫描”和“缓冲区触发”同时发生时，可能导致的 `processing_sessions` 字典键冲突（KeyError）。改用 `discard()` 替代 `remove()` 并增加了并发保护锁机制。
+- **代码重构缩进修复**: 修复了由于 property 注入导致的 `unexpected indent` 语法错误。
+
+## [3.2.4] - 2026-03-08
+### 新增 (Added)
+- **发言意愿可配置 (Interjection Desire Control)**: 引入 `interjection_desire` 配置项（1-10）。
+- **元评论硬过滤 (Meta-Commentary Ban)**: 增加了严密的后置过滤器，自动识别并拦截 LLM 生成的“监测报告式”回复（如出现：冗余、监控、评估等词汇）。
+
+## [3.2.3] - 2026-03-08
+### 修复 (Fixed)
+- **WSL 环境同步冲突**: 修正了 `Copy-Item` 指令在 WSL 下的文件路径重叠加固，确保 `engine/` 目录下的逻辑文件被正确覆盖且无冗余缓存。
 
 ## [3.2.0] - 2026-03-08
 ### 重大更新 (Major Update)
