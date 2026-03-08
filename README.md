@@ -1,4 +1,4 @@
-# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.2.13: CognitionCore 5.6)
+# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.2.14: CognitionCore 5.6)
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
@@ -80,11 +80,14 @@
 
 本项目的所有重大更改都将记录在此文件中。
  
-## [3.2.13] - 2026-03-08
-### 修复 (Bug Fix)
-- **记忆检索限定上下文**: 检索时加入用户/群ID上下文标识，防止跨用户/跨群误匹配记忆
+## [3.2.14] - 2026-03-08
+### 优化 (Optimization)
+- **记忆检索逻辑优化**: 
+  - 私聊：只检索当前用户画像
+  - 群聊：同时检索群记忆 + 说话人画像，实现跨群用户画像共享
+  - 检索后根据 doc_name 精确过滤结果
 
-## [3.2.12] - 2026-03-08
+## [3.2.13] - 2026-03-08
 ### 重构 (Refactor)
 - **记忆存储重构**: 改用知识库按用户/群汇总存储（memory_user_xxx, memory_group_xxx），替代之前的单条存储
 - **删除冗余代码**: 移除 `_append_chat_history` 本地文件存储和 `read_chat_history` 工具

@@ -37,7 +37,7 @@ PAGE_LIMIT = 10
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "具备主动环境感知及插嘴引擎的 CognitionCore 3.0 数字生命。",
-    "3.2.13",
+    "3.2.14",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -266,32 +266,47 @@ class SelfEvolutionPlugin(Star):
             if not query or len(query.strip()) < 2:
                 return
 
-            # 确定当前对话的上下文标识
+            # 确定需要检索的文档名称列表
             if group_id:
-                context_filter = f"memory_group_{group_id}"
+                # 群聊时：检索群记忆 + 说话人画像
+                target_docs = [f"memory_group_{group_id}", f"memory_user_{user_id}"]
             else:
-                context_filter = f"memory_user_{user_id}"
-
-            # 将上下文标识加入query，帮助RAG定位到正确的记忆
-            enhanced_query = f"{query} [上下文:{context_filter}]"
+                # 私聊时：只检索用户画像
+                target_docs = [f"memory_user_{user_id}"]
 
             results = await asyncio.wait_for(
                 kb_manager.retrieve(
-                    query=enhanced_query, kb_names=[self.memory_kb_name], top_m_final=3
+                    query=query, kb_names=[self.memory_kb_name], top_m_final=5
                 ),
                 timeout=self.timeout_memory_recall,
             )
 
             if results and results.get("results"):
-                context_text = results.get("context_text", "")
-                if context_text:
+                # 过滤：只保留目标用户/群的记忆
+                filtered_results = [
+                    r
+                    for r in results["results"]
+                    if any(r.get("doc_name", "").startswith(doc) for doc in target_docs)
+                ]
+
+                if filtered_results:
+                    # 重新构建 context_text
+                    context_parts = []
+                    for r in filtered_results:
+                        doc_name = r.get("doc_name", "")
+                        content = r.get("content", "")
+                        context_parts.append(f"[来源:{doc_name}]\n{content}")
+
+                    context_text = "\n---\n".join(context_parts)
+
                     memory_injection = (
                         f"\n\n[长期记忆检索结果]：\n{context_text}\n"
-                        "请结合以上记忆信息回复用户。如果记忆内容与当前对话无关，请忽略。"
+                        "请结合以上记忆信息回复用户。注意区分不同来源："
+                        "【群共亓记忆】是当前群的历史对话，【个人画像】是该用户的个人偏好。"
                     )
                     req.system_prompt += memory_injection
                     logger.info(
-                        f"[SelfEvolution] 自动记忆注入成功：{len(results.get('results', []))} 条相关记忆"
+                        f"[SelfEvolution] 自动记忆注入成功：{len(filtered_results)} 条相关记忆"
                     )
         except asyncio.TimeoutError:
             logger.warning("[SelfEvolution] 自动记忆检索超时，已跳过注入。")
