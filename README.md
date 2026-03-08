@@ -1,4 +1,4 @@
-# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.3.0: CognitionCore 6.0)
+# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.3.1: CognitionCore 6.0)
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
@@ -79,6 +79,10 @@
 如果开启了元编程且 AI 成功通过了所有的层级风控，新代码将会被安全停驻在您的 `AstrBot/data/self_evolution/code_proposals/` 目录中。
 
 本项目的所有重大更改都将记录在此文件中。
+
+## [3.3.1] - 2026-03-09
+### 修复 (Bug Fix)
+- **list_tools**: 修复使用不存在的 API，改为使用 `tool_mgr.func_list`
 
 ## [3.3.0] - 2026-03-09
 ### 重构 (Refactor)
