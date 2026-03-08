@@ -366,37 +366,16 @@ class SelfEvolutionPlugin(Star):
                 logger.warning(f"[SelfEvolution] 知识库 {self.memory_kb_name} 不存在")
                 return
 
-            # 查找现有文档
-            docs = await kb_helper.list_documents()
-            existing_doc = None
-            for doc in docs:
-                if getattr(doc, "doc_name", "") == doc_name:
-                    existing_doc = doc
-                    break
-
-            if existing_doc:
-                # 更新现有文档（删除旧文档，上传新内容）
-                doc_id = getattr(existing_doc, "doc_id", None)
-                if doc_id:
-                    await kb_helper.delete_document(doc_id)
-                    logger.info(f"[SelfEvolution] 已删除旧记忆文档: {doc_name}")
-
-            # 上传新内容
-            content = new_entry
-            if existing_doc:
-                # 追加模式：这里需要业务逻辑配合，目前先简单覆盖
-                # TODO: 可以考虑更复杂的追加逻辑
-                pass
-
+            # 直接追加新内容到知识库（知识库会自动处理文档管理）
             await kb_helper.upload_document(
                 file_name=f"{doc_name}.txt",
                 file_content=b"",
                 file_type="txt",
-                pre_chunked_text=[content],
+                pre_chunked_text=[new_entry],
             )
 
             self._just_stored_memory = True
-            logger.info(f"[SelfEvolution] 自动学习：已保存记忆到 {doc_name}")
+            logger.info(f"[SelfEvolution] 自动学习：已追加记忆到 {doc_name}")
 
         except Exception as e:
             logger.warning(f"[SelfEvolution] 自动学习失败: {e}")
