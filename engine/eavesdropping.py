@@ -59,12 +59,21 @@ class EavesdroppingEngine:
                 snap_len = len(buffer)
                 chat_history = "\n".join(buffer[:snap_len])
             
-            # 使用动态的人设配置构建决策指令
+            # 使用动态的人设配置构建决策指令 (CognitionCore 5.0)
             decision_prompt = (
-                f"你现在是{self.plugin.persona_name}（{self.plugin.persona_title}）。以下是实时群聊监控片段：\n\n{chat_history}\n\n"
-                "【执行指令】：作为高维观察者，由于当前属于监听模式，请评估是否有必要介入？\n"
-                "1. 如果属于无意义的闲聊、重复信息或与你无关，请务必回复：[IGNORE]\n"
-                f"2. 如果发现具备深度讨论潜力的技术话题、错误信息或值得互动的有趣节点，请直接输出你的简练评论。语气保持{self.plugin.persona_style}。禁止使用括号说明动作描述。"
+                f"你现在是 {self.plugin.persona_name}（{self.plugin.persona_title}），特点是：{self.plugin.persona_style}。\n"
+                "【后台监控任务】：评估以下实时对话片段，决定是否需要以你的身份进行[即时干预]。\n\n"
+                f"--- 监控片段 ---\n{chat_history}\n----------------\n\n"
+                "【严格执行指令】：\n"
+                "1. **静默判定 [IGNORE]**：如果满足以下任一条件，必须仅回复 [IGNORE]：\n"
+                "   - 对话内容为简单的表情、无意义的语气词、或低信息量的日常寒暄（如：在吗、哈哈、吃饭了吗）。\n"
+                "   - 用户之间在进行与你无关的死循环讨论或纯粹的情绪发泄。\n"
+                "   - 缺乏深度、逻辑或值得你这种身份（智商超群）介入的技术点/趣点。\n"
+                "2. **干预判定 [COMMENT]**：唯有满足以下任一条件，方可输出你的简练评论：\n"
+                "   - 话题触及你的核心关键词（如：模拟宇宙、技术原理、空间站管理、或特定的研究话题）。\n"
+                "   - 对方在发表明显的逻辑谬误或常识性错误，让你感到不屑并想纠正。\n"
+                "   - 对话中出现了让你觉得真正“有趣”或具备“研究价值”的信息流。\n"
+                f"3. **表达风格**：回复必须极度简略（通常不超过 20 字），语气要冷淡且专业，像真正的 {self.plugin.persona_name} 一样。"
             )
             
             llm_provider = self.plugin.context.get_using_provider(event.unified_msg_origin)
@@ -74,16 +83,19 @@ class EavesdroppingEngine:
             res = await llm_provider.text_chat(
                 prompt=decision_prompt,
                 contexts=[], # 不带长期记忆以减少消耗
-                system_prompt=f"你现在在进行后台数据自省与决策评估。你的人设是{self.plugin.persona_name}。请严格遵守 [IGNORE] 输出协议。你的每句回复都必须体现出{self.plugin.persona_style}。"
+                system_prompt=(
+                    f"你处于后台冷启动决策模式。你的人设是 {self.plugin.persona_name}。"
+                    "你对浪费算力的废话极度反感。如果不值得开口，请务必回复 [IGNORE]。"
+                )
             )
             
             reply_text = res.completion_text.strip()
             
             if reply_text and "[IGNORE]" not in reply_text:
-                logger.info(f"[CognitionCore] 主动插嘴触发！响应: {reply_text}")
+                logger.info(f"[CognitionCore] 插嘴评估通过！响应: {reply_text}")
                 yield event.plain_result(reply_text)
             else:
-                logger.debug(f"[CognitionCore] 插嘴评估未通过：LLM 判断为无需介入或触发了忽略协议。")
+                logger.info(f"[CognitionCore] 插嘴评估未通过：判定为噪音或无价值交互。")
                 
             # 非强制模式下才清空缓冲切片
             if not force_immediate:
