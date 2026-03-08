@@ -8,17 +8,18 @@ class EavesdroppingEngine:
 
     async def handle_message(self, event: AstrMessageEvent):
         """CognitionCore 4.5: 意图预扫描 (Intent Pre-scan) 拦截器"""
+        logger.critical(f"[CognitionCore] 通讯协议握手成功。消息流已接入预扫描层。内容: '{event.message_str}'")
         msg_text = event.message_str
         is_at = event.is_at_or_wake_command
         
-        logger.critical(f"[CognitionCore] 进入预扫描层. 消息: '{msg_text}' | At/Wake: {is_at}")
-        
         if is_at:
-            logger.critical("[CognitionCore] 检测到唤醒词/At，由标准流程处理。")
+            logger.critical("[CognitionCore] 信息分类为: 唤醒/At 指令。跳过插嘴逻辑。")
             return
+            
         session_id = event.session_id
         user_id = event.get_sender_id()
         score = await self.plugin.dao.get_affinity(user_id)
+        logger.critical(f"[CognitionCore] 发送者: {user_id} | 情感积分: {score} | 会话: {session_id}")
         
         if score <= 0: return 
 
