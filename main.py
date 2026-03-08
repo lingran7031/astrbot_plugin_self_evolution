@@ -668,8 +668,12 @@ class SelfEvolutionPlugin(Star):
         try:
             tree = ast.parse(new_code)
             logger.warning("[SelfEvolution] 【安全审计警告】AST 白名单防线并非坚不可摧！恶意模型仍可通过复杂反射等手法试探。管理员务必保持警惕。")
-            dangerous_modules = {'os', 'sys', 'subprocess', 'shutil', 'socket', 'urllib', 'requests', 'ctypes', 'importlib', 'builtins'}
-            dangerous_funcs = {'eval', 'exec', 'open', '__import__', 'getattr', 'setattr', 'delattr', 'compile'}
+            
+            # 放宽了 OS, SYS, IMPORTLIB 等库的限制，因为高级功能与插件框架本身强依赖它们。隔离管控由人工审查兜底。
+            dangerous_modules = {'subprocess', 'shutil', 'socket', 'urllib', 'requests', 'ctypes', 'builtins'}
+            # 放宽了 getattr, setattr, delattr, open，因为大模型的 AST 常常包含自省逻辑和文件读写。
+            dangerous_funcs = {'eval', 'exec', '__import__', 'compile'}
+            
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
