@@ -1,29 +1,29 @@
-# Changelog
+# 更新日志 (Changelog)
 
-All notable changes to this project will be documented in this file.
+本项目的所有重要更改都将记录在此文件中。
 
 ## [2.1.1] - 2026-03-08
-### Fixed
-- **Cron Job Reliability**: Converted the `SelfEvolution_DailyReflection` from an `active_agent` scheduled job to a `basic` scheduled job. This fixes a critical error in AstrBot v4 where active agent jobs would crash at execution due to a missing/invalid session context on startup. The job now silently sets a global pending flag (`daily_reflection_pending = True`), and the actual reflection is seamlessly injected into the LLM context during the next user interaction.
-- **AST Security Validation**: Relaxed the extremely strict programmatic AST security firewall (`_validate_ast_security`) that was blocking the LLM's own legitimate meta-programming proposals. Standard modules like `os`, `sys`, and functions like `open` and `getattr` are now permitted. Safety relies on the fact that proposals are sandboxed and require explicit human-administrator approval before deployment.
+### 修复 (Fixed)
+- **定时任务可靠性修复**: 将 `SelfEvolution_DailyReflection` 每日反思定时任务从 `active_agent` 调度类型转换为了 `basic` 模型。这修复了在 AstrBot v4 环境下，因为启动时缺乏用户会话 (Session) 上下文而导致的定时任务崩溃失效的严重错误。现在的机制是：任务到达时间点时会静默设定一个“待反思”全局标记 (`daily_reflection_pending = True`)，当下次有任何用户与机器人交互时，真正的反思指令会被无缝注入到大模型的思考上下文中。
+- **放宽 AST 安全校验**: 行动代码元编程的 AST 校验墙 (`_validate_ast_security`) 先前过于严格，导致拦截了大模型合理合法的自我提议（因为正常的插件代码必须使用 `os`, `sys` 等库）。现已将此类核心基础库，以及 `open`, `getattr` 等系统函数移出黑名单。系统的最后一道防线交由隔离的提案目录 (`code_proposals`) 和人类管理员的最终人工审核来保障。
 
 ## [2.1.0] - 2026-03-08
-### Added
-- **Evolution Management Commands**: Introduced powerful new administrative tools for managing the self-reflection and evolution queue:
-  - `/reject_evolution [ID]`: Deny a specific evolution request and clear it from the queue.
-  - `/clear_evolutions`: Mass-clear all pending requests.
-  - `/reflect`: Manually trigger an immediate self-reflection cycle without waiting for the scheduled cron job.
-- **Plugin Validation Script**: Added a standalone Windows-compatible `validate_plugin.py` to pre-check code syntax, `_conf_schema.json` integrity, and `metadata.yaml` before pushing to production.
+### 新增 (Added)
+- **进化队列与请求管理指令**: 引入了强大的全新后台管理命令集，以便管理员全盘掌控自我进化与人格提议的流转：
+  - `/reject_evolution [ID]`: 拒绝某个指定的进化提案，并将其移出待办队列。
+  - `/clear_evolutions`: 一键清空所有历史遗留或不需要的待审核进化请求。
+  - `/reflect`: 跳过每日定时的等待，强制立刻触发一次大模型的自我复盘与反思。
+- **自动化预检测脚本**: 增加了在 Windows 环境下独立运行的 `validate_plugin.py` 脚本，可以在将代码推上生产环境前，预先自动化校验包的语法、`_conf_schema.json` 的 AstrBot 规范完整度以及 `metadata.yaml`。
 
-### Changed
-- Comprehensive documentation overhaul in `README.md` to accurately reflect the newly available commands and the updated administrative workflows.
+### 更改 (Changed)
+- **文档完全重构**: 彻底翻新了 `README.md`，现在文档内精确说明了从 2.0.0 至 2.1.0 引入的所有进阶机制、权限设计理念和可用的新指令清单。
 
 ## [2.0.4] - 2026-03-07
-### Fixed
-- **Robust Persona Identification**: Resolved a blocker where custom personas (like 'herta') were incorrectly defaulting back to 'default', which barred them from self-evolution. The system now uses AstrBot's official `resolve_selected_persona` method to correctly respect persona inheritance layers (Conversation -> Channel -> Platform -> Global).
-- **Aiocqhttp Compatibility**: Replaced direct struct access (`event.persona_id`) with the robust context resolution path to prevent `AttributeError: 'AiocqhttpMessageEvent' object has no attribute 'persona_id'` on specific messaging platforms.
+### 修复 (Fixed)
+- **提升“当前人格”定位的鲁棒性**: 修复了“自定义预设人格（例如 'herta'）会被系统错误识别并拦截进化”的核心问题。弃用了旧式的、仅针对会话的判断，转而深度集成 AstrBot 官方标准的 `resolve_selected_persona` 机制，现在插件可以正确穿透和尊重“会话层 -> 频道层 -> 平台层 -> 全局层”的继承树，精准识别出当前的大模型性格标签。
+- **Aiocqhttp 平台兼容性**: 移除了对底层消息体 `event.persona_id` 属性的硬编码访问方法，修复了在某些特定消息总线平台（如 Aiocqhttp/OneBot）上触发的 `AttributeError: 'AiocqhttpMessageEvent' object has no attribute 'persona_id'` 恶性中断问题。
 
 ## [2.0.3] - 2026-03-07
-### Fixed
-- **Admin Permission Check**: Refactored the broken `is_admin` fallback logic. Fixed a "Fail-Safe" issue where the strict absence of IDs in the configuration array `admin_users` blocked global AstrBot administrators from accessing plugin features. The plugin now natively respects `event.is_admin()`.
-- **System Configuration Schema**: Added the missing `admin_users` and `allow_meta_programming` definitions to `_conf_schema.json` to enable proper rendering in the AstrBot Web UI.
+### 修复 (Fixed)
+- **全局管理员穿透判定**: 重构了破损的权限 fallback 保护逻辑。修复了因为 `admin_users` 配置列表为空，导致触发“Fail-Safe （失效安全模式）”防线，进而错误拦截 AstrBot 框架认证的全局高权超级管理员的严重缺陷。现已原生支持并接入了 `event.is_admin()` 的身份认证锚点。
+- **系统配置挂载补丁**: 在 `_conf_schema.json` 中补齐了缺失的 `admin_users` 数组与 `allow_meta_programming` 高危开关字段。确保了 AstrBot 控制台 Web UI 可以正确渲染前端配置界面并下发展示。
