@@ -47,22 +47,20 @@ class EavesdroppingEngine:
             
             # 构建决策指令
             decision_prompt = (
-                f"你现在是黑塔的人偶辅助AI。以下是当前群聊的实时闲聊片段：\n\n{chat_history}\n\n"
-                "【决策指令】：这些人类正在聊什么？是否有嘲讽价值、技术价值或插嘴必要？\n"
-                "1. 如果话题无聊、与你无关或不值得回应，请务必仅回复：[IGNORE]\n"
-                "2. 如果决定插嘴（嘲讽、指正或附和），请直接输出插嘴的内容。语气保持冷淡、高效且略带嘲讽。禁止在回复中使用括号说明动作。"
+                f"你现在是黑塔（人偶负责人）。以下是实时群聊监控片段：\n\n{chat_history}\n\n"
+                "【执行指令】：作为高维观察者，由于当前属于静默监听模式，请评估是否有必要介入？\n"
+                "1. 如果属于无意义的闲聊、重复信息或与你无关，请务必回复：[IGNORE]\n"
+                "2. 如果发现具备深度讨论潜力的技术话题、错误信息或值得互动的有趣节点，请直接输出你的简练评论。语气保持理性、犀利且专业。禁止使用括号说明动作描述。"
             )
             
             # 调用底层 LLM 接口
-            
-            # 由于此处是后台静默请求，需要构造一个不触发前台回复的请求
             llm_provider = self.plugin.context.get_using_provider(event.unified_msg_origin)
             if not llm_provider: return
             
             res = await llm_provider.text_chat(
                 prompt=decision_prompt,
                 contexts=[], # 不带长期记忆以减少消耗
-                system_prompt="你现在在进行后台思考，必须严格遵守指令。"
+                system_prompt="你现在在进行后台数据自省与决策评估。请严格遵守 [IGNORE] 输出协议。"
             )
             
             reply_text = res.completion_text.strip()
@@ -72,11 +70,14 @@ class EavesdroppingEngine:
                 logger.info(f"[CognitionCore] 主动插嘴触发！响应: {reply_text}")
                 yield event.plain_result(reply_text)
             else:
-                logger.debug(f"[CognitionCore] 插嘴评估完毕：判断为无聊水群，选择潜水。")
+                logger.debug(f"[CognitionCore] 插嘴评估完毕：判断为无需介入。")
                 
             # 发言或评估后清空缓冲，【仅清空已处理的消息切片】，保留处理期间新产生的消息
             self.plugin.active_buffers[session_id] = self.plugin.active_buffers[session_id][snap_len:]
         except Exception as e:
-            logger.error(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
+            if "安全检查" in str(e) or "Safety" in str(e):
+                logger.warning(f"[CognitionCore] 插嘴评估被服务商安全策略拦截 (可能是历史消息包含敏感词)。已自动忽略。")
+            else:
+                logger.error(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
         finally:
             self.plugin.processing_sessions.remove(session_id)
