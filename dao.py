@@ -217,3 +217,33 @@ class SelfEvolutionDAO:
                     last_interaction = ?
             ''', (user_id, delta, datetime.now().isoformat(), delta, datetime.now().isoformat()))
             await db.commit()
+
+    @with_db_retry()
+    async def recover_all_affinity(self, recovery_amount: int = 1):
+        """
+        [大赦天下]: 统一恢复所有人的好感度（用于定时任务）。
+        通常用于缓解长期黑名单导致的死局。
+        """
+        db = await self.get_conn()
+        async with self._write_lock:
+            # 仅给积分小于 50 的人慢慢恢复，上限 50
+            await db.execute('''
+                UPDATE user_relationships 
+                SET affinity_score = MIN(50, affinity_score + ?)
+                WHERE affinity_score < 50
+            ''', (recovery_amount,))
+            await db.commit()
+
+    @with_db_retry()
+    async def reset_affinity(self, user_id: str, score: int = 50):
+        """管理员强制重置好感度"""
+        db = await self.get_conn()
+        async with self._write_lock:
+            await db.execute('''
+                INSERT INTO user_relationships (user_id, affinity_score, last_interaction)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET 
+                    affinity_score = ?,
+                    last_interaction = ?
+            ''', (user_id, score, datetime.now().isoformat(), score, datetime.now().isoformat()))
+            await db.commit()
