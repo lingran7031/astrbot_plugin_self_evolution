@@ -319,41 +319,23 @@ class SelfEvolutionPlugin(Star):
         # --- [Meta-Programming 注入] 身份与环境感知 ---
         sender_id = user_id
         
-        # 增强身份识别逻辑：优先使用群名片，其次是用户昵称
-        sender_name = "Unknown User"
-        sender_card = None
-        if hasattr(event, "sender_name") and event.sender_name:
-            sender_name = event.sender_name
+        # 增强身份识别逻辑
+        sender_name = event.get_sender_name() or "Unknown User"
         
-        # 获取群名片（QQ群特有）
-        if hasattr(event.message_obj, "card") and event.message_obj.card:
-            sender_card = event.message_obj.card
-            sender_name = sender_card
-            
-        # 获取群角色信息
-        role_info = ""
-        is_group = False
-        if hasattr(event.message_obj, "group_id") and event.message_obj.group_id:
-            is_group = True
-            if hasattr(event.message_obj, "role"):
-                role = event.message_obj.role
-                if role == "owner": role_info = "（群主）"
-                elif role == "admin": role_info = "（管理员）"
+        # 获取群组特征
+        is_group = bool(event.get_group_id())
+        role_info = "（管理员）" if event.is_admin() else ""
         
-        # 提取引用消息信息（回复了谁）
+        # 从消息链中提取 [引用] 和 [At]
         quoted_info = ""
-        if hasattr(event.message_obj, "source") and event.message_obj.source:
-            source = event.message_obj.source
-            if hasattr(source, "name"):
-                quoted_info = f"，你正在回复 {source.name} 的消息"
-            elif hasattr(source, "user_id"):
-                quoted_info = f"，你正在回复用户 {source.user_id} 的消息"
-        
-        # 提取@信息
-        at_info = ""
-        if hasattr(event.message_obj, "at") and event.message_obj.at:
-            at_targets = event.message_obj.at
-            at_info = f"，消息中提到了: {at_targets}"
+        at_targets = []
+        for comp in event.get_messages():
+            if type(comp).__name__ == "Reply":
+                quoted_info = f"，你正在回复用户 {getattr(comp, 'sender_nickname', '未知')} 的消息"
+            elif type(comp).__name__ == "At":
+                at_targets.append(str(getattr(comp, 'qq', '')))
+                
+        at_info = f"，消息中提到了: {', '.join(at_targets)}" if at_targets else ""
             
         # 构造上下文注入
         context_info = f"\n\n[当前交互上下文环境信息]：\n- 发送者ID: {sender_id}\n- 发送者昵称: {sender_name}{role_info}\n- 情感积分: {affinity}/100\n"
@@ -404,7 +386,7 @@ class SelfEvolutionPlugin(Star):
             self.active_buffers[session_id] = []
         
         msg_text = event.message_str
-        sender_name = getattr(event, "sender_name", "Unknown")
+        sender_name = event.get_sender_name() or "Unknown"
         self.active_buffers[session_id].append(f"{sender_name}({user_id}): {msg_text}")
         
         # 防止溢出
@@ -431,19 +413,18 @@ class SelfEvolutionPlugin(Star):
             )
             
             # 调用底层 LLM 接口
-            provider = self.context.get_str_config_value("provider", "default")
             
-            # 由于此处是后台静默请求，需要构造一个不触发前台回复的 Request
-            llm_request = ProviderRequest(
-                system_prompt=decision_prompt,
-                contexts=[], # 可以不带长期记忆以减少消耗
-                image_urls=[]
+            # 由于此处是后台静默请求，需要构造一个不触发前台回复的请求
+            llm_provider = self.context.get_current_provider()
+            if not llm_provider: return
+            
+            res = await llm_provider.text_chat(
+                prompt=decision_prompt,
+                contexts=[], # 不带长期记忆以减少消耗
+                system_prompt="你现在在进行后台思考，必须严格遵守指令。"
             )
             
-            llm_provider = self.context.get_current_provider()
-            res = await llm_provider.request(llm_request)
-            
-            reply_text = res.get("text", "").strip()
+            reply_text = res.completion_text.strip()
             
             # 只有当模型输出不是 IGNORE 时才真实下发到聊天框
             if reply_text and "[IGNORE]" not in reply_text:
