@@ -68,6 +68,7 @@ class SelfEvolutionPlugin(Star):
         self.persona_name = config.get("persona_name", "黑塔")
         self.persona_title = config.get("persona_title", "人偶负责人")
         self.persona_style = config.get("persona_style", "理性、犀利且专业")
+        self.interjection_desire = int(config.get("interjection_desire", 5))
         self.active_buffers = {} # {session_id: [msg_list]}
         self.processing_sessions = set()
         self._lock = None # 用于元编程写锁
