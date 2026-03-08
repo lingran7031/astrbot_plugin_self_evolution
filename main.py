@@ -163,9 +163,11 @@ class SelfEvolutionPlugin(Star):
             req.system_prompt += injection
             logger.debug("[SelfEvolution] 已在上下文中注入常驻辩证反省指令。")
 
-    @filter.event_message_type(filter.EventMessageType.ALL)
+    @filter.priority(100)
+    @filter.ignore_self()
     async def on_message_listener(self, event: AstrMessageEvent):
-        """CognitionCore 3.0: 被动监听转发至 EavesdroppingEngine"""
+        """CognitionCore 3.0: 广谱监听转发至 EavesdroppingEngine"""
+        logger.info(f"[SelfEvolution] 捕获到原始消息事件: '{event.message_str}' (来自: {event.get_sender_id()})")
         async for result in self.eavesdropping.handle_message(event):
             yield result
 
