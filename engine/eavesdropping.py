@@ -10,9 +10,12 @@ class EavesdroppingEngine:
 
     async def handle_message(self, event: AstrMessageEvent):
         """CognitionCore 4.5: 意图预扫描 (Intent Pre-scan) 拦截器"""
-        if event.is_at_or_wake_command: return
-        
         msg_text = event.message_str
+        is_at = event.is_at_or_wake_command
+        
+        logger.debug(f"[CognitionCore] 收到消息: '{msg_text}' | At/Wake: {is_at}")
+        
+        if is_at: return
         session_id = event.session_id
         user_id = event.get_sender_id()
         score = await self.plugin.dao.get_affinity(user_id)
