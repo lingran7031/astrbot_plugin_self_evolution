@@ -5,6 +5,7 @@ from astrbot.api.star import StarTools
 from astrbot.api import logger
 import asyncio
 import uuid
+import os
 from datetime import datetime
 import inspect
 
@@ -32,7 +33,8 @@ class SelfEvolutionPlugin(Star):
 
     def __init__(self, context: Context, config: dict):
         super().__init__(context, config)
-        self.data_dir = self.context.get_data_dir()
+        self.data_dir = StarTools.get_data_dir() / "self_evolution"
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         db_path = os.path.join(self.data_dir, "self_evolution.db")
         
         # 初始化模块化组件
