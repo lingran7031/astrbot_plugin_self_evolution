@@ -424,6 +424,24 @@ class SelfEvolutionPlugin(Star):
         await self.dao.set_pending_reflection(event.session_id, True)
         yield event.plain_result("认知蒸馏协议已就绪，将在下一次对话时执行深度实体提取。")
 
+    @filter.command("affinity")
+    async def check_affinity(self, event: AstrMessageEvent):
+        """查询黑塔对你的当前好感度（仅限CognitionCore 2.0+）。"""
+        user_id = event.get_sender_id()
+        score = await self.dao.get_affinity(user_id)
+        
+        # 状态评估
+        if score >= 80:
+            status_desc = "信任与友善 (Friendly)"
+        elif score >= 50:
+            status_desc = "中立观望 (Neutral)"
+        elif score > 0:
+            status_desc = "反感与防备 (Hostile)"
+        else:
+            status_desc = "完全熔断 (Blocked)"
+            
+        yield event.plain_result(f"【CognitionCore 情感矩阵状态】\n- 交互对象: {user_id}\n- 当前好感度: {score}/100\n- 系统评估: {status_desc}")
+
     @filter.llm_tool(name="update_affinity")
     async def update_affinity(self, event: AstrMessageEvent, delta: int, reason: str) -> str:
         """
