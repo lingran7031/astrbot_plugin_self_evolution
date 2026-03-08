@@ -454,18 +454,10 @@ class SelfEvolutionPlugin(Star):
     async def list_tools(self, event: AstrMessageEvent) -> str:
         """
         列出当前所有已注册的工具及其激活状态。
-        :return: 带有详细激活态的格式化字符串报表。
         """
         try:
             tool_mgr = self.context.get_llm_tool_manager()
-
-            # 兼容性寻找官方标准公开 API，移除脆弱的底层反射尝试逻辑
-            if hasattr(tool_mgr, "get_registered_tools"):
-                tools = tool_mgr.get_registered_tools()
-            elif hasattr(tool_mgr, "get_all_tools"):
-                tools = tool_mgr.get_all_tools()
-            else:
-                return "安全预警：AstrBot框架核心架构已历经改组，get_registered_tools 等公开接口失效。"
+            tools = tool_mgr.func_list
 
             result = ["当前工具列表："]
             for t in tools:
