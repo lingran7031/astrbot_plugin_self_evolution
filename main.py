@@ -91,7 +91,8 @@ class SelfEvolutionPlugin(Star):
     def timeout_memory_commit(self): return float(self.config.get("timeout_memory_commit", 10.0))
     @property
     def timeout_memory_recall(self): return float(self.config.get("timeout_memory_recall", 12.0))
-        
+
+    def _post_init(self):
         logger.info(f"[SelfEvolution] === 插件初始化完成 | 模式: {'审核' if self.review_mode else '自动'} | 元编程: {self.allow_meta_programming} ===")
 
     @filter.on_plugin_unloaded()
