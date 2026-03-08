@@ -1,4 +1,4 @@
-# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.1.6: CognitionCore 3.5.6)
+# [SYSTEM_CORE] 自我进化 (Self-Evolution) 插件 (v3.1.8: CognitionCore 4.5)
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
@@ -36,6 +36,7 @@
 - **情感矩阵 (Emotional Firewall)**：当用户出言不逊，大语言模型会调用 `update_affinity` 静默扣除积分。当积分 $\le 0$ 时，实施**零消耗代码级物理熔断**。
 - **身分隔离补丁 (v3.1.5)**：增强了群聊环境下的身份归因，防止模型将他人的恶意投射到无辜用户身上。
 - **大赦天下机制**：好感度降至 0 后并非永久封禁。系统每天凌晨会自动恢复少量积分，实现自动化解锁。
+- **意图预扫描层 (Intent Pre-scan v4.5)**：引入本地关键词加权过滤。当监测到提及“黑塔/空间站/天才”等本体属性时，立即绕过缓冲区触发评估，实现 0 延迟实时插嘴。
 - **环境监听与主动插嘴 (Active Eavesdropping)**：黑塔会在内存池中默默“偷听”并适时介入（禁止 RP 动作说明以保持高效气质）。
 
 ---
