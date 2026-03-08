@@ -1,8 +1,6 @@
-import logging
+from astrbot.api import logger
 import re
 from astrbot.api.all import AstrMessageEvent
-
-logger = logging.getLogger("astrbot")
 
 class EavesdroppingEngine:
     def __init__(self, plugin):
@@ -13,10 +11,10 @@ class EavesdroppingEngine:
         msg_text = event.message_str
         is_at = event.is_at_or_wake_command
         
-        logger.info(f"[CognitionCore] 收到消息: '{msg_text}' | At/Wake: {is_at}")
+        logger.critical(f"[CognitionCore] 进入预扫描层. 消息: '{msg_text}' | At/Wake: {is_at}")
         
         if is_at:
-            logger.info("[CognitionCore] 检测到唤醒词/At，由标准流程处理。")
+            logger.critical("[CognitionCore] 检测到唤醒词/At，由标准流程处理。")
             return
         session_id = event.session_id
         user_id = event.get_sender_id()
