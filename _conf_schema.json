@@ -46,5 +46,17 @@
         "description": "除了系统全局管理员外，额外允许执行插件敏感操作（如审批进化）的用户 ID 列表。",
         "type": "list",
         "default": []
+    },
+    "buffer_threshold": {
+        "title": "主动自省：触发阈值(条)",
+        "description": "CognitionCore 3.0 参数。非艾特状态下，记忆缓冲池积攒多少条群聊消息后触发一次 LLM 后台自省和插嘴评估。设置过小极耗 Tokens，建议 8 - 15。",
+        "type": "int",
+        "default": 8
+    },
+    "max_buffer_size": {
+        "title": "主动自省：缓冲池硬上限",
+        "description": "防止水群导致内存溢出。超过此长度的久远零散对话将被丢弃。",
+        "type": "int",
+        "default": 20
     }
 }

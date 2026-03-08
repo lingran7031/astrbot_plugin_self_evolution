@@ -18,8 +18,6 @@ ANCHOR_MARKER = "Core Safety Anchor"
 PROTECTED_TOOLS = frozenset({"toggle_tool", "list_tools", "evolve_persona", "recall_memories", "review_evolutions", "approve_evolution"})
 MAX_PROPOSAL_FILES = 50
 PAGE_LIMIT = 10
-BUFFER_THRESHOLD = 8 # 缓冲池达到 8 条消息时触发插嘴评估
-MAX_BUFFER_SIZE = 20 # 缓冲池硬上限，防止内存泄漏
 
 DAILY_REFLECTION_PROMPT = (
     "进行每日自我反思。请执行以下步骤：\n"
@@ -278,10 +276,12 @@ class SelfEvolutionPlugin(Star):
         self.dao = SelfEvolutionDAO(str(db_path))
 
         # CognitionCore 3.0: 主动插嘴缓冲池
+        self.buffer_threshold = int(self.config.get("buffer_threshold", 8))
+        self.max_buffer_size = int(self.config.get("max_buffer_size", 20))
         self.active_buffers = {} # {session_id: [messages]}
         self.processing_sessions = set() # 正在处理插嘴决策的会话
         
-        logger.info("[CognitionCore] 3.0 引擎初始化完成。主动环境感知已就绪。")
+        logger.info(f"[CognitionCore] 3.0 引擎初始化完成。主动环境感知就绪 (触发阈值: {self.buffer_threshold})。")
         
         self.daily_reflection_pending = False
         
@@ -408,11 +408,11 @@ class SelfEvolutionPlugin(Star):
         self.active_buffers[session_id].append(f"{sender_name}({user_id}): {msg_text}")
         
         # 防止溢出
-        if len(self.active_buffers[session_id]) > MAX_BUFFER_SIZE:
+        if len(self.active_buffers[session_id]) > self.max_buffer_size:
             self.active_buffers[session_id].pop(0)
             
         # 触发评估决策
-        if len(self.active_buffers[session_id]) >= BUFFER_THRESHOLD and session_id not in self.processing_sessions:
+        if len(self.active_buffers[session_id]) >= self.buffer_threshold and session_id not in self.processing_sessions:
             asyncio.create_task(self._evaluate_interjection(event, session_id))
 
     async def _evaluate_interjection(self, event: AstrMessageEvent, session_id: str):
