@@ -712,11 +712,14 @@ class SelfEvolutionPlugin(Star):
             try:
                 docs = await kb_helper.list_documents()
                 if docs and len(docs) >= max_memory_entries:
-                    oldest_doc = min(docs, key=lambda d: d.get("created_at", ""))
-                    if oldest_doc.get("doc_id"):
-                        await kb_helper.delete_document(oldest_doc["doc_id"])
+                    oldest_doc = min(
+                        docs, key=lambda d: getattr(d, "created_at", "") or ""
+                    )
+                    doc_id = getattr(oldest_doc, "doc_id", None)
+                    if doc_id:
+                        await kb_helper.delete_document(doc_id)
                         logger.info(
-                            f"[SelfEvolution] 自动清理：已删除最旧的记忆条目 {oldest_doc.get('doc_id')}"
+                            f"[SelfEvolution] 自动清理：已删除最旧的记忆条目 {doc_id}"
                         )
             except Exception as e:
                 logger.warning(f"[SelfEvolution] 自动清理失败: {e}")
@@ -833,8 +836,9 @@ class SelfEvolutionPlugin(Star):
             deleted_count = 0
             for doc in docs:
                 try:
-                    if doc.get("doc_id"):
-                        await kb_helper.delete_document(doc["doc_id"])
+                    doc_id = getattr(doc, "doc_id", None)
+                    if doc_id:
+                        await kb_helper.delete_document(doc_id)
                         deleted_count += 1
                 except Exception as e:
                     logger.warning(f"[SelfEvolution] 删除记忆条目失败: {e}")
@@ -871,8 +875,8 @@ class SelfEvolutionPlugin(Star):
             docs = docs[:limit]
             result = [f"当前记忆库共有 {len(docs)} 条记忆（显示前 {len(docs)} 条）："]
             for i, doc in enumerate(docs, 1):
-                doc_name = doc.get("doc_name", "未知")
-                created_at = doc.get("created_at", "未知时间")
+                doc_name = getattr(doc, "doc_name", "未知")
+                created_at = getattr(doc, "created_at", "未知时间")
                 result.append(f"{i}. {doc_name} (创建于: {created_at})")
 
             return "\n".join(result)
