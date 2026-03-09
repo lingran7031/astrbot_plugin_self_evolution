@@ -81,34 +81,6 @@ class EavesdroppingEngine:
                         logger.info(f"[Profile] 冷场判定，清空缓存: {session_id}")
                 return
 
-            # 检测对话是否结束（所有人都不再 @ 机器人 且 超过一定条数）
-            if len(cache["messages"]) >= 10 and not is_at:
-                # 触发画像更新 - 为当前会话中最后说话的用户更新画像
-                if cache["messages"]:
-                    last_sender_id = cache["messages"][-1].get("sender_id")
-                    last_sender_name = cache["messages"][-1].get("sender", "Unknown")
-                else:
-                    last_sender_id = cache.get("trigger_user")
-                    last_sender_name = "Unknown"
-
-                dialogue = "\n".join(
-                    [f"{m['sender']}: {m['content']}" for m in cache["messages"]]
-                )
-
-                source_uuids = [
-                    m.get("uuid") for m in cache["messages"] if m.get("uuid")
-                ]
-
-                if last_sender_id and self.plugin.enable_profile_update:
-                    asyncio.create_task(
-                        self.plugin.profile.update_profile_from_dialogue(
-                            last_sender_id, dialogue, source_uuids
-                        )
-                    )
-                    logger.info(
-                        f"[Profile] 触发画像更新: {last_sender_id} ({last_sender_name}), UUIDs: {source_uuids}"
-                    )
-
                 async with self._cache_lock:
                     if session_id in self.temp_cache:
                         del self.temp_cache[session_id]

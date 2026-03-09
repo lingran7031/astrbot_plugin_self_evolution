@@ -708,6 +708,73 @@ class SelfEvolutionPlugin(Star):
 
         return json.dumps(profile, ensure_ascii=False, indent=2)
 
+    @filter.llm_tool(name="update_user_profile")
+    async def update_user_profile(
+        self,
+        event: AstrMessageEvent,
+        target_user_id: str,
+        tags: str = "",
+        traits: str = "",
+        reason: str = "",
+    ) -> str:
+        """当你在对话中发现用户的兴趣偏好或性格特征时，调用此工具更新用户画像。
+
+        触发场景：
+        - 用户表达喜欢/讨厌某事物
+        - 用户透露自己的性格特点
+        - 用户展示行为习惯
+
+        Args:
+            target_user_id(string): 要更新的目标用户ID（必填）
+            tags(string): 兴趣标签，多个用逗号分隔，如：Python,音乐,游戏（可选）
+            traits(string): 性格特征，多个用逗号分隔，如：内向,直接,幽默（可选）
+            reason(string): 更新理由，说明你为什么得出这个结论（必填）
+        """
+        import json
+
+        # 构建更新数据
+        new_tags = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+        new_traits = (
+            [t.strip() for t in traits.split(",") if t.strip()] if traits else []
+        )
+
+        if not new_tags and not new_traits:
+            return "没有提供任何要更新的标签，请至少填写 tags 或 traits 之一。"
+
+        # 简单处理：直接追加，不经过复杂合并
+        profile = await self.profile.load_profile(target_user_id)
+
+        # 添加新标签
+        for tag_name in new_tags:
+            if not any(t.get("name") == tag_name for t in profile.get("tags", [])):
+                profile.setdefault("tags", []).append(
+                    {
+                        "name": tag_name,
+                        "weight": 0.5,
+                        "last_seen": datetime.now().strftime("%Y-%m-%d"),
+                        "source_uuids": [],
+                        "reason": reason,
+                    }
+                )
+
+        # 添加新性格
+        for trait_name in new_traits:
+            if not any(t.get("name") == trait_name for t in profile.get("traits", [])):
+                profile.setdefault("traits", []).append(
+                    {
+                        "name": trait_name,
+                        "weight": 0.5,
+                        "last_seen": datetime.now().strftime("%Y-%m-%d"),
+                        "source_uuids": [],
+                        "reason": reason,
+                    }
+                )
+
+        profile["updated_at"] = datetime.now().isoformat()
+        await self.profile.save_profile(target_user_id, profile)
+
+        return f"已更新用户 {target_user_id} 的画像。新增标签: {new_tags}, 新增性格: {new_traits}"
+
     @filter.command("view_profile")
     async def view_profile_cmd(self, event: AstrMessageEvent, user_id: str = ""):
         """查看指定用户的画像信息。"""
