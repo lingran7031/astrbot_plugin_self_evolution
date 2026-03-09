@@ -48,8 +48,9 @@ class EavesdroppingEngine:
 
         # === 触发条件 B：用户 @ 机器人 ===
         if is_at:
+            # 开启缓存用于画像，不返回，继续执行后续逻辑
             await self._start_temp_cache(session_id, user_id)
-            return
+            # 不 return，继续让 AI 正常回复
 
         # 检查是否有待处理的缓存
         if session_id in self.temp_cache:
@@ -79,11 +80,6 @@ class EavesdroppingEngine:
                     if session_id in self.temp_cache:
                         del self.temp_cache[session_id]
                         logger.info(f"[Profile] 冷场判定，清空缓存: {session_id}")
-                return
-
-                async with self._cache_lock:
-                    if session_id in self.temp_cache:
-                        del self.temp_cache[session_id]
                 return
 
         score = await self.plugin.dao.get_affinity(user_id)
