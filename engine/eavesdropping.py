@@ -20,18 +20,6 @@ class EavesdroppingEngine:
         sender_id = user_id  # 统一变量名
         is_at = event.is_at_or_wake_command
 
-        # === 消息日志记录（异步，不阻塞）===
-        chat_logger = getattr(self.plugin, "chat_logger", None)
-        msg_uuid = None
-        if chat_logger and msg_text and len(msg_text.strip()) > 0:
-            msg_uuid = await chat_logger.log_message(
-                session_id=session_id,
-                sender_id=user_id,
-                sender_name=sender_name,
-                content=msg_text,
-                is_ai=False,
-            )
-
         # 获取命令前缀配置，检查是否为命令消息
         config = self.plugin.context.get_config()
         bot_wake_prefixes = config.get("wake_prefix", ["/"])
@@ -63,7 +51,6 @@ class EavesdroppingEngine:
                     "sender_id": user_id,
                     "content": msg_text,
                     "time": time.time(),
-                    "uuid": msg_uuid,
                 }
             )
 
@@ -263,18 +250,6 @@ class EavesdroppingEngine:
 
             if reply_text and "[IGNORE]" not in reply_text and not is_meta:
                 logger.info(f"[CognitionCore] 插嘴评估通过！响应: {reply_text}")
-
-                # 记录 AI 的回复到日志
-                chat_logger = getattr(self.plugin, "chat_logger", None)
-                if chat_logger:
-                    await chat_logger.log_message(
-                        session_id=session_id,
-                        sender_id="AI",
-                        sender_name=getattr(self.plugin, "persona_name", "黑塔"),
-                        content=reply_text,
-                        is_ai=True,
-                    )
-
                 yield event.plain_result(reply_text)
             else:
                 reason = (
