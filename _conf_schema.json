@@ -49,7 +49,7 @@
     },
     "buffer_threshold": {
         "title": "主动自省：触发阈值(条)",
-        "description": "CognitionCore 3.0 参数。非艾特状态下，记忆缓冲池积攒多少条群聊消息后触发一次 LLM 后台自省和插嘴评估。设置过小极耗 Tokens，建议 8 - 15。",
+        "description": "CognitionCore 6.0 参数。非艾特状态下，记忆缓冲池积攒多少条群聊消息后触发一次 LLM 后台自省和插嘴评估。设置过小极耗 Tokens，建议 8 - 15。",
         "type": "int",
         "default": 8
     },

@@ -39,7 +39,7 @@ PAGE_LIMIT = 10
 @register(
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
-    "具备主动环境感知及插嘴引擎的 CognitionCore 3.0 数字生命。",
+    "具备主动环境感知及插嘴引擎的 CognitionCore 6.0 数字生命。",
     "3.2.14",
 )
 class SelfEvolutionPlugin(Star):
@@ -74,7 +74,7 @@ class SelfEvolutionPlugin(Star):
             logger.error(f"[SelfEvolution] 核心组件初始化失败: {e}")
             raise e
 
-        # CognitionCore 3.0: 状态容器
+        # CognitionCore 6.0: 状态容器
         self.active_buffers = {}  # {session_id: [msg_list]}
         self.processing_sessions = set()
         self._lock = None  # 用于元编程写锁
@@ -268,7 +268,7 @@ class SelfEvolutionPlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
-        """CognitionCore 3.0: 被动监听转发至 EavesdroppingEngine"""
+        """CognitionCore 6.0: 被动监听转发至 EavesdroppingEngine"""
         # 自动学习触发：检测关键场景
         await self.memory.auto_learn_trigger(event)
 
