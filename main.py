@@ -762,6 +762,66 @@ class SelfEvolutionPlugin(Star):
 
         return f"已更新用户 {target_user_id} 的画像。新增标签: {new_tags}, 新增性格: {new_traits}"
 
+    @filter.llm_tool(name="get_user_messages")
+    async def get_user_messages(
+        self, event: AstrMessageEvent, target_user_id: str = None, limit: int = 100
+    ) -> str:
+        """获取用户的历史消息记录，用于分析用户行为模式。
+
+        触发场景：
+        - 需要了解用户更多信息时
+        - 更新用户画像前获取历史发言
+
+        Args:
+            target_user_id(string): 目标用户ID，不填则获取当前用户（可选）
+            limit(number): 获取消息数量，默认100，最大1000（可选）
+        """
+        import json
+
+        target = target_user_id or event.get_sender_id()
+        group_id = event.get_group_id()
+
+        if not group_id:
+            return "只有群聊才能获取历史消息，私聊场景不支持此功能。"
+
+        # 限制数量
+        limit = min(max(1, limit), 1000)
+
+        try:
+            history_mgr = self.context.message_history_manager
+            platform_id = event.get_platform_name() or "qq"
+
+            history = await history_mgr.get(
+                platform_id=platform_id, user_id=group_id, page=1, page_size=limit
+            )
+
+            if not history:
+                return f"未找到用户 {target} 在该群的历史消息记录。"
+
+            # 按用户过滤
+            user_messages = [
+                {
+                    "sender": getattr(msg, "sender_name", "Unknown"),
+                    "content": getattr(msg, "message_str", "")[:200],
+                }
+                for msg in history
+                if str(getattr(msg, "sender_id", "")) == str(target)
+            ]
+
+            if not user_messages:
+                return f"未找到用户 {target} 在该群的历史消息记录。"
+
+            # 格式化为文本
+            result = [f"用户 {target} 的历史消息（共 {len(user_messages)} 条）："]
+            for i, msg in enumerate(user_messages[:20], 1):  # 最多显示20条
+                result.append(f"{i}. {msg['sender']}: {msg['content']}")
+
+            return "\n".join(result)
+
+        except Exception as e:
+            logger.error(f"[SelfEvolution] 获取用户消息失败: {e}")
+            return f"获取历史消息失败: {str(e)}"
+
     @filter.command("view_profile")
     async def view_profile_cmd(self, event: AstrMessageEvent, user_id: str = ""):
         """查看指定用户的画像信息。"""
