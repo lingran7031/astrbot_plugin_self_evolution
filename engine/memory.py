@@ -51,7 +51,8 @@ class MemoryManager:
                 return
 
             if group_id:
-                target_docs = [f"memory_group_{group_id}", f"memory_user_{user_id}"]
+                # 群聊时只检索当前用户的记忆（按用户隔离）
+                target_docs = [f"memory_group_{group_id}_user_{user_id}"]
             else:
                 target_docs = [f"memory_user_{user_id}"]
 
@@ -133,7 +134,7 @@ class MemoryManager:
             await self._learn_to_memory(event, msg_text)
 
     async def _learn_to_memory(self, event, msg_text):
-        """按用户/群汇总存知识库"""
+        """按用户/群汇总存知识库（按用户隔离）"""
         try:
             group_id = event.get_group_id()
             user_id = event.get_sender_id()
@@ -141,7 +142,8 @@ class MemoryManager:
             msg_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if group_id:
-                doc_name = f"memory_group_{group_id}"
+                # 群聊时按用户隔离存储
+                doc_name = f"memory_group_{group_id}_user_{user_id}"
             else:
                 doc_name = f"memory_user_{user_id}"
 
