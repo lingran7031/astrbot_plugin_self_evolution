@@ -17,6 +17,7 @@ class EavesdroppingEngine:
         session_id = event.session_id
         user_id = event.get_sender_id()
         sender_name = event.get_sender_name() or "Unknown"
+        sender_id = user_id  # 统一变量名
         is_at = event.is_at_or_wake_command
 
         # 获取命令前缀配置，检查是否为命令消息
@@ -120,12 +121,12 @@ class EavesdroppingEngine:
                 self.plugin._session_speakers[session_id] = {}
 
         speaker_map = self.plugin._session_speakers[session_id]
-        if sender_id not in speaker_map:
-            speaker_map[sender_id] = len(speaker_map) + 1
-        speaker_num = speaker_map[sender_id]
+        if user_id not in speaker_map:
+            speaker_map[user_id] = len(speaker_map) + 1
+        speaker_num = speaker_map[user_id]
 
         self.plugin.active_buffers[session_id].append(
-            f"[群成员{speaker_num}]{sender_name}({sender_id}): {msg_text}"
+            f"[群成员{speaker_num}]{sender_name}({user_id}): {msg_text}"
         )
 
         if len(self.plugin.active_buffers[session_id]) > self.plugin.max_buffer_size:
