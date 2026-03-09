@@ -19,6 +19,7 @@ from .engine.meta_infra import MetaInfra
 from .engine.memory import MemoryManager
 from .engine.persona import PersonaManager
 from .engine.profile import ProfileManager
+from .engine.chat_logger import ChatLogger
 
 
 # 全局不可变常量提取 (迁移至主类管理)
@@ -67,8 +68,9 @@ class SelfEvolutionPlugin(Star):
             self.memory = MemoryManager(self)
             self.persona = PersonaManager(self)
             self.profile = ProfileManager(self)
+            self.chat_logger = ChatLogger(self)
             logger.info(
-                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, MetaInfra, Memory, Persona, Profile) 初始化完成。"
+                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, MetaInfra, Memory, Persona, Profile, ChatLogger) 初始化完成。"
             )
         except Exception as e:
             logger.error(f"[SelfEvolution] 核心组件初始化失败: {e}")
@@ -186,6 +188,7 @@ class SelfEvolutionPlugin(Star):
             f"[CognitionCore] 进入 LLM 请求拦截层。用户: {event.get_sender_id()} | 消息: '{event.message_str}'"
         )
         user_id = event.get_sender_id()
+        session_id = event.session_id
 
         # 1. 情感矩阵拦截：节省 Token
         affinity = await self.dao.get_affinity(user_id)
@@ -208,10 +211,38 @@ class SelfEvolutionPlugin(Star):
 
         # 从消息链中提取 [引用] 和 [At]
         quoted_info = ""
+        ai_context_info = ""
         at_targets = []
+
         for comp in event.get_messages():
             if type(comp).__name__ == "Reply":
-                quoted_info = f"，你正在回复用户 {getattr(comp, 'sender_nickname', '未知')} 的消息"
+                reply_sender = getattr(comp, "sender_nickname", "")
+                reply_content = getattr(comp, "message_str", "")
+                reply_sender_id = getattr(comp, "sender_id", "")
+
+                # 检测是否引用了 AI 的消息
+                if reply_sender == self.persona_name or str(reply_sender_id) == "AI":
+                    # 从日志中查找 AI 最近的回复
+                    if hasattr(self, "chat_logger"):
+                        ai_replies = await self.chat_logger.get_ai_reply_for_context(
+                            session_id
+                        )
+                        if ai_replies:
+                            latest_ai_msg = ai_replies[0].get("content", "")
+                            ai_context_info = (
+                                f"\n【重要】用户正在引用你之前的发言进行追问：\n"
+                                f"你之前说：{latest_ai_msg}\n"
+                                f"请针对你之前的这句话回答用户的问题。"
+                            )
+                            quoted_info = f"，你在之前说：{latest_ai_msg[:50]}..."
+                        else:
+                            quoted_info = f"，你在之前说：{reply_content[:30]}..."
+                            ai_context_info = "\n【重要】用户正在引用你之前的发言进行追问，请针对你之前的发言回答。"
+                    else:
+                        quoted_info = f"，你在之前说：{reply_content[:30]}..."
+                        ai_context_info = "\n【重要】用户正在引用你之前的发言进行追问，请针对你之前的发言回答。"
+                else:
+                    quoted_info = f"，你正在回复用户 {reply_sender} 的消息：{reply_content[:30]}..."
             elif type(comp).__name__ == "At":
                 at_targets.append(str(getattr(comp, "qq", "")))
 
@@ -223,6 +254,10 @@ class SelfEvolutionPlugin(Star):
             context_info += f"- 来源：群聊\n- 交互上下文: 你{quoted_info}{at_info}\n"
         else:
             context_info += "- 来源：私聊\n"
+
+        # 注入 AI 上下文（如果用户引用了 AI 的话）
+        if ai_context_info:
+            context_info += ai_context_info
 
         context_info += (
             "\n【核心认知指令 - 身份隔离与动态心跳 (CognitionCore 6.0)】：\n"
