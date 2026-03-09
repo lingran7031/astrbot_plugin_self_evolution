@@ -360,10 +360,11 @@ class SelfEvolutionPlugin(Star):
     async def update_affinity(
         self, event: AstrMessageEvent, delta: int, reason: str
     ) -> str:
-        """
-        根据用户的言行调整其情感积分。
-        :param int delta: 调整值（如 -10 表示冒犯, +5 表示赞赏）。积分跌至 0 将导致系统自动拦截。
-        :param str reason: 调整理由（必须说明用户具体哪项言行导致了积分变动）。
+        """根据用户的言行调整其情感积分。
+
+        Args:
+            delta(number): 调整值（如 -10 表示冒犯, +5 表示赞赏）。积分跌至 0 将导致系统自动拦截。
+            reason(string): 调整理由（必须说明用户具体哪项言行导致了积分变动）。
         """
         user_id = event.get_sender_id()
         await self.dao.update_affinity(user_id, delta)
@@ -376,7 +377,12 @@ class SelfEvolutionPlugin(Star):
     async def evolve_persona(
         self, event: AstrMessageEvent, new_system_prompt: str, reason: str
     ) -> str:
-        """当你需要调整自己的语言风格或行为准则时，调用此工具来修改你的系统提示词。"""
+        """当你需要调整自己的语言风格或行为准则时，调用此工具来修改你的系统提示词。
+
+        Args:
+            new_system_prompt(string): 新的完整系统提示词
+            reason(string): 修改理由
+        """
         return await self.persona.evolve_persona(event, new_system_prompt, reason)
 
     @filter.command("review_evolutions")
@@ -413,41 +419,69 @@ class SelfEvolutionPlugin(Star):
 
     @filter.llm_tool(name="commit_to_memory")
     async def commit_to_memory(self, event: AstrMessageEvent, fact: str) -> str:
-        """当你发现了一些关于用户的重要的、需要永久记住的事实时，调用此工具将该事实存入你的长期记忆库。"""
+        """当你发现了一些关于用户的重要的、需要永久记住的事实时，调用此工具将该事实存入你的长期记忆库。
+
+        Args:
+            fact(string): 需要记住的具体事实或信息
+        """
         return await self.memory.commit_to_memory(event, fact)
 
     @filter.llm_tool(name="recall_memories")
     async def recall_memories(self, event: AstrMessageEvent, query: str) -> str:
-        """当你需要回想起以前记住的事情、用户的偏好或过去的约定知识时，调用此工具。"""
+        """当你需要回想起以前记住的事情、用户的偏好或过去的约定知识时，调用此工具。
+
+        Args:
+            query(string): 搜索关键词或问题
+        """
         return await self.memory.recall_memories(event, query)
 
     @filter.llm_tool(name="learn_from_context")
     async def learn_from_context(
         self, event: AstrMessageEvent, key_info: str = ""
     ) -> str:
-        """从当前对话中自动提取关键信息并存入长期记忆。"""
+        """从当前对话中自动提取关键信息并存入长期记忆。
+
+        Args:
+            key_info(string): 需要记住的关键信息（如果留空，将自动提取当前对话中的关键内容）
+        """
         return await self.memory.learn_from_context(event, key_info)
 
     @filter.llm_tool(name="clear_all_memory")
     async def clear_all_memory(
         self, event: AstrMessageEvent, confirm: bool = False
     ) -> str:
-        """清空指定知识库中的所有记忆条目。谨慎使用！"""
+        """清空指定知识库中的所有记忆条目。谨慎使用！
+
+        Args:
+            confirm(boolean): 必须传入 true 才能执行清空操作（防止误操作）
+        """
         return await self.memory.clear_all_memory(event, confirm)
 
     @filter.llm_tool(name="list_memories")
     async def list_memories(self, event: AstrMessageEvent, limit: int = 10) -> str:
-        """列出当前存储在知识库中的记忆条目。"""
+        """列出当前存储在知识库中的记忆条目。
+
+        Args:
+            limit(number): 最多显示的记忆条目数量，默认10条
+        """
         return await self.memory.list_memories(event, limit)
 
     @filter.llm_tool(name="delete_memory")
     async def delete_memory(self, event: AstrMessageEvent, doc_id: str) -> str:
-        """删除知识库中的单条记忆。"""
+        """删除知识库中的单条记忆。
+
+        Args:
+            doc_id(string): 要删除的记忆条目ID
+        """
         return await self.memory.delete_memory(event, doc_id)
 
     @filter.llm_tool(name="auto_recall")
     async def auto_recall(self, event: AstrMessageEvent, topic: str = "") -> str:
-        """当检测到当前对话涉及历史记忆时，主动将相关记忆注入上下文。"""
+        """当检测到当前对话涉及历史记忆时，主动将相关记忆注入上下文。
+
+        Args:
+            topic(string): 当前对话涉及的话题关键词（如果留空，将使用当前消息内容）
+        """
         return await self.memory.auto_recall(event, topic)
 
     @filter.llm_tool(name="list_tools")
@@ -476,10 +510,11 @@ class SelfEvolutionPlugin(Star):
     async def toggle_tool(
         self, event: AstrMessageEvent, tool_name: str, enable: bool
     ) -> str:
-        """
-        动态激活或停用某个工具。
-        :param str tool_name: 工具名称。
-        :param bool enable: True 表示激活，False 表示停用。
+        """动态激活或停用某个工具。
+
+        Args:
+            tool_name(string): 工具名称
+            enable(boolean): True 表示激活，False 表示停用
         """
         try:
             if tool_name in PROTECTED_TOOLS and not enable:
@@ -516,9 +551,10 @@ class SelfEvolutionPlugin(Star):
     async def get_plugin_source(
         self, event: AstrMessageEvent, mod_name: str = "main"
     ) -> str:
-        """
-        Level 4: 元编程。读取本插件的源码，以便进行自我分析或修改请求。
-        :param str mod_name: 模块名，可选: main, dao, eavesdropping, meta_infra
+        """Level 4: 元编程。读取本插件的源码，以便进行自我分析或修改请求。
+
+        Args:
+            mod_name(string): 模块名，可选: main, dao, eavesdropping, meta_infra, memory, persona
         """
         return await self.meta_infra.get_plugin_source(mod_name)
 
@@ -530,11 +566,12 @@ class SelfEvolutionPlugin(Star):
         description: str,
         target_file: str = "main.py",
     ) -> str:
-        """
-        Level 4: 元编程。针对本插件提出代码修改建议。
-        :param str new_code: 全新的、完整的 python 代码字符串。
-        :param str description: 为什么要修改代码。
-        :param str target_file: 目标文件名。
+        """Level 4: 元编程。针对本插件提出代码修改建议。
+
+        Args:
+            new_code(string): 全新的、完整的 python 代码字符串
+            description(string): 为什么要修改代码
+            target_file(string): 目标文件名，默认 main.py
         """
         return await self.meta_infra.update_plugin_source(
             new_code, description, target_file
