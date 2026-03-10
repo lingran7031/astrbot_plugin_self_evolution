@@ -412,5 +412,71 @@
         "description": "当用户已有画像时，使用增量更新模式。只输出新增/修正内容。",
         "type": "string",
         "default": "你是一个记忆助手。旧笔记：{old_note}。今日对话：{messages}。\n\n请只输出【新增或修正的内容】，不超过100字。不要重复旧笔记中已经存在的信息。只输出纯文本。"
+    },
+    "san_enabled": {
+        "title": "启用SAN值系统",
+        "description": "启用心智疲劳系统，AI 精力耗尽时会拒绝服务或敷衍回复。",
+        "type": "bool",
+        "default": true
+    },
+    "san_max": {
+        "title": "SAN最大值",
+        "description": "AI 的最大精力值。",
+        "type": "int",
+        "default": 100
+    },
+    "san_cost_per_message": {
+        "title": "每条消息消耗SAN",
+        "description": "处理一条消息消耗的精力值。",
+        "type": "float",
+        "default": 2.0
+    },
+    "san_recovery_per_hour": {
+        "title": "每小时恢复SAN",
+        "description": "每小时恢复的精力值。",
+        "type": "int",
+        "default": 10
+    },
+    "san_low_threshold": {
+        "title": "低SAN阈值",
+        "description": "低于此值时 AI 会表现出疲惫。",
+        "type": "int",
+        "default": 20
+    },
+    "group_vibe_enabled": {
+        "title": "启用群体情绪共染",
+        "description": "群氛围会影响 AI 的情绪和行为。",
+        "type": "bool",
+        "default": true
+    },
+    "memory_distortion_rate": {
+        "title": "记忆篡改概率",
+        "description": "做梦时混淆高频用户特征的概率。",
+        "type": "float",
+        "default": 0.05
+    },
+    "curiosity_enabled": {
+        "title": "启用主动发问",
+        "description": "群沉默12小时后，AI 主动抛出话题。",
+        "type": "bool",
+        "default": true
+    },
+    "curiosity_silence_hours": {
+        "title": "触发主动发问的沉默时长",
+        "description": "群沉默多少小时后 AI 会主动发言。",
+        "type": "int",
+        "default": 12
+    },
+    "internal_council_enabled": {
+        "title": "启用内部议会",
+        "description": "争议话题触发多智能体辩论。",
+        "type": "bool",
+        "default": true
+    },
+    "controversial_keywords": {
+        "title": "争议关键词",
+        "description": "触发内部议会的争议关键词。",
+        "type": "string",
+        "default": "php|java|python|哪个好|道德|伦理|政治|宗教"
     }
 }

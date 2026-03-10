@@ -223,6 +223,52 @@ class SelfEvolutionPlugin(Star):
         )
 
     @property
+    def san_enabled(self):
+        return self._parse_bool(self.config.get("san_enabled"), True)
+
+    @property
+    def san_max(self):
+        return int(self.config.get("san_max", 100))
+
+    @property
+    def san_cost_per_message(self):
+        return float(self.config.get("san_cost_per_message", 2.0))
+
+    @property
+    def san_recovery_per_hour(self):
+        return int(self.config.get("san_recovery_per_hour", 10))
+
+    @property
+    def san_low_threshold(self):
+        return int(self.config.get("san_low_threshold", 20))
+
+    @property
+    def group_vibe_enabled(self):
+        return self._parse_bool(self.config.get("group_vibe_enabled"), True)
+
+    @property
+    def memory_distortion_rate(self):
+        return float(self.config.get("memory_distortion_rate", 0.05))
+
+    @property
+    def curiosity_enabled(self):
+        return self._parse_bool(self.config.get("curiosity_enabled"), True)
+
+    @property
+    def curiosity_silence_hours(self):
+        return int(self.config.get("curiosity_silence_hours", 12))
+
+    @property
+    def internal_council_enabled(self):
+        return self._parse_bool(self.config.get("internal_council_enabled"), True)
+
+    @property
+    def controversial_keywords(self):
+        return self.config.get(
+            "controversial_keywords", "php|java|python|哪个好|道德|伦理|政治|宗教"
+        )
+
+    @property
     def prompt_dream_user_system(self):
         return self.config.get(
             "prompt_dream_user_system",
@@ -428,6 +474,110 @@ class SelfEvolutionPlugin(Star):
             self.context.get_config()["birth_timestamp"] = int(time.time())
             logger.info("[Growth] 数字生命诞生！出生时间戳已记录。")
 
+    def _init_san_system(self):
+        if not self.san_enabled:
+            return
+        if not hasattr(self, "_san_value"):
+            self._san_value = self.san_max
+            self._san_last_recovery = time.time()
+            logger.info(f"[SAN] 精力值系统初始化: {self._san_value}/{self.san_max}")
+
+    def _update_san(self):
+        if not self.san_enabled:
+            return True
+        current_time = time.time()
+        elapsed = current_time - getattr(self, "_san_last_recovery", current_time)
+        if elapsed > 3600:
+            recovered = int(elapsed / 3600) * self.san_recovery_per_hour
+            self._san_value = min(self.san_max, self._san_value + recovered)
+            self._san_last_recovery = current_time
+            logger.debug(f"[SAN] 精力恢复: {self._san_value}/{self.san_max}")
+        if self._san_value <= 0:
+            return False
+        self._san_value = max(0, self._san_value - self.san_cost_per_message)
+        return True
+
+    def _get_san_status(self):
+        if not self.san_enabled:
+            return ""
+        ratio = self._san_value / self.san_max
+        if ratio < 0.2:
+            return "疲惫不堪"
+        elif ratio < 0.5:
+            return "略有疲态"
+        return "精力充沛"
+
+    def _init_group_vibe(self):
+        if not self.group_vibe_enabled:
+            return
+        if not hasattr(self, "_group_vibe"):
+            self._group_vibe = {}
+
+    def _update_group_vibe(self, group_id: str, msg_text: str):
+        if not self.group_vibe_enabled:
+            return
+        if not hasattr(self, "_group_vibe"):
+            self._init_group_vibe()
+        negative_words = [
+            "生气",
+            "愤怒",
+            "吵架",
+            "不爽",
+            "滚",
+            "傻",
+            "蠢",
+            "无语",
+            "MD",
+        ]
+        positive_words = ["哈哈", "笑死", "牛逼", "太棒", "爱了", "开心", "真好"]
+        score = 0
+        for w in negative_words:
+            if w in msg_text:
+                score -= 1
+        for w in positive_words:
+            if w in msg_text:
+                score += 1
+        current = self._group_vibe.get(group_id, 0)
+        self._group_vibe[group_id] = max(-10, min(10, current + score))
+
+    def _get_group_vibe(self, group_id: str) -> str:
+        if not self.group_vibe_enabled:
+            return ""
+        vibe = getattr(self, "_group_vibe", {}).get(group_id, 0)
+        if vibe < -5:
+            return "群氛围紧张"
+        elif vibe < 0:
+            return "群氛围略低沉"
+        elif vibe > 5:
+            return "群氛围热烈"
+        elif vibe > 0:
+            return "群氛围轻松"
+        return "群氛围平静"
+
+    def _check_social_bias(self, user_id: str) -> str:
+        if not self.graph_enabled:
+            return ""
+        try:
+            frequent = getattr(self.graph, "get_frequent_interactors", None)
+            if not frequent:
+                return ""
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                return ""
+            interactors = loop.run_until_complete(frequent(str(user_id), 3))
+            biased_users = []
+            for other_user, count in interactors:
+                affinity = loop.run_until_complete(self.dao.get_affinity(other_user))
+                if affinity <= 0:
+                    biased_users.append(other_user)
+            if biased_users:
+                return f"注意：你与用户 {biased_users[0]} 往来密切，需保持警惕。"
+        except:
+            pass
+        return ""
+
     def _check_growth_upgrade(self):
         if not self.growth_enabled:
             return False
@@ -470,8 +620,10 @@ class SelfEvolutionPlugin(Star):
 
     def _post_init(self):
         self._init_growth_system()
+        self._init_san_system()
+        self._init_group_vibe()
         logger.info(
-            f"[SelfEvolution] === 插件初始化完成 | 模式: {'审核' if self.review_mode else '自动'} | 元编程: {self.allow_meta_programming} | 成长: {self.growth_stage} ==="
+            f"[SelfEvolution] === 插件初始化完成 | 模式: {'审核' if self.review_mode else '自动'} | 元编程: {self.allow_meta_programming} | 成长: {self.growth_stage} | SAN: {getattr(self, '_san_value', 'N/A')}/{self.san_max if hasattr(self, 'san_max') else 100} ==="
         )
 
     async def initialize(self) -> None:
@@ -502,6 +654,23 @@ class SelfEvolutionPlugin(Star):
         user_id = event.get_sender_id()
         session_id = event.session_id
         msg_text = event.message_str or ""
+
+        # SAN 值检查：精力耗尽时拒绝服务
+        if self.san_enabled:
+            if not self._update_san():
+                logger.warning(f"[SAN] 精力耗尽，拒绝服务: {user_id}")
+                req.system_prompt = "我现在很累，脑容量超载了。让我安静一会。"
+                return
+            if self._san_value < self.san_low_threshold:
+                logger.info(f"[SAN] 精力过低: {self._san_value}/{self.san_max}")
+
+        # 群体情绪共染：更新群氛围
+        group_id = event.get_group_id()
+        if group_id:
+            self._update_group_vibe(str(group_id), msg_text)
+
+        # 社交偏见检查：好友的好友警惕
+        social_bias_hint = self._check_social_bias(user_id)
 
         # 0. 动态上下文路由：轻量级消息分类，决定加载哪些模块
         needs_profile = False
@@ -712,6 +881,20 @@ class SelfEvolutionPlugin(Star):
             stage_prompt = self._get_growth_stage_prompt()
             req.system_prompt += f"\n\n【当前成长阶段】\n{stage_prompt}\n"
             req.system_prompt += f"\n[系统状态] 经验值: {self.experience_points} | 词汇复杂度: {self.vocabulary_complexity}/10 | 情感依赖度: {self.emotional_dependence}/10"
+
+        # 4.9 SAN 值系统注入
+        if self.san_enabled:
+            san_status = self._get_san_status()
+            req.system_prompt += f"\n\n【当前状态】{san_status}"
+
+        # 4.10 群体情绪共染注入
+        if self.group_vibe_enabled and group_id:
+            vibe = self._get_group_vibe(str(group_id))
+            req.system_prompt += f"\n\n【群氛围感知】{vibe}"
+
+        # 4.11 社交偏见注入
+        if social_bias_hint:
+            req.system_prompt += f"\n\n【潜意识警告】{social_bias_hint}"
 
         # 5. 交流准则注入
         req.system_prompt += f"\n\n【交流准则】\n{self.prompt_communication_guidelines}"
