@@ -15,7 +15,8 @@
 #### 阶段二：做梦机制
 - **批量总结**: 凌晨定时任务 `_scheduled_reflection` 现在会批量处理所有用户画像
 - **LLM 总结**: 使用 LLM 将过去 24 小时对话总结为 Markdown 笔记
-- **新增配置**: dream_enabled, dream_schedule
+- **新增配置**: dream_enabled, dream_schedule, dream_max_users, dream_concurrency
+- **日志增强**: 记录开始/结束/耗时/成功失败数量
 
 #### 阶段三：极速拦截
 - **移除实时向量检索**: 删除 auto_recall_inject 调用

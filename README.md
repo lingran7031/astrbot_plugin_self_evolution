@@ -152,6 +152,18 @@ self_evolution/
 
 ---
 
+## 测试
+
+单元测试代码位于 `test` 分支：
+
+```bash
+git checkout test
+pip install pytest pytest-asyncio
+pytest tests/ -v
+```
+
+---
+
 ## 开源协议
 
 本项目采用 [CC BY-NC 4.0 (署名-非商业性使用 4.0 国际)](LICENSE) 协议授权。
