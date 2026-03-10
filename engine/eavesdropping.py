@@ -339,15 +339,12 @@ class EavesdroppingEngine:
 
         entropy = self._calculate_entropy(msg_text)
         boredom_params = self._get_boredom_params()
-        if boredom_params["enabled"] and self._update_boredom(group_id, entropy):
-            if is_at and boredom_params["sarcastic_reply"]:
-                boredom_reply = self._get_boredom_reply()
-                logger.info(f"[Boredom] Group {group_id} 触发傲慢回复: {boredom_reply}")
-                yield event.plain_result(boredom_reply)
-                return
-            elif not is_at:
-                logger.debug(f"[Boredom] Group {group_id} 无聊中，跳过插嘴")
-                return
+        is_bored = False
+        if boredom_params["enabled"]:
+            is_bored = self._update_boredom(group_id, entropy)
+
+        # 将无聊状态传递给评估函数
+        self._current_boredom_state = is_bored
 
         critical_pattern = re.compile(
             f"({self.plugin.critical_keywords})", re.IGNORECASE
@@ -494,9 +491,20 @@ class EavesdroppingEngine:
                     "示例：<inner_monologue>这帮人又在聊毫无营养的八卦</inner_monologue>"
                 )
 
+            # 获取无聊状态
+            is_bored = getattr(self, "_current_boredom_state", False)
+            boredom_hint = ""
+            if is_bored:
+                boredom_hint = (
+                    "\n【当前状态】群聊近期持续低信息量，你感到有些无聊。"
+                    "如果决定回复，可以适当表现出慵懒或不耐烦的语气，但不要过于无礼。"
+                )
+
             decision_prompt = (
                 f"你现在是 {self.plugin.persona_name}（{self.plugin.persona_title}），特点是：{self.plugin.persona_style}。\n"
                 f'【当前社交阈值】：你的"发言意愿"设定为 {self.plugin.interjection_desire}/10。数值越低你越冷漠。\n'
+                + boredom_hint
+                + "\n"
                 "【后台监控任务】：评估以下实时对话片段，决定是否需要以你的身份进行[即时干预]。\n\n"
                 f"--- 监控片段 ---\n{chat_history}\n----------------\n\n"
                 "【严格执行指令】：\n"
