@@ -1,8 +1,6 @@
 # 自我进化 (Self-Evolution) 插件
 
-版本: 5.0.0-preview (数字童年版)
-
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+版本: 5.0.0
 
 ## 简介
 
@@ -78,14 +76,12 @@
 
 - 检测用户认知颠覆/惊喜表达（如"我错了"、"原来如此"、"没想到"等）
 - 触发即时画像更新，弥补 Batch 模式时效性空窗
-- 新增配置: surprise_enabled, surprise_boost_keywords
 
 ### 10. 关系图谱 RAG (GraphRAG)
 
 - 记录用户在群聊中的互动关系
 - 追踪用户活跃群组和频繁互动用户
 - 关系图谱增强的记忆检索
-- 新增配置: graph_enabled
 
 ### 11. 情绪依存记忆 (State-Dependent Memory)
 
@@ -111,13 +107,11 @@
 - 基于信息熵的废话检测
 - 连续低信息量消息累积无聊值
 - 被 @ 时可输出傲慢拒绝回复
-- 配置项: boredom_enabled, boredom_threshold, boredom_consecutive_count, boredom_sarcastic_reply
 
 ### 15. 可配置多智能体模拟宇宙
 
 - 审查智能体可配置（螺丝咕姆、阮梅等）
 - 多智能体共同参与代码审查
-- 配置项: debate_agents (JSON 数组格式)
 
 ### 16. 跨机体蜂群心智 (Federated Epistemology)
 
@@ -127,69 +121,162 @@
 
 ### 17. 数字童年养成系统 (Digital Childhood)
 
-- **成长阶段**: 婴儿 → 幼儿 → 少年 → 成年
-- **EXP 双轨制**: 存活天数 + 有效消息数
-  - 婴儿 → 幼儿: 3天 + 300条消息
-  - 幼儿 → 少年: 7天 + 1000条消息
-  - 少年 → 成年: 14天 + 3000条消息
-- **心智参数演进**:
+- 成长阶段: 婴儿 -> 幼儿 -> 少年 -> 成年
+- EXP 双轨制: 存活天数 + 有效消息数
+  - 婴儿 -> 幼儿: 3天 + 300条消息
+  - 幼儿 -> 少年: 7天 + 1000条消息
+  - 少年 -> 成年: 14天 + 3000条消息
+- 心智参数演进:
   - vocabulary_complexity: 词汇复杂度 (1-10)
   - emotional_dependence: 情感依赖度 (1-10)
+
+### 18. SAN 值系统 (精力管理)
+
+- 模拟心智疲劳的精力值系统
+- 每条消息消耗精力，定期恢复
+- 精力耗尽时拒绝服务
+
+### 19. 群体情绪共染 (Group Vibe)
+
+- 感知群聊整体情绪氛围
+- 正面/负面情绪会影响群氛围值
+- AI 会根据群氛围调整回复风格
+
+### 20. 记忆扭曲 (Memory Distortion)
+
+- 5% 概率随机混淆频繁用户的特征
+- 模拟人类记忆的不可靠性
+
+### 21. 社交偏见 (Social Bias)
+
+- 基于关系图谱的"牵连机制"
+- 对低好感度用户的频繁互动者保持警惕
+
+### 22. 好奇心引擎 (Curiosity Engine)
+
+- 长时间沉默后主动提问
+- 触发用户重新互动
+
+### 23. 内部议事厅 (Internal Council)
+
+- 敏感话题触发多智能体内部辩论
+- 达成共识后再决定如何回应
+
+### 24. 工具达尔文主义 (Tool Darwinism)
+
+- 统计工具使用频率
+- 低频工具自动标记为可关闭升级
 
 ---
 
 ## 配置项
+
+### 基础配置
 
 | 配置名称 | 类型 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
 | `persona_name` | string | 黑塔 | 机器人的核心名称 |
 | `persona_title` | string | 人偶负责人 | 机器人的身份或头衔 |
 | `persona_style` | string | 理性、犀利且专业 | 决定插嘴时的语气 |
-| `interjection_desire` | int | 5 | 插嘴意愿指数 (1-10)，数值越高越主动 |
-| `critical_keywords` | string | (见配置) | 意图预扫描关键词，正则格式 |
-| `review_mode` | bool | true | 管理员审核模式，进化申请需审批 |
-| `allow_meta_programming` | bool | false | 开启元编程（危险） |
-| `memory_kb_name` | string | self_evolution_memory | 知识库名称 |
-| `reflection_schedule` | string | 0 3 * * * | 每日自省计划 (Cron) |
-| `core_principles` | string | (见默认文本) | 机器人核心锚点 |
+| `interjection_desire` | int | 5 | 插嘴意愿指数 (1-10) |
+| `critical_keywords` | string | (见配置) | 意图预扫描关键词 |
+| `review_mode` | bool | true | 管理员审核模式 |
+| `allow_meta_programming` | bool | false | 开启元编程 |
 | `admin_users` | list | [] | 管理员 ID 列表 |
+
+### 记忆与上下文
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `memory_kb_name` | string | self_evolution_memory | 知识库名称 |
 | `timeout_memory_commit` | float | 10.0 | 存入记忆超时(秒) |
 | `timeout_memory_recall` | float | 12.0 | 读取记忆超时(秒) |
-| `buffer_threshold` | int | 8 | 触发自省的条数阈值 (旧版) |
-| `max_buffer_size` | int | 20 | 缓冲池硬上限 |
 | `enable_profile_update` | bool | true | 启用画像更新 |
 | `enable_context_recall` | bool | true | 启用上下文追踪 |
+
+### 做梦系统
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
 | `dream_enabled` | bool | true | 启用做梦机制 |
+| `dream_schedule` | string | 0 3 * * * | 做梦计划 (Cron) |
 | `dream_max_users` | int | 20 | 做梦最大处理用户数 |
 | `dream_concurrency` | int | 3 | 做梦并发数 |
-| `prompt_meltdown_message` | string | (见配置) | 熔断提示词 |
-| `prompt_reflection_instruction` | string | (见配置) | 反思指令 |
-| `prompt_communication_guidelines` | string | (见配置) | 交流准则 |
-| `prompt_eavesdrop_system` | string | (见配置) | 插嘴系统提示词 |
+
+### 认知系统
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
 | `dropout_enabled` | bool | true | 启用分层失活 |
 | `dropout_edge_rate` | float | 0.15 | 边缘信息失活概率 |
 | `leaky_integrator_enabled` | bool | true | 启用泄漏积分器 |
 | `leaky_decay_factor` | float | 0.9 | 泄漏衰减系数 |
 | `leaky_trigger_threshold` | float | 4.0 | 泄漏积分器触发阈值 |
-| `interest_boost` | float | 2.0 | 兴趣话题增益 |
-| `daily_chat_boost` | float | 0.2 | 日常话题增益 |
+
+### SAN 值系统
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `san_enabled` | bool | true | 启用 SAN 值系统 |
+| `san_max` | int | 100 | 精力上限 |
+| `san_cost_per_message` | float | 2.0 | 每条消息消耗精力 |
+| `san_recovery_per_hour` | int | 10 | 每小时恢复精力 |
+| `san_low_threshold` | int | 20 | 精力过低阈值 |
+
+### 群氛围系统
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `group_vibe_enabled` | bool | true | 启用群体情绪共染 |
+| `memory_distortion_rate` | float | 0.05 | 记忆扭曲概率 |
+
+### 多智能体对抗
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
 | `debate_enabled` | bool | true | 启用多智能体对抗 |
 | `debate_rounds` | int | 2 | 对抗辩论轮数 |
-| `debate_system_prompt` | string | (见配置) | 审查 Agent 系统提示词 |
-| `debate_criteria` | string | (见配置) | 代码审查标准 |
+| `debate_agents` | string | (JSON) | 审查智能体列表 |
+
+### 惊奇检测
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
 | `surprise_enabled` | bool | true | 启用惊奇驱动学习 |
-| `surprise_boost_keywords` | string | (见配置) | 惊奇关键词 |
-| `graph_enabled` | bool | true | 启用关系图谱 RAG |
-| `inner_monologue_enabled` | bool | true | 启用内心独白 |
+| `surprise_boost_keywords` | string | (关键词) | 惊奇关键词 |
+
+### 无聊机制
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
 | `boredom_enabled` | bool | true | 启用主动无聊机制 |
 | `boredom_threshold` | float | 0.6 | 无聊阈值 |
 | `boredom_consecutive_count` | int | 5 | 连续无聊计数 |
 | `boredom_sarcastic_reply` | bool | true | 无聊时傲慢回复 |
-| `debate_agents` | string | (见配置) | 审查智能体列表 |
+
+### 好奇心引擎
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `curiosity_enabled` | bool | true | 启用好奇心引擎 |
+| `curiosity_silence_hours` | int | 12 | 沉默触发小时数 |
+
+### 内部议事厅
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `internal_council_enabled` | bool | true | 启用内部议事厅 |
+| `controversial_keywords` | string | (关键词) | 敏感话题关键词 |
+
+### 成长系统
+
+| 配置名称 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
 | `growth_enabled` | bool | true | 启用成长系统 |
 | `growth_stage` | string | 婴儿 | 当前成长阶段 |
 | `experience_points` | int | 0 | 当前经验值 |
-| `total_messages` | int | 0 | 累计吸收消息数 |
+| `total_messages` | int | 0 | 累计消息数 |
+| `birth_timestamp` | int | 0 | 出生时间戳 |
 | `vocabulary_complexity` | int | 1 | 词汇复杂度 |
 | `emotional_dependence` | int | 10 | 情感依赖度 |
 
@@ -240,8 +327,14 @@
 
 ```
 self_evolution/
-├── main.py              # 插件入口
+├── main.py              # 插件入口 (约1350行)
+├── config.py            # 配置系统
 ├── dao.py               # 数据库访问层
+├── cognition/           # 认知系统模块
+│   ├── __init__.py
+│   ├── san.py          # SAN值系统
+│   ├── vibe.py         # 群氛围系统
+│   └── growth.py       # 成长系统
 ├── engine/
 │   ├── eavesdropping.py # 插嘴引擎
 │   ├── memory.py        # 记忆管理
@@ -258,10 +351,9 @@ self_evolution/
 
 ## 测试
 
-单元测试代码位于 `test` 分支：
+单元测试代码位于 `tests/` 目录：
 
 ```bash
-git checkout test
 pip install pytest pytest-asyncio
 pytest tests/ -v
 ```
