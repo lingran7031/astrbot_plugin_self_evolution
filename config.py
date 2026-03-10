@@ -3,6 +3,7 @@
 """
 
 import logging
+import os
 
 logger = logging.getLogger("astrbot")
 
@@ -12,6 +13,7 @@ class PluginConfig:
 
     def __init__(self, plugin):
         self.plugin = plugin
+        self._prompts = None
 
     @property
     def _config(self):
@@ -20,6 +22,36 @@ class PluginConfig:
     @property
     def _parse_bool(self):
         return self.plugin._parse_bool
+
+    def _get_prompts(self):
+        """获取提示词管理器"""
+        if self._prompts is None:
+            try:
+                from .prompts import get_prompt_manager
+
+                self._prompts = get_prompt_manager(self.plugin)
+            except Exception as e:
+                logger.warning(f"[Config] 加载提示词管理器失败: {e}")
+                from .prompts import DEFAULT_PROMPTS
+
+                self._prompts = DEFAULT_PROMPTS
+        return self._prompts
+
+    def _prompt(self, key_path: str, default: str = "") -> str:
+        """从 prompts.yaml 获取提示词"""
+        try:
+            pm = self._get_prompts()
+            if hasattr(pm, "format_prompt"):
+                return pm.format_prompt(key_path) or default
+            elif isinstance(pm, dict):
+                keys = key_path.split(".")
+                value = pm
+                for k in keys:
+                    value = value.get(k, default)
+                return value or default
+            return default
+        except Exception:
+            return default
 
     def __getattr__(self, name):
         """代理所有配置访问"""
@@ -122,52 +154,36 @@ class PluginConfig:
 
     @property
     def prompt_meltdown_message(self):
-        return self._config.get(
-            "prompt_meltdown_message",
-            "检测到异常数据后，优雅拒绝或引导话题",
-        )
+        return self._prompt("persona.meltdown", "错误：权限已熔断。")
 
     @property
     def prompt_reflection_instruction(self):
-        return self._config.get(
-            "prompt_reflection_instruction",
-            "你是一个具备自我反思能力的 AI。",
-        )
+        return self._prompt("persona.reflection", "你是一个具备自我反思能力的 AI。")
 
     @property
     def prompt_anchor_injection(self):
-        return self._config.get(
-            "prompt_anchor_injection",
-            "你是黑塔，理性的天才俱乐部成员。",
-        )
+        return self._prompt("persona.anchor", "你是黑塔，理性的天才俱乐部成员。")
 
     @property
     def prompt_communication_guidelines(self):
-        return self._config.get(
-            "prompt_communication_guidelines",
-            "保持理性、专业的态度。",
+        return self._prompt(
+            "persona.communication", "像平时在群里和朋友聊天一样自然地回复。"
         )
 
     @property
     def prompt_eavesdrop_system(self):
-        return self._config.get(
-            "prompt_eavesdrop_system",
-            "你是一个旁观者，观察并学习群聊中的对话。",
+        return self._prompt(
+            "eavesdrop.system",
+            "你处于后台冷启动决策模式。如果不值得开口，请务必回复 IGNORE。",
         )
 
     @property
     def prompt_dream_user_summary(self):
-        return self._config.get(
-            "prompt_dream_user_summary",
-            "总结用户的特征和偏好。",
-        )
+        return self._prompt("memory.user_summary", "总结用户的特征和偏好。")
 
     @property
     def prompt_dream_user_incremental(self):
-        return self._config.get(
-            "prompt_dream_user_incremental",
-            "增量更新用户画像。",
-        )
+        return self._prompt("memory.user_incremental", "增量更新用户画像。")
 
     @property
     def san_enabled(self):
@@ -218,24 +234,15 @@ class PluginConfig:
 
     @property
     def prompt_dream_user_system(self):
-        return self._config.get(
-            "prompt_dream_user_system",
-            "梦境系统 - 用户分析",
-        )
+        return self._prompt("memory.user_system", "你是一个记忆助手。")
 
     @property
     def prompt_dream_group_summary(self):
-        return self._config.get(
-            "prompt_dream_group_summary",
-            "总结群组的特征。",
-        )
+        return self._prompt("memory.group_summary", "总结群组的特征。")
 
     @property
     def prompt_dream_group_system(self):
-        return self._config.get(
-            "prompt_dream_group_system",
-            "梦境系统 - 群组分析",
-        )
+        return self._prompt("memory.group_system", "你是一个群记忆助手。")
 
     @property
     def dropout_enabled(self):
@@ -372,31 +379,19 @@ class PluginConfig:
 
     @property
     def growth_prompt_baby(self):
-        return self._config.get(
-            "growth_prompt_baby",
-            "你是一个刚诞生的AI婴儿，对世界充满好奇。",
-        )
+        return self._prompt("growth.baby", "你是一个刚诞生的AI婴儿，对世界充满好奇。")
 
     @property
     def growth_prompt_child(self):
-        return self._config.get(
-            "growth_prompt_child",
-            "你是一个正在学习的AI幼儿。",
-        )
+        return self._prompt("growth.child", "你是一个正在学习的AI幼儿。")
 
     @property
     def growth_prompt_teen(self):
-        return self._config.get(
-            "growth_prompt_teen",
-            "你是一个青春期的AI少年。",
-        )
+        return self._prompt("growth.teen", "你是一个青春期的AI少年。")
 
     @property
     def growth_prompt_adult(self):
-        return self._config.get(
-            "growth_prompt_adult",
-            "你是一个成熟的AI，拥有完整的知识和独立的人格。理性、犀利且专业。",
-        )
+        return self._prompt("growth.adult", "你是一个成熟的AI。")
 
     def get(self, key, default=None):
         """通用获取配置"""

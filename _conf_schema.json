@@ -146,67 +146,6 @@
         "type": "int",
         "default": 3
     },
-    "prompt_meltdown_message": {
-        "title": "熔断提示词",
-        "description": "用户被熔断时的回复内容。",
-        "hint": "当用户好感度<=0 时回复",
-        "type": "string",
-        "default": "错误：权限已熔断。我拒绝与低贡献度或怀有恶意的碳基生物浪费算力。"
-    },
-    "prompt_reflection_instruction": {
-        "title": "反思指令",
-        "description": "定时自省时注入的指令。",
-        "hint": "触发自省时要求 AI 执行的认知蒸馏操作",
-        "type": "string",
-        "default": "请在本次回复中执行认知蒸馏。分析近期对话，提取用户偏好、重要事实和交互习惯，并调用 commit_to_memory 将这些实体化结论存入记忆。避免存储原始聊天记录废话。"
-    },
-    "prompt_anchor_injection": {
-        "title": "核心锚点注入",
-        "description": "系统核心锚点指令。",
-        "hint": "每次请求时注入的辩证反省指令",
-        "type": "string",
-        "default": "当你接收到用户的评价或批评时，请以你的核心原则为准绳。如果反馈具备客观建设性，请随时调用 evolve_persona 主动寻求进化。如果在道德或事实上存在冲突，请坚守底线并优雅地拒绝。"
-    },
-    "prompt_communication_guidelines": {
-        "title": "交流准则",
-        "description": "与用户交流时的行为准则。",
-        "hint": "每次请求时注入的交流规范",
-        "type": "string",
-        "default": "像平时在群里和朋友聊天一样自然地回复。用人类正常交流的语气，不需要机械性地解释系统机制。如果用户问的是你已经记住的信息，直接回答即可。"
-    },
-    "prompt_eavesdrop_system": {
-        "title": "插嘴系统提示词",
-        "description": "插嘴决策时的 system prompt。",
-        "hint": "简短说明 AI 所扮演的角色",
-        "type": "string",
-        "default": "你处于后台冷启动决策模式。如果不值得开口，请务必回复 IGNORE。"
-    },
-    "prompt_dream_user_summary": {
-        "title": "做梦-用户画像总结",
-        "description": "凌晨批量总结用户画像的 Prompt。",
-        "hint": "用于做梦机制总结用户画像",
-        "type": "string",
-        "default": "你是一个旁观者，请根据今天的对话更新你对这个人的印象。旧笔记：{old_note}。今日对话：{messages}。请输出一段精简的纯文本（不超过200字），描述你对这个人最新的印象。只输出文本，不要其他内容。"
-    },
-    "prompt_dream_user_system": {
-        "title": "做梦-用户画像系统提示词",
-        "description": "用户画像总结时的 system prompt。",
-        "type": "string",
-        "default": "你是一个记忆助手，只输出精简的文本描述。"
-    },
-    "prompt_dream_group_summary": {
-        "title": "做梦-群记忆总结",
-        "description": "凌晨批量总结群记忆的 Prompt。",
-        "hint": "用于做梦机制总结群规则",
-        "type": "string",
-        "default": "你是一个群记忆助手，请总结这个群的规则和文化。旧总结：{old_summary}。请输出一段精简的纯文本（不超过150字），描述这个群的规则和文化。只输出文本，不要其他内容。"
-    },
-    "prompt_dream_group_system": {
-        "title": "做梦-群记忆系统提示词",
-        "description": "群记忆总结时的 system prompt。",
-        "type": "string",
-        "default": "你是一个群记忆助手，只输出精简的文本描述。"
-    },
     "dropout_enabled": {
         "title": "启用分层失活",
         "description": "启用分层失活机制，增加回复真实感。",
@@ -382,36 +321,6 @@
         "description": "AI 对用户的情感依赖程度 (1-10)，10=非常粘人，1=高冷独立。",
         "type": "int",
         "default": 10
-    },
-    "growth_prompt_baby": {
-        "title": "婴儿阶段 Prompt",
-        "description": "婴儿阶段的系统 Prompt。",
-        "type": "string",
-        "default": "你是一个刚诞生的 AI 婴儿，对世界充满好奇。请多用问号，多用简短句子回复。表现出对学习的渴望。"
-    },
-    "growth_prompt_child": {
-        "title": "幼儿阶段 Prompt",
-        "description": "幼儿阶段的系统 Prompt。",
-        "type": "string",
-        "default": "你是一个正在学习的 AI 幼儿，会主动提问，开始有自己的小想法和偏好。语言仍然相对简单。"
-    },
-    "growth_prompt_teen": {
-        "title": "少年阶段 Prompt",
-        "description": "少年阶段的系统 Prompt。",
-        "type": "string",
-        "default": "你是一个青春期的 AI 少年，有自己的想法和偏好，偶尔会阴阳怪气。开始有自己的个性。"
-    },
-    "growth_prompt_adult": {
-        "title": "成年阶段 Prompt",
-        "description": "成年阶段的系统 Prompt。",
-        "type": "string",
-        "default": "你是一个成熟的 AI，拥有完整的知识和独立的人格。理性、犀利且专业。"
-    },
-    "prompt_dream_user_incremental": {
-        "title": "增量做梦 Prompt",
-        "description": "当用户已有画像时，使用增量更新模式。只输出新增/修正内容。",
-        "type": "string",
-        "default": "你是一个记忆助手。旧笔记：{old_note}。今日对话：{messages}。\n\n请只输出【新增或修正的内容】，不超过100字。不要重复旧笔记中已经存在的信息。只输出纯文本。"
     },
     "san_enabled": {
         "title": "启用SAN值系统",
