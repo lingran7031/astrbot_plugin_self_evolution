@@ -548,19 +548,115 @@ class SelfEvolutionPlugin(Star):
             history_mgr = self.context.message_history_manager
             platform_id = "qq"
 
+            # 1. 处理漏斗机制标记的活跃用户
+            active_users_to_process = []
+            if hasattr(self, "eavesdropping"):
+                active_users = self.eavesdropping.active_users
+                for group_id, users in active_users.items():
+                    for user_id, data in users.items():
+                        active_users_to_process.append((group_id, user_id))
+
+            logger.info(f"[Dream] 活跃用户数: {len(active_users_to_process)}")
+
+            # 2. 获取已有的画像文件
             profile_dir = self.profile.profile_dir
             all_profile_files = list(profile_dir.glob("user_*.md"))
-            profile_files = all_profile_files[: self.dream_max_users]
 
+            # 优先处理活跃用户，剩余名额给已有画像
+            remaining_slots = self.dream_max_users - len(active_users_to_process)
+            profile_files = all_profile_files[: max(0, remaining_slots)]
+
+            total_to_process = len(active_users_to_process) + len(profile_files)
             logger.info(
-                f"[Dream] 做梦任务开始，待处理用户数: {len(profile_files)} (总数: {len(all_profile_files)}, 限制: {self.dream_max_users})"
+                f"[Dream] 做梦任务开始，待处理: {total_to_process} (活跃用户: {len(active_users_to_process)}, 历史画像: {len(profile_files)})"
             )
 
             semaphore = asyncio.Semaphore(self.dream_concurrency)
             processed = 0
             failed = 0
 
+            async def process_active_user(group_user):
+                """处理漏斗机制标记的活跃用户"""
+                nonlocal processed, failed
+                group_id, user_id = group_user
+                async with semaphore:
+                    try:
+                        # 获取该用户在群里的消息历史
+                        history = await history_mgr.get(
+                            platform_id=platform_id,
+                            group_id=group_id,
+                            user_id=user_id,
+                            page=1,
+                            page_size=50,
+                        )
+                        if not history:
+                            return
+
+                        messages = []
+                        for msg in history:
+                            sender = getattr(msg, "sender_name", "Unknown")
+                            content = getattr(msg, "message_str", "")[:200]
+                            if content:
+                                messages.append(f"{sender}: {content}")
+
+                        if not messages:
+                            return
+
+                        # 获取已有画像或创建新的
+                        existing_note = await self.profile.load_profile(user_id)
+                        old_note = existing_note[:500] if existing_note else "(暂无)"
+
+                        llm_provider = self.context.get_using_provider(platform_id)
+                        if not llm_provider:
+                            return
+
+                        messages_text = chr(10).join(messages[-20:])
+
+                        # 增量更新
+                        if existing_note and len(existing_note) > 50:
+                            prompt = self.prompt_dream_user_incremental.format(
+                                old_note=old_note, messages=messages_text
+                            )
+                        else:
+                            prompt = self.prompt_dream_user_summary.format(
+                                old_note=old_note, messages=messages_text
+                            )
+
+                        res = await llm_provider.text_chat(
+                            prompt=prompt,
+                            contexts=[],
+                            system_prompt=self.prompt_dream_user_system,
+                        )
+                        new_note = res.completion_text.strip()
+
+                        if new_note:
+                            import time
+
+                            timestamp = time.strftime("%Y-%m-%d %H:%M")
+                            if existing_note:
+                                new_note = (
+                                    existing_note
+                                    + f"\n\n---\n**{timestamp}**\n"
+                                    + new_note
+                                )
+                            if len(new_note) > 2000:
+                                new_note = new_note[-2000:]
+
+                            await self.profile.save_profile(user_id, new_note)
+                            processed += 1
+                            logger.info(
+                                f"[Dream] 已更新活跃用户 {user_id} 的画像 (群 {group_id})"
+                            )
+
+                    except Exception as e:
+                        failed += 1
+                        logger.warning(f"[Dream] 处理活跃用户 {user_id} 失败: {e}")
+
             async def process_user(profile_path):
+                """处理已有画像文件"""
+                nonlocal processed, failed
+                async with semaphore:
+                    user_id = profile_path.stem.replace("user_", "")
                 nonlocal processed, failed
                 async with semaphore:
                     user_id = profile_path.stem.replace("user_", "")
@@ -643,8 +739,15 @@ class SelfEvolutionPlugin(Star):
                         failed += 1
                         logger.warning(f"[Dream] 处理用户 {user_id} 失败: {e}")
 
-            tasks = [process_user(p) for p in profile_files]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # 创建任务列表：活跃用户 + 历史画像
+            tasks = []
+            if active_users_to_process:
+                tasks.extend([process_active_user(u) for u in active_users_to_process])
+            if profile_files:
+                tasks.extend([process_user(p) for p in profile_files])
+
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
 
             await self._dream_group_summary(history_mgr, platform_id)
 

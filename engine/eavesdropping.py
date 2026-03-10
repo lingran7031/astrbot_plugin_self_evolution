@@ -15,6 +15,29 @@ class EavesdroppingEngine:
         self.leaky_bucket = defaultdict(float)
         self.inner_monologue_cache = defaultdict(str)
         self.boredom_cache = defaultdict(lambda: {"count": 0, "last_message_time": 0.0})
+
+        # 漏斗机制 - 用户活跃判定
+        self.active_users = defaultdict(
+            dict
+        )  # {group_id: {user_id: {"last_active": timestamp, "window_end": timestamp}}}
+        self.active_window_seconds = 30  # 30秒活跃窗口
+
+        # 唤醒词列表
+        self.wake_names = ["黑塔", "belta", "Bot", "机器人", "小塔"]
+
+        # 强AI意图句式
+        self.ai_intent_patterns = [
+            r"^帮我",
+            r"^帮我画",
+            r"^翻译",
+            r"^总结",
+            r"^写一段",
+            r"^解释",
+            r"^计算",
+            r"^查询",
+            r"^生成",
+        ]
+
         self._boredom_responses = [
             "这种毫无信息量的话题不要占用我的进程，我很忙。",
             "你们的对话让我感到困倦。有正事再说。",
@@ -47,6 +70,88 @@ class EavesdroppingEngine:
             return min(ratio, 1.0)
         except:
             return 0.5
+
+    # ==================== 漏斗机制：用户活跃判定 ====================
+
+    def _check_funnel_level1(self, event: AstrMessageEvent) -> bool:
+        """第一级：框架级强特征（100%确定是互动）"""
+        msg = event.message_obj
+
+        # 1.1 @ 提及检测
+        if event.is_at_or_wake_command:
+            return True
+
+        # 1.2 命令前缀检测
+        msg_text = event.message_str or ""
+        config = self.plugin.context.get_config()
+        prefixes = config.get("wake_prefix", ["/"])
+        prov_prefix = config.get("provider_settings", {}).get("wake_prefix", "/")
+        prefixes = list(prefixes) + [prov_prefix]
+        if any(msg_text.startswith(p) for p in prefixes if p):
+            return True
+
+        # 1.3 引用回复检测（检查回复的是否是Bot的消息）
+        if hasattr(msg, "reply") and msg.reply:
+            reply_msg = msg.reply
+            if hasattr(reply_msg, "sender") and reply_msg.sender:
+                bot_id = str(self.plugin.context.bot_info.get("user_id", ""))
+                if str(reply_msg.sender) == bot_id:
+                    return True
+
+        return False
+
+    def _check_funnel_level2(self, event: AstrMessageEvent) -> bool:
+        """第二级：唤醒词与正则匹配（软特征）"""
+        msg_text = (event.message_str or "").lower()
+
+        # 2.1 名称唤醒
+        for name in self.wake_names:
+            if name.lower() in msg_text:
+                return True
+
+        # 2.2 强AI意图句式
+        for pattern in self.ai_intent_patterns:
+            if re.search(pattern, msg_text):
+                return True
+
+        return False
+
+    def _check_funnel_level3(self, group_id: str, user_id: str) -> bool:
+        """第三级：上下文时间窗（Session机制）"""
+        if group_id not in self.active_users:
+            return False
+        if user_id not in self.active_users[group_id]:
+            return False
+
+        window_end = self.active_users[group_id][user_id].get("window_end", 0)
+        return time.time() < window_end
+
+    def _mark_user_active(self, group_id: str, user_id: str):
+        """标记用户为活跃状态，开启30秒窗口"""
+        now = time.time()
+        self.active_users[group_id][user_id] = {
+            "last_active": now,
+            "window_end": now + self.active_window_seconds,
+        }
+
+    def is_user_active(self, group_id: str, user_id: str) -> bool:
+        """检查用户是否处于活跃状态"""
+        return self._check_funnel_level3(group_id, user_id)
+
+    def cleanup_expired_active_users(self):
+        """清理过期的活跃用户记录"""
+        now = time.time()
+        expired_groups = []
+        for group_id, users in self.active_users.items():
+            expired_users = [
+                uid for uid, data in users.items() if now > data.get("window_end", 0)
+            ]
+            for uid in expired_users:
+                del users[uid]
+            if not users:
+                expired_groups.append(group_id)
+        for gid in expired_groups:
+            del self.active_users[gid]
 
     def _get_boredom_params(self):
         return {
@@ -115,6 +220,24 @@ class EavesdroppingEngine:
             return
 
         group_id = str(group_id)
+
+        # 漏斗机制：检测用户是否活跃
+        level1_triggered = self._check_funnel_level1(event)
+        level2_triggered = self._check_funnel_level2(event)
+
+        if level1_triggered or level2_triggered:
+            self._mark_user_active(group_id, user_id)
+            logger.debug(
+                f"[漏斗] 用户 {user_id} 在群 {group_id} 被标记为活跃 (L1={level1_triggered}, L2={level2_triggered})"
+            )
+
+        # 清理过期的活跃用户（每100条消息清理一次）
+        if hasattr(self, "_msg_counter"):
+            self._msg_counter += 1
+        else:
+            self._msg_counter = 1
+        if self._msg_counter % 100 == 0:
+            self.cleanup_expired_active_users()
 
         config = self.plugin.context.get_config()
         bot_wake_prefixes = config.get("wake_prefix", ["/"])
