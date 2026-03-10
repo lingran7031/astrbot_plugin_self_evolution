@@ -84,39 +84,6 @@ class EavesdroppingEngine:
             async for result in self._evaluate_interjection(event, session_id):
                 yield result
 
-    def _is_relevant_reply(self, msg_text: str, messages: list) -> bool:
-        """判断消息是否与当前话题相关"""
-        # 简单关键词判断：是否包含问号、或者与之前消息有词汇重叠
-        if "？" in msg_text or "?" in msg_text:
-            return True
-
-        # 检查是否回复了机器人（通过关键词检测）
-        robot_name = getattr(self.plugin, "persona_name", "黑塔")
-        if robot_name in msg_text:
-            return True
-
-        # 检查是否与最近消息有词汇重叠（用词集而非字符集）
-        if messages:
-            import re
-
-            # 分词：提取连续的中文词或英文单词
-            def extract_words(text):
-                chinese = re.findall(r"[\u4e00-\u9fff]+", text)
-                english = re.findall(r"[a-zA-Z]+", text)
-                chinese_words = [w for w in chinese if len(w) >= 2]  # 至少2个汉字
-                english_words = [
-                    w.lower() for w in english if len(w) >= 3
-                ]  # 至少3个字母
-                return set(chinese_words + english_words)
-
-            recent_words = extract_words(messages[-1].get("content", ""))
-            current_words = extract_words(msg_text)
-            overlap = recent_words & current_words
-            if len(overlap) >= 2:  # 至少2个词重叠才算相关
-                return True
-
-        return False
-
     async def _evaluate_interjection(
         self, event: AstrMessageEvent, session_id: str, force_immediate: bool = False
     ):

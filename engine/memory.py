@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import re
 import time
 from datetime import datetime
 
@@ -101,8 +102,6 @@ class MemoryManager:
 
     async def auto_learn_trigger(self, event):
         """自动学习触发器：检测关键场景并自动提取记忆"""
-        import re
-
         msg_text = event.message_str
         is_at = event.is_at_or_wake_command
 
@@ -220,10 +219,6 @@ class MemoryManager:
         formatted_knowledge = f"({knowledge_type}) {knowledge} {uuid_str}"
 
         return await self._do_commit_memory(formatted_knowledge)
-
-        return await self._do_commit_memory(formatted_knowledge)
-
-        return await self._do_commit_memory(formatted_fact)
 
     async def _do_commit_memory(
         self, formatted_fact: str, is_auto: bool = False

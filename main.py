@@ -40,7 +40,7 @@ PAGE_LIMIT = 10
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "具备主动环境感知及插嘴引擎的 CognitionCore 6.0 数字生命。",
-    "3.4.0",
+    "3.7.0",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -79,6 +79,7 @@ class SelfEvolutionPlugin(Star):
         self.processing_sessions = set()
         self._lock = None  # 用于元编程写锁
         self.daily_reflection_pending = False
+        self._last_buffer_cleanup = 0
 
     @property
     def persona_name(self):
@@ -296,11 +297,32 @@ class SelfEvolutionPlugin(Star):
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
         """CognitionCore 6.0: 被动监听转发至 EavesdroppingEngine"""
+        # 定期清理过期缓冲数据，防止内存泄漏
+        await self._cleanup_stale_buffers()
+
         # 自动学习触发：检测关键场景
         await self.memory.auto_learn_trigger(event)
 
         async for result in self.eavesdropping.handle_message(event):
             yield result
+
+    async def _cleanup_stale_buffers(self):
+        """清理超过1小时未活动的会话缓冲"""
+        now = time.time()
+        if now - self._last_buffer_cleanup < 300:  # 每5分钟最多清理一次
+            return
+        self._last_buffer_cleanup = now
+
+        stale_sessions = []
+        for session_id in list(self.active_buffers.keys()):
+            if session_id not in self.processing_sessions:
+                stale_sessions.append(session_id)
+
+        for session_id in stale_sessions:
+            del self.active_buffers[session_id]
+
+        if stale_sessions:
+            logger.debug(f"[SelfEvolution] 已清理 {len(stale_sessions)} 个过期会话缓冲")
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
