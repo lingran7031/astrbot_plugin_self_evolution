@@ -1281,8 +1281,10 @@ class SelfEvolutionPlugin(Star):
     async def get_user_profile(self, event: AstrMessageEvent) -> str:
         """获取当前用户的画像信息，了解用户的兴趣和性格特征。
 
+        建议优先调用此工具获取用户画像，再决定是否需要调用 get_user_messages 获取历史消息。
+
         Returns:
-            用户画像JSON字符串
+            用户画像文本
         """
         user_id = event.get_sender_id()
         profile = await self.profile.load_profile(user_id)
@@ -1413,8 +1415,13 @@ class SelfEvolutionPlugin(Star):
             history_mgr = self.context.message_history_manager
             platform_id = event.get_platform_name() or "qq"
 
+            # 修复：正确的参数顺序应该是 group_id + user_id
             history = await history_mgr.get(
-                platform_id=platform_id, user_id=group_id, page=1, page_size=limit
+                platform_id=platform_id,
+                group_id=group_id,
+                user_id=target,
+                page=1,
+                page_size=limit,
             )
 
             if not history:

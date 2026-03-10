@@ -18,6 +18,9 @@ class ProfileManager:
         self.profile_dir = plugin.data_dir / "profiles"
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self.locks = defaultdict(asyncio.Lock)
+        # 画像内存缓存 {user_id: content}
+        self._profile_cache = {}
+        self._cache_ttl = 300  # 缓存5分钟
 
     @property
     def precision_mode(self):
@@ -53,10 +56,17 @@ class ProfileManager:
 
     async def load_profile(self, user_id: str) -> str:
         """读取用户画像（Markdown 文本），无则返回空"""
+        # 先从缓存读取
+        if user_id in self._profile_cache:
+            return self._profile_cache[user_id]
+
         path = self._get_profile_path(user_id)
         if path.exists():
             try:
-                return path.read_text(encoding="utf-8").strip()
+                content = path.read_text(encoding="utf-8").strip()
+                # 存入缓存
+                self._profile_cache[user_id] = content
+                return content
             except IOError as e:
                 logger.warning(f"[Profile] 读取画像失败 {user_id}: {e}")
         return ""
@@ -65,6 +75,8 @@ class ProfileManager:
         """保存用户画像（Markdown 文本）"""
         path = self._get_profile_path(user_id)
         path.write_text(content, encoding="utf-8")
+        # 更新缓存
+        self._profile_cache[user_id] = content
         logger.info(f"[Profile] 已保存用户画像: {user_id}")
 
     async def get_profile_summary(self, user_id: str) -> str:
