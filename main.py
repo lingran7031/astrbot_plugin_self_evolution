@@ -121,6 +121,35 @@ class SelfEvolutionPlugin(Star):
             pass
         return ""
 
+    def _clean_messages(self, messages: list) -> list:
+        """清洗消息：去重+长度过滤"""
+        if not messages:
+            return []
+
+        cleaned = []
+        last_content = ""
+
+        for msg in messages:
+            # 提取消息内容
+            if ":" in msg:
+                content = msg.split(":", 1)[1].strip()
+            else:
+                content = msg
+
+            # 去重：连续相同的消息只保留一条
+            if content == last_content:
+                continue
+
+            # 长度过滤：小于3个字符且不含实词的消息过滤掉
+            if len(content) < 3:
+                last_content = content
+                continue
+
+            cleaned.append(msg)
+            last_content = content
+
+        return cleaned
+
     def _post_init(self):
         self.san_system.initialize()
         self.vibe_system.initialize()
@@ -599,6 +628,12 @@ class SelfEvolutionPlugin(Star):
                         if not messages:
                             return
 
+                        # 消息清洗：去重+长度过滤
+                        messages = self._clean_messages(messages)
+
+                        if not messages:
+                            return
+
                         # 获取已有画像或创建新的
                         existing_note = await self.profile.load_profile(user_id)
                         old_note = existing_note[:500] if existing_note else "(暂无)"
@@ -673,6 +708,12 @@ class SelfEvolutionPlugin(Star):
                             content = getattr(msg, "message_str", "")[:200]
                             if content:
                                 messages.append(f"{sender}: {content}")
+
+                        if not messages:
+                            return
+
+                        # 消息清洗：去重+长度过滤
+                        messages = self._clean_messages(messages)
 
                         if not messages:
                             return
