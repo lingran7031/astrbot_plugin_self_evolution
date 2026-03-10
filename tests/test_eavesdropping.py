@@ -22,6 +22,9 @@ async def test_affinity_block(eavesdropping_engine, mock_event, dao):
 
     mock_event.message_str = "普通消息"
 
+    mock_plugin = eavesdropping_engine.plugin
+    mock_plugin.dao.get_affinity = AsyncMock(return_value=-100)
+
     results = []
     async for r in eavesdropping_engine.handle_message(mock_event):
         results.append(r)

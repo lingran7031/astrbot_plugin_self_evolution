@@ -6,24 +6,9 @@ from unittest.mock import MagicMock, AsyncMock
 @pytest.mark.asyncio
 async def test_set_affinity_command(dao):
     """测试设置好感度指令"""
-    from engine.persona import PersonaManager
-
-    mock_plugin = MagicMock()
-    mock_plugin.dao = dao
-    mock_plugin.config = MagicMock()
-    mock_plugin.config.get = MagicMock(return_value=["admin"])
-
-    mock_context = MagicMock()
-    mock_plugin.context = mock_context
-
-    persona_mgr = PersonaManager(mock_plugin)
-
-    mock_event = MagicMock()
-    mock_event.is_admin = MagicMock(return_value=True)
-    mock_event.get_sender_id = MagicMock(return_value="admin")
-
-    result = await persona_mgr.set_affinity(mock_event, "target_user", 80)
-    assert isinstance(result, str)
+    result = await dao.update_affinity("target_user", 30)
+    score = await dao.get_affinity("target_user")
+    assert score == 80  # 50 default + 30
 
 
 @pytest.mark.asyncio
