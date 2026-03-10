@@ -311,7 +311,11 @@ class EavesdroppingEngine:
             monologue_text = ""
             if reply_text:
                 reply_stripped = reply_text.strip().upper()
-                if "[IGNORE]" in reply_text.upper() or reply_stripped == "IGNORE":
+                if (
+                    "[IGNORE]" in reply_text.upper()
+                    or "IGNORE" in reply_stripped
+                    or reply_stripped == "IGNORE"
+                ):
                     reason = "判定为噪音/无价值"
                     monologue_text = self._extract_monologue(reply_text)
                 elif is_meta:
