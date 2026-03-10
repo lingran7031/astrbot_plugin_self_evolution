@@ -1,556 +1,319 @@
 # Self-Evolution 插件技术文档
 
-版本: 4.2.0 (高维生物版)
+版本: 5.0.15
 
 ---
 
-## 0. 核心设计理念：认知卸载 (Cognitive Offloading)
+## 1. 概述
 
-**核心思想**: 把 CPU 干的脏活全扔给晚上的大模型，把白天的毫秒级响应还给代码。
+Self-Evolution（自我进化）插件是 AstrBot 的认知增强模块，赋予 AI 主动环境感知、长期记忆、用户认知、情感模拟等高级能力。
 
-### 架构对比
+**版本**: CognitionCore 6.0
 
-| 维度 | 旧架构 (3.7.x) | 新架构 (3.8.x) |
-|------|----------------|----------------|
-| 画像更新 | 实时 LLM 提取 | 凌晨批量总结 |
-| 画像存储 | JSON 结构化 | Markdown 文本 |
-| 记忆检索 | 实时向量检索 | AI 主动调用 |
-| 插嘴评估 | 复杂 Prompt | 精简版 |
-| 响应延迟 | 秒级 | 毫秒级 |
-
-### 做梦机制
-
-凌晨 3 点定时任务会：
-1. 拉取过去 24 小时对话
-2. 按用户分组
-3. 调用 LLM 总结为 Markdown 笔记
-4. 覆写画像文件
+**核心设计理念**: 把 CPU 干的脏活全扔给晚上的大模型，把白天的毫秒级响应还给代码。
 
 ---
 
-## 1. 项目概述
+## 2. 核心架构
 
-这是一个面向 AstrBot 的 AI 心智模型插件，赋予大语言模型以下能力：
-
-- **自我迭代反思**: 基于用户反馈进行人格进化
-- **跨会话长期记忆**: 基于知识库的 RAG 系统
-- **动态技能管理**: 自主开关工具
-- **代码级自我元编程**: AI 可以读取和提议修改自身源码
-
----
-
-## 2. 架构设计
-
-### 2.1 模块结构
+### 2.1 消息流转
 
 ```
-self_evolution/
-├── main.py              # 插件入口，事件处理中枢
-├── dao.py               # 数据库访问层 (SQLite)
-└── engine/
-    ├── eavesdropping.py  # 插嘴引擎 (被动监听)
-    ├── memory.py        # 记忆管理 (RAG)
-    ├── persona.py       # 人格进化管理
-    ├── profile.py       # 用户画像管理
-    ├── meta_infra.py   # 元编程基础设施
-    └── graph.py         # 关系图谱 RAG
-```
-
-### 2.2 核心数据流
-
-```
-用户消息
-    │
-    ├─► on_llm_request (拦截层)
-    │    ├─► 情感矩阵检查 (affinity <= 0 熔断)
-    │    ├─► 上下文注入 (身份、群组、引用)
-    │    ├─► 画像注入 (profile)
-    │    ├─► 情绪依存记忆 (State-Dependent Memory)
-    │    ├─► 记忆模糊化指令 (Epistemic Uncertainty)
-    │    ├─► 突发偏好检测
-    │    └─► 惊奇驱动检测 (Surprise Detection)
-    │
-    └─► on_message_listener (监听层)
-         ├─► 缓冲清理 (内存管理)
-         ├─► 自动学习触发 (auto_learn_trigger)
-         ├─► 关系图谱记录 (GraphRAG)
-         └─► 插嘴评估 (eavesdropping)
-              ├─► 判定 IGNORE → 存储内心独白
-              └─► 判定 COMMENT → 注入内心独白
+消息进入
+    ↓
+┌─────────────────────────────────────────┐
+│ 过滤门（Filter Gates）                  │
+├─────────────────────────────────────────┤
+│ 1. 命令前缀过滤 (/, . 等)               │
+│ 2. 好感度检查 (score <= 0 拦截)         │
+│ 3. 消息过短过滤 (<6字)                  │
+│ 4. 信息熵过滤 (表情/重复内容)            │
+│ 5. 无聊检测 (低信息量累积)               │
+│ 6. 关键词预扫描 (黑塔/空间站等)          │
+└─────────────────────────────────────────┘
+    ↓ 通过过滤门后
+┌─────────────────────────────────────────┐
+│ 漏斗机制（Funnel） - 用户活跃判定        │
+├─────────────────────────────────────────┤
+│ L1: @机器人 | 命令前缀 | 引用回复        │
+│ L2: 唤醒词(黑塔) | AI意图句式           │
+│ L3: 30秒活跃时间窗口                    │
+└─────────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────────┐
+│ 插嘴判定                                 │
+├─────────────────────────────────────────┤
+│ - @机器人 → 强制触发                     │
+│ - 关键词命中 → 强制触发                   │
+│ - 泄漏积分器 (指数衰减模型)              │
+└─────────────────────────────────────────┘
+    ↓
+LLM 决策 (插嘴 / IGNORE)
 ```
 
 ---
 
-## 3. 核心组件
+## 3. 核心功能模块
 
-### 3.1 DAO 层 (dao.py)
+### 3.1 EavesdroppingEngine - 主动插嘴引擎
 
-**职责**: 数据库访问封装
+#### 3.1.1 指数衰减积分器
 
-**数据库表**:
-- `pending_evolutions`: 待审核的进化请求
-- `pending_reflections`: 待执行的反思标记
-- `user_relationships`: 用户好感度矩阵
+使用时间衰减模型模拟更自然的插嘴节奏：
 
-**关键特性**:
-- WAL 模式 SQLite
-- 连接存活检测与自动重连
-- 读写锁分离
-- 重试装饰器 `@with_db_retry`
-
-### 3.2 插嘴引擎 (eavesdropping.py)
-
-**职责**: 被动监听群聊，决定是否主动插话
-
-**触发条件**:
-1. 兴趣关键词命中 (`critical_keywords`)
-2. 用户 @ 机器人
-3. 缓冲池达到阈值 (`buffer_threshold`)
-
-**评估流程**:
 ```
-收集对话片段
-    │
-    ▼
-LLM 决策 (是否插嘴)
-    │
-    ├─► [IGNORE] → 不插话
-    │
-    └─► [COMMENT] → 检查元评论过滤
-         │
-         ├─► 通过 → yield 回复
-         │
-         └─► 拦截 → 不插话
+S_t = S_{t-1} * e^(-λ*Δt) + w_i
+
+S_t: 当前插嘴冲动值
+S_{t-1}: 上次积分值
+λ: 衰减系数 (默认 0.5)
+Δt: 距离上次发言的时间（分钟）
+w_i: 发言权重（关键词命中=2.0，日常聊天=0.2）
 ```
 
-**元评论过滤**: 防止 LLM 输出类似"监控显示..."的系统报告
+**配置参数**:
+- `leaky_integrator_enabled`: 启用泄漏积分器
+- `leaky_decay_factor`: 衰减系数
+- `leaky_trigger_threshold`: 触发阈值
+- `interest_boost`: 关键词命中加成
+- `daily_chat_boost`: 日常聊天基础加成
 
-### 3.3 记忆管理 (memory.py)
+#### 3.1.2 漏斗机制
 
-**职责**: 长期记忆的存储与检索
+三级用户活跃判定：
 
-**存储策略**:
-- 群聊: `memory_group_{群号}_user_{用户ID}`
-- 私聊: `memory_user_{用户ID}`
-- 群公共: `group_memory_{群号}`
+| 级别 | 触发条件 | 说明 |
+|------|----------|------|
+| L1 | @机器人、命令前缀、引用回复 | 框架级强特征，100%确定 |
+| L2 | 唤醒词(黑塔/belta)、AI意图句式 | 软特征，标记活跃 |
+| L3 | 30秒时间窗口 | 会话级活跃状态 |
 
-**自动学习触发**:
-- @ 机器人
-- 关键词命中
-- 告别语 (再见、晚安等)
-- 表达偏好 (我喜欢、我讨厌等)
+**AI意图句式**（匹配这些句式会触发插嘴评估）:
+- 帮我、帮我画、翻译、总结、写一段、解释、计算、查询、生成
 
-**核心方法**:
-- `auto_recall_inject`: 自动检索并注入上下文
-- `commit_to_memory`: 手动存入记忆
-- `recall_memories`: 检索记忆
-- `_do_commit_memory`: 实际写入 (含去重、容量清理)
+#### 3.1.3 主动无聊机制 (Active Boredom)
 
-### 3.4 用户画像 (profile.py)
+基于 zlib 压缩比的信息熵检测：
+- 连续低信息量消息累积无聊值
+- 被 @ 时可输出傲慢拒绝回复
 
-**职责**: 维护用户印象笔记 (Markdown 格式)
+**配置参数**:
+- `boredom_enabled`: 启用无聊检测
+- `boredom_threshold`: 熵阈值 (默认 0.6)
+- `boredom_consecutive_count`: 连续低信息量次数阈值
 
-**存储格式**: Markdown 文本 (不再是 JSON)
-```markdown
-# 用户印象笔记
+#### 3.1.4 中间消息过滤器
 
----
-**2026-03-10 14:30**
-这个用户喜欢讨论技术话题，对 Python 比较感兴趣，说话比较直接。
+拦截工具调用期间的过渡性消息，避免在LLM调用工具期间发送中间消息。
 
----
-**2026-03-09 09:15**
-今天在群里讨论了模拟宇宙的相关内容，用户表现出对游戏剧情的兴趣。
-```
-
-**精度模式**:
-- `simple`: Markdown 文本摘要 (默认)
-- `detailed`: 结构化标签 (开发中)
-
-**存储**: 本地 Markdown 文件 (`data/profiles/user_{id}.md`)
-
-### 3.5 人格进化 (persona.py)
-
-**职责**: 管理 AI 人格进化请求
-
-**流程**:
-1. AI 调用 `evolve_persona(new_system_prompt, reason)`
-2. 审核模式: 进入待审核队列
-3. 非审核模式: 直接应用
-4. 管理员批准后: 调用 `persona_manager.update_persona()`
-
-### 3.6 元编程 (meta_infra.py)
-
-**职责**: AI 读取/修改自身源码
-
-**安全机制**:
-- AST 语法树校验
-- 危险模块/函数黑名单
-- 文件大小限制 (100KB)
-- 代码隔离存储 (不直接执行)
-- 管理员人工审查
-
-**危险检测**:
-- 禁止导入: subprocess, shutil, socket, urllib, requests, ctypes, builtins
-- 禁止调用: eval, exec, __import__, compile
-- 禁止访问: __bases__, __subclasses__, __mro__, __globals__ 等
-
-### 3.7 惊奇驱动学习 (Surprise Detection)
-
-**职责**: 检测用户认知颠覆/惊喜表达，触发即时画像更新
-
-**核心思想**: 预测编码 (Predictive Coding) - 只记忆出乎意料的事情
-
-**触发条件**: 用户消息包含惊奇关键词
-- "我错了"、"原来如此"、"没想到"
-- "居然"、"竟然"、"震惊"
-- "牛逼"、"绝了"、"笑死" 等
-
-**处理流程**:
-```
-用户消息
-    │
-    ▼
-检测惊奇关键词
-    │
-    ├─► 未命中 → 正常处理
-    │
-    └─► 命中 → 注入画像更新提示
-              │
-              ▼
-         LLM 主动调用 update_user_profile
-              │
-              ▼
-         记录认知颠覆时刻
-```
-
-**配置项**:
-- `surprise_enabled`: 是否启用
-- `surprise_boost_keywords`: 惊奇关键词列表
-
-### 3.7 情绪依存记忆 (State-Dependent Memory)
-
-**核心思想**: 人的情绪状态会影响回忆倾向。开心时想起美好回忆，生气时想起对方的过错。
-
-**实现位置**: `main.py` on_llm_request
-
-**触发条件**: 基于用户 affinity 分数
-
-| affinity 区间 | 注入的隐性指令 |
-|--------------|---------------|
-| > 60 | 关系良好，多关注共同兴趣和愉快经历 |
-| 30-60 | 无特殊指令 |
-| < 30 | 印象一般，注意其过往的问题行为 |
-| <= 0 | 已拉黑，回忆负面记录进行无情嘲讽 |
-
-**示例效果**:
-- 高好感用户: "我记得你上次说想学 Rust，最近看了吗？"
-- 低好感用户: "你上次也是这么说，结果还不是一样？"
-
-### 3.8 内部独白 (Inner Monologue)
-
-**核心思想**: 人类在群聊中潜水时，脑子里会对对话产生"腹诽"。即使不发言，也会有心理活动。
-
-**实现位置**: `engine/eavesdropping.py`
-
-**工作流程**:
-1. LLM 判定 IGNORE 时，强制要求输出 `<inner_monologue>`
-2. 存储到 `inner_monologue_cache` 临时变量
-3. 下次真正插话时，将内心独白注入回复
-
-**配置项**:
-- `inner_monologue_enabled`: 是否启用 (默认 true)
-
-**示例效果**:
-- 内心独白: "这帮人又在聊毫无营养的八卦"
-- 实际发言: "我盯了你们半天了，本来不想说话，但你们这个 Bug 确实太离谱了..."
-
-### 3.9 记忆模糊化 (Epistemic Uncertainty)
-
-**核心思想**: 真人不会记得所有细节，有时候会"记不清"。过于完美的记忆会产生恐怖谷效应。
-
-**实现位置**: 
-- `prompt_dream_user_summary`: 要求 LLM 输出置信度
-- `main.py` on_llm_request: 对低置信度记忆注入不确定性指令
-
-**置信度格式**:
-```
-用户擅长 Python (置信度 90%)
-用户似乎有只猫 (置信度 40%)
-```
-
-**不确定性表达**:
-- "我隐约记得..."
-- "你是不是之前说过..."
-- "好像听你提过..."
-
-**示例效果**:
-"我隐约记得你上个月是不是提过你要重构数据库？那个搞完了没？"
-
-### 3.10 关系图谱 (graph.py)
-
-**职责**: 维护用户关系网络，用于增强 RAG 检索
-
-**存储**: JSON 文件 (`data/graph/user_relations.json`)
-
-**核心功能**:
-- `record_interaction`: 记录用户在群中的互动
-- `get_user_groups`: 获取用户所在群组
-- `get_frequent_interactors`: 获取频繁互动用户
-- `find_common_groups`: 查找两个用户的共同群
-- `enhance_recall`: 关系图谱增强的记忆检索
-- `cleanup_stale_nodes`: 清理 90 天未活跃节点
-
-**数据模型**:
-```json
-{
-  "user_id": {
-    "user_id": "123456",
-    "groups": ["群号1", "群号2"],
-    "interactions": {"用户A": 10, "用户B": 5},
-    "last_seen": "2026-03-10T10:30:00",
-    "traits": ["技术宅", "夜猫子"]
-  }
-}
-```
-
-**自动清理**: 90 天未活跃的节点会被清理
+**匹配模式**:
+- `^让我` / `^让我先` / `^让我查查` / `^我来帮你` 等
 
 ---
 
-## 4. 事件处理
+### 3.2 MemoryManager - 记忆系统
 
-### 4.1 on_llm_request
+#### 3.2.1 认知卸载 (Cognitive Offloading)
 
-每次 LLM 请求前执行:
-1. 检查用户好感度，<= 0 则熔断 (最前置)
-2. 提取引用/At 信息
-3. 注入上下文 (身份、群组)
-4. 注入反思指令 (如果有待处理)
-5. 注入核心锚点
-6. ~~自动记忆检索注入~~ (已移除，改为 AI 主动调用)
-7. 用户画像注入 (Markdown 文本直接拼接)
-8. 突发偏好检测 (用户表达偏好变化)
-9. **惊奇驱动检测** (Surprise Detection, 4.0.1 新增)
-10. 交流准则注入
+**核心思想**: 把 CPU 干的脏活全扔给晚上的大模型。
 
-### 4.2 on_message_listener
+**阶段一：数据降维**
+- 画像存储从 JSON 改为 Markdown 文本块
 
-每条消息到达时执行:
-1. 清理过期缓冲 (每5分钟)
-2. 触发自动学习
-3. **关系图谱记录** (GraphRAG, 4.0.1 新增)
-4. 转发给插嘴引擎
+**阶段二：做梦机制**
+- 凌晨定时批量处理所有用户画像
+- LLM 将过去 24 小时对话总结为 Markdown 笔记
 
-### 4.3 定时任务
+**阶段三：极速拦截**
+- 移除实时向量检索
+- 直接读取 Markdown 文本拼接
 
-- **每日自省 + 做梦** (`_scheduled_reflection`): 
-  - 默认凌晨 3 点
-  - 设置反思标志位
-  - 执行"大赦天下" (恢复负面用户好感度)
-  - **批量处理用户画像** (3.8.0 新增)
-   
-- **画像清理** (`_scheduled_profile_cleanup`):
-  - ~~每天凌晨 4 点~~ (已废弃，Markdown 格式无需清理)
+**配置参数**:
+- `dream_enabled`: 启用做梦
+- `dream_schedule`: 定时任务配置
+- `dream_max_users`: 每次处理最大用户数
+- `dream_concurrency`: 并发数
+
+#### 3.2.2 惊奇驱动学习 (Surprise Detection)
+
+检测用户认知颠覆/惊喜表达（"我错了"、"原来如此"、"没想到"等关键词），触发即时画像更新。
 
 ---
 
-## 5. 配置项
+### 3.3 ProfileManager - 用户画像系统
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| persona_name | string | 黑塔 | 机器人名称 |
-| persona_title | string | 人偶负责人 | 机器人身份 |
-| persona_style | string | 理性、犀利且专业 | 插嘴风格 |
-| interjection_desire | int | 5 | 插嘴意愿 (1-10) |
-| critical_keywords | string | (见配置) | 触发关键词 (正则) |
-| review_mode | bool | true | 审核模式 |
-| allow_meta_programming | bool | false | 开启元编程 |
-| memory_kb_name | string | self_evolution_memory | 知识库名称 |
-| reflection_schedule | string | 0 3 * * * | 自省 Cron |
-| core_principles | string | (见配置) | 核心价值观 |
-| admin_users | list | [] | 管理员列表 |
-| buffer_threshold | int | 8 | 触发阈值 |
-| max_buffer_size | int | 20 | 缓冲上限 |
-| enable_profile_update | bool | true | 启用画像 |
-| enable_context_recall | bool | true | 启用上下文追踪 |
-| profile_precision_mode | string | simple | 画像精度模式 |
-| dream_enabled | bool | true | 启用做梦机制 |
-| dream_schedule | string | 0 3 * * * | 做梦 Cron |
-| dream_max_users | int | 20 | 做梦最大处理用户数 |
-| dream_concurrency | int | 3 | 做梦并发数 |
-| prompt_meltdown_message | string | (见配置) | 熔断提示词 |
-| prompt_reflection_instruction | string | (见配置) | 反思指令 |
-| prompt_anchor_injection | string | (见配置) | 核心锚点注入 |
-| prompt_communication_guidelines | string | (见配置) | 交流准则 |
-| prompt_eavesdrop_system | string | (见配置) | 插嘴系统提示词 |
-| prompt_dream_user_summary | string | (见配置) | 做梦-用户画像总结 |
-| prompt_dream_user_system | string | (见配置) | 做梦-用户画像系统提示词 |
-| prompt_dream_group_summary | string | (见配置) | 做梦-群记忆总结 |
-| prompt_dream_group_system | string | (见配置) | 做梦-群记忆系统提示词 |
-| debate_enabled | bool | true | 启用多智能体对抗 |
-| debate_rounds | int | 2 | 对抗辩论轮数 |
-| debate_system_prompt | string | (见配置) | 审查 Agent 系统提示词 |
-| debate_criteria | string | (见配置) | 代码审查标准 |
-| surprise_enabled | bool | true | 启用惊奇驱动学习 |
-| surprise_boost_keywords | string | (见配置) | 惊奇关键词 |
-| graph_enabled | bool | true | 启用关系图谱 RAG |
-| inner_monologue_enabled | bool | true | 启用内心独白 |
-| boredom_enabled | bool | true | 启用主动无聊机制 |
-| boredom_threshold | float | 0.6 | 无聊阈值 |
-| boredom_consecutive_count | int | 5 | 连续无聊计数 |
-| boredom_sarcastic_reply | bool | true | 无聊时傲慢回复 |
-| debate_agents | string | (见配置) | 审查智能体列表 |
+#### 3.3.1 分层失活 (Stratified Dropout)
+
+- **核心信息**: 永不丢失（群主、管理员、身份锚点）
+- **边缘信息**: 10-20% 随机屏蔽，增加人味
+
+**配置参数**:
+- `dropout_enabled`: 启用分层失活
+- `dropout_edge_rate`: 边缘信息丢弃率
+- `core_info_keywords`: 核心信息关键词列表
+
+#### 3.3.2 情绪依存记忆 (State-Dependent Memory)
+
+根据 affinity 动态调整记忆检索倾向：
+- affinity > 60: 关注共同兴趣和愉快记忆
+- affinity < 30: 注意其过往的问题行为
+- affinity <= 0: 翻旧账、无情嘲讽
+
+#### 3.3.3 潜意识缓存与内部独白 (Inner Monologue)
+
+- 当 AI 判定 IGNORE 时，强制输出 `<inner_monologue>` 内心独白
+- 存储并在下次真正发言时注入
+- 让发言带有"憋了半天才开口"的积累感
+
+#### 3.3.4 元认知与记忆模糊化 (Epistemic Uncertainty)
+
+- 画像生成时要求 LLM 标注置信度
+- 对低置信度 (<50%) 记忆表现出不确定
+- 会说出"我隐约记得..."、"是不是..."这类模糊寒暄
 
 ---
 
-## 6. LLM 工具
+### 3.4 GraphRAG - 关系图谱
 
-| 工具 | 功能 |
+- 记录用户在群聊中的互动关系
+- 追踪用户活跃群组和频繁互动用户
+- 提供关系图谱增强的记忆检索
+
+**命令**:
+- `/graph_info [用户ID]`: 查看用户关系图谱
+- `/graph_stats [群ID]`: 查看群统计
+
+---
+
+### 3.5 SANSystem - 精力值系统
+
+模拟心智疲劳的精力管理：
+- 每条消息消耗精力
+- 每小时恢复一定精力
+- 精力耗尽时拒绝服务
+
+**配置参数**:
+- `san_enabled`: 启用SAN值
+- `san_max`: 最大精力值
+- `san_cost_per_message`: 每条消息消耗
+- `san_recovery_per_hour`: 每小时恢复量
+- `san_low_threshold`: 低精力阈值
+
+---
+
+### 3.6 GroupVibeSystem - 群体情绪共染
+
+感知并响应群氛围：
+- 积极词汇: +1 分
+- 消极词汇: -1 分
+- 分数范围: -10 ~ +10
+
+**状态映射**:
+- <-5: 群氛围紧张
+- <0: 群氛围略低沉
+- >5: 群氛围热烈
+- >0: 群氛围轻松
+
+---
+
+### 3.7 MetaInfra - 元级编程系统
+
+#### 3.7.1 多智能体对抗 (Multi-Agent Debate)
+
+GAN 风格的对抗审查机制：
+- 主控 Agent (黑塔) 生成代码提案
+- 审查 Agent (螺丝咕姆/阮梅) 进行对抗辩论
+- 多轮辩论达成共识后才进入人工审核
+
+**配置参数**:
+- `debate_enabled`: 启用多智能体辩论
+- `debate_rounds`: 辩论轮数
+- `debate_agents`: 智能体配置 (JSON)
+
+#### 3.7.2 跨机体蜂群心智 (Federated Epistemology)
+
+- 凌晨做梦时跨群知识关联分析
+- 寻找跨领域知识连接点
+- 生成"夸耀式"金句供后续使用
+
+---
+
+## 4. LLM 工具
+
+| 工具名称 | 说明 |
+|----------|------|
+| `commit_to_memory` | 存入记忆 |
+| `recall_memories` | 检索记忆 |
+| `get_user_profile` | 获取画像 |
+| `update_user_profile` | 更新画像 |
+| `update_affinity` | 调整好感度 |
+| `evolve_persona` | 修改人格 |
+| `upsert_cognitive_memory` | 插入认知记忆 |
+| `get_user_messages` | 获取用户消息历史 |
+
+---
+
+## 5. 管理指令
+
+| 指令 | 说明 |
 |------|------|
-| commit_to_memory | 存入长期记忆 |
-| recall_memories | 检索记忆 |
-| learn_from_context | 从对话提取记忆 |
-| clear_all_memory | 清空记忆 |
-| list_memories | 列出记忆 |
-| delete_memory | 删除单条记忆 |
-| auto_recall | 主动注入记忆 |
-| save_group_knowledge | 保存群公共知识 |
-| get_user_profile | 获取用户画像 |
-| update_user_profile | 更新用户画像 (参数已简化为 content) |
+| `/reflect` | 强制自省 |
+| `/affinity` | 查看自己好感度 |
+| `/set_affinity [用户ID] [分数]` | 修正好感度 |
+| `/view_profile [用户ID]` | 查看用户画像 |
+| `/delete_profile [用户ID]` | 删除画像 |
+| `/profile_stats` | 查看画像统计 |
+| `/graph_info [用户ID]` | 查看关系图谱 |
+| `/graph_stats [群ID]` | 查看群统计 |
 
 ---
 
-## 8. 工具参数变更 (3.8.0)
+## 6. 配置参数
 
-### update_user_profile
+完整配置参数见 `_conf_schema.json`，主要参数：
 
-| 参数 | 旧版 | 新版 (3.8.0) |
-|------|------|---------------|
-| tags | string (逗号分隔) | 已移除 |
-| traits | string (逗号分隔) | 已移除 |
-| reason | string | 已移除 |
-| content | - | string (印象描述文本) |
+### 6.1 基础配置
 
-**新调用示例**:
-```python
-update_user_profile(target_user_id="123456", content="这个用户喜欢讨论技术问题，说话比较直接")
-```
-| update_affinity | 调整好感度 |
-| evolve_persona | 进化人格 |
-| list_tools | 列出工具 |
-| toggle_tool | 开关工具 |
-| get_plugin_source | 读取源码 |
-| update_plugin_source | 提议修改源码 |
-| get_user_messages | 获取用户历史消息 |
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `persona_name` | str | 黑塔 | 机器人名称 |
+| `persona_style` | str | 理性、毒舌、傲慢 | 风格描述 |
+| `critical_keywords` | str | (关键词) | 触发插嘴的关键词 |
 
----
+### 6.2 插嘴配置
 
-## 7. 管理员指令
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `interjection_desire` | int | 3 | 发言意愿 (1-10) |
+| `leaky_integrator_enabled` | bool | true | 启用泄漏积分器 |
+| `boredom_enabled` | bool | true | 启用无聊检测 |
 
-| 指令 | 功能 |
-|------|------|
-| /reflect | 触发自我反思 |
-| /review_evolutions | 查看待审核进化 |
-| /approve_evolution | 批准进化 |
-| /reject_evolution | 拒绝进化 |
-| /clear_evolutions | 清空进化队列 |
-| /set_affinity | 手动调整好感度 |
-| /affinity | 查看好感度 |
-| /view_profile | 查看用户画像 |
-| /delete_profile | 删除画像 |
-| /profile_stats | 画像统计 |
-| /graph_info | 查看用户关系图谱 |
-| /graph_stats | 查看群关系图谱统计 |
+### 6.3 记忆配置
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `dream_enabled` | bool | true | 启用做梦 |
+| `dropout_enabled` | bool | true | 启用分层失活 |
+| `graph_enabled` | bool | true | 启用关系图谱 |
+
+### 6.4 SAN值配置
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `san_enabled` | bool | true | 启用SAN值 |
+| `san_max` | int | 100 | 最大精力值 |
+| `san_cost_per_message` | float | 2.0 | 每条消息消耗 |
 
 ---
 
-## 8. 潜在问题与改进点
+## 7. 提示词配置
 
-### 8.1 性能问题
+所有提示词已提取到 `prompts.yaml`，包括：
 
-1. **LLM 调用无节流**: 单条消息可能触发多次 LLM 调用
-2. **缓冲池清理频率**: 每5分钟清理一次可能不够
-3. **画像提取 LLM 调用**: 每次关键场景都调用 LLM 提取标签
-
-### 8.2 架构问题
-
-1. **critical_keywords 重复定义**: main.py 和 memory.py 各自读取
-2. **未使用变量**: memory.py 中的 `group_id` (行 184)
-3. **缺少 busy_timeout**: SQLite WAL 模式未设置
-
-### 8.3 功能问题
-
-1. **画像更新未调用**: `update_profile_from_dialogue` 定义但未在主流程中调用
-2. **_session_speakers 未清理**: 会话结束后 speaker map 一直存在
-3. **get_user_messages API**: 参数 `user_id=group_id` 语义存疑
-
-### 8.4 安全问题
-
-1. **元编程绕过风险**: AST 检查可以被复杂反射绕过
-2. **代码执行**: 虽有审核机制，但生成的代码可能仍含漏洞
-3. **好感度滥用**: 管理员可以任意修改用户好感度
-
-### 8.5 代码质量问题
-
-1. **未使用导入**: `inspect` 模块导入但未使用 (main.py)
-2. **版本号**: 代码中为 3.7.0
-3. **重复代码**: persona.py 和 main.py 中都有权限检查逻辑
-
----
-
-## 9. 数据存储
-
-### 9.1 SQLite 数据库
-- 位置: `data/self_evolution/self_evolution.db`
-- 表: pending_evolutions, pending_reflections, user_relationships
-
-### 9.2 用户画像
-- 位置: `data/self_evolution/profiles/user_{id}.md`
-- 格式: Markdown
-
-### 9.3 关系图谱
-- 位置: `data/graph/user_relations.json`
-- 格式: JSON
-
-### 9.4 代码提案
-- 位置: `data/self_evolution/code_proposals/`
-- 格式: `*.proposal`
-
----
-
-## 10. 依赖
-
-- astrbot (框架)
-- aiosqlite (异步 SQLite)
-- asyncio (内置)
-- datetime (内置)
-- json (内置)
-- pathlib (内置)
-- re (内置)
-- logging (内置)
-
----
-
-## 11. 测试
-
-单元测试代码位于 `test` 分支：
-
-```bash
-git checkout test
-pip install pytest pytest-asyncio
-pytest tests/ -v
-```
-
-**测试覆盖**:
-- DAO 层: 8 tests
-- 画像模块: 7 tests
-- 记忆模块: 8 tests
-- 插嘴引擎: 5 tests
-- 人格进化: 4 tests
-- 元编程: 4 tests
-- 定时任务: 3 tests
-- LLM 工具: 3 tests
-- 管理员指令: 4 tests
-
-**总计**: 46 tests
+- `persona.anchor`: 核心人设锚点
+- `persona.communication`: 交流准则
+- `eavesdrop.system`: 插嘴系统提示
+- `eavesdrop.decision`: 插嘴决策逻辑
+- `memory.user_summary`: 画像总结提示
+- `meta.reviewer_螺丝咕姆`: 螺丝咕姆人设
+- `meta.reviewer_阮梅`: 阮梅人设

@@ -43,7 +43,7 @@ PAGE_LIMIT = 10
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "具备主动环境感知及插嘴引擎的 CognitionCore 6.0 数字生命。",
-    "5.0.0-preview",
+    "5.0.15",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
