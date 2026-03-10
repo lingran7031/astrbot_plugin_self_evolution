@@ -114,5 +114,17 @@
         "description": "当用户引用 AI 之前的话时，是否自动注入上下文。",
         "type": "bool",
         "default": true
+    },
+    "profile_precision_mode": {
+        "title": "画像精度模式",
+        "description": "simple: Markdown 文本摘要; detailed: 带权重的结构化标签(开发中)",
+        "type": "string",
+        "default": "simple"
+    },
+    "dream_enabled": {
+        "title": "启用做梦机制",
+        "description": "凌晨批量总结记忆和画像，取代实时 LLM 调用。",
+        "type": "bool",
+        "default": true
     }
 }

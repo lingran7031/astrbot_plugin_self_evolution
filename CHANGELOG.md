@@ -2,6 +2,30 @@
 
 本项目的所有重大更改都将记录在此文件中。
 
+## [3.8.0] - 2026-03-10
+### 重构 (Refactor) - 认知卸载 (Cognitive Offloading)
+
+**核心思想**: 把 CPU 干的脏活全扔给晚上的大模型，把白天的毫秒级响应还给代码。
+
+#### 阶段一：数据降维
+- **画像存储格式**: 从复杂 JSON 改为 Markdown 文本块
+- **删除废弃代码**: 移除 update_profile_from_dialogue, extract_tags_from_dialogue, merge_profile 等未调用函数
+- **新增配置**: profile_precision_mode (simple/detailed)
+
+#### 阶段二：做梦机制
+- **批量总结**: 凌晨定时任务 `_scheduled_reflection` 现在会批量处理所有用户画像
+- **LLM 总结**: 使用 LLM 将过去 24 小时对话总结为 Markdown 笔记
+- **新增配置**: dream_enabled, dream_schedule
+
+#### 阶段三：极速拦截
+- **移除实时向量检索**: 删除 auto_recall_inject 调用
+- **简化画像注入**: 直接读取 Markdown 文本拼接
+- **保留工具**: recall_memories (AI 主动调用)
+
+#### 阶段四：插嘴优化
+- **滑动窗口**: 添加全局消息窗口 (最新5条)
+- **简化评估**: 精简 Prompt，减少 token 消耗
+
 ## [3.7.1] - 2026-03-10
 ### 修复 (Fix)
 - **内存泄漏**：添加 active_buffers 定期清理，防止长时间运行内存膨胀

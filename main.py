@@ -40,7 +40,7 @@ PAGE_LIMIT = 10
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "具备主动环境感知及插嘴引擎的 CognitionCore 6.0 数字生命。",
-    "3.7.0",
+    "3.8.0",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -155,6 +155,14 @@ class SelfEvolutionPlugin(Star):
     @property
     def enable_context_recall(self):
         return self._parse_bool(self.config.get("enable_context_recall"), True)
+
+    @property
+    def dream_enabled(self):
+        return self._parse_bool(self.config.get("dream_enabled"), True)
+
+    @property
+    def dream_schedule(self):
+        return self.config.get("dream_schedule", "0 3 * * *")
 
     def _post_init(self):
         logger.info(
@@ -277,16 +285,13 @@ class SelfEvolutionPlugin(Star):
             req.system_prompt += injection
             logger.debug("[SelfEvolution] 已在上下文中注入常驻辩证反省指令。")
 
-        # 4. 自动记忆检索与注入 (Auto-Recall)
-        await self.memory.auto_recall_inject(event, req)
-
-        # 5. 用户画像注入 (Profile) - 合并到潜意识记忆区
+        # 4. 用户画像注入 - 直接读取 Markdown 文本拼接
         if self.enable_profile_update:
             profile_summary = await self.profile.get_profile_summary(user_id)
             if profile_summary:
-                req.system_prompt += f"\n\n[当前发言用户画像 (Sender_ID: {user_id})]\n- {profile_summary}\n"
+                req.system_prompt += f"\n\n[用户印象笔记]\n{profile_summary}\n"
 
-        # 6. 交流准则注入
+        # 5. 交流准则注入
         req.system_prompt += (
             "\n\n【交流准则】\n"
             "像平时在群里和朋友聊天一样自然地回复。\n"
@@ -365,20 +370,94 @@ class SelfEvolutionPlugin(Star):
             logger.error(f"[SelfEvolution] 注册定时任务失败: {e}")
 
     async def _scheduled_reflection(self):
-        """定时任务回调函数"""
+        """定时任务回调函数 - 做梦机制"""
         self.daily_reflection_pending = True
         logger.info(
             "[SelfEvolution] 每日反思定时任务已触发，将在下一次对话时顺带执行深层内省。"
         )
 
-        # 异步初始化/维护数据库
         await self.dao.init_db()
 
-        # [大赦天下]: 每日自动回复所有黑名单用户 2 点好感度，直到恢复到 50 (中立)
         await self.dao.recover_all_affinity(recovery_amount=2)
         logger.info(
             '[SelfEvolution] 已执行每日"大赦天下"：所有负面评分用户好感度已小幅回升。'
         )
+
+        if self.dream_enabled:
+            await self._dream_processing()
+
+    async def _dream_processing(self):
+        """做梦机制：凌晨批量总结用户画像和群记忆"""
+        logger.info("[Dream] 开始批量处理用户画像和群记忆...")
+
+        try:
+            history_mgr = self.context.message_history_manager
+            platform_id = "qq"
+
+            profile_dir = self.profile.profile_dir
+            profile_files = list(profile_dir.glob("user_*.md"))
+
+            processed = 0
+            for profile_path in profile_files:
+                user_id = profile_path.stem.replace("user_", "")
+
+                try:
+                    history = await history_mgr.get(
+                        platform_id=platform_id, user_id=user_id, page=1, page_size=100
+                    )
+
+                    if not history:
+                        continue
+
+                    messages = []
+                    for msg in history:
+                        sender = getattr(msg, "sender_name", "Unknown")
+                        content = getattr(msg, "message_str", "")[:200]
+                        if content:
+                            messages.append(f"{sender}: {content}")
+
+                    if not messages:
+                        continue
+
+                    existing_note = (
+                        profile_path.read_text(encoding="utf-8")
+                        if profile_path.exists()
+                        else ""
+                    )
+
+                    llm_provider = self.context.get_using_provider(platform_id)
+                    if not llm_provider:
+                        continue
+
+                    prompt = f"""你是一个旁观者，请根据今天的对话更新你对这个人的印象。
+
+旧笔记:
+{existing_note[:500] if existing_note else "(暂无)"}
+
+今日对话:
+{chr(10).join(messages[-20:])}
+
+请输出一段精简的纯文本（不超过200字），描述你对这个人最新的印象。只输出文本，不要其他内容。"""
+
+                    res = await llm_provider.text_chat(
+                        prompt=prompt,
+                        contexts=[],
+                        system_prompt="你是一个记忆助手，只输出精简的文本描述。",
+                    )
+
+                    new_note = res.completion_text.strip()
+                    if new_note:
+                        profile_path.write_text(new_note, encoding="utf-8")
+                        processed += 1
+
+                except Exception as e:
+                    logger.warning(f"[Dream] 处理用户 {user_id} 失败: {e}")
+                    continue
+
+            logger.info(f"[Dream] 批量处理完成，共更新 {processed} 个用户画像")
+
+        except Exception as e:
+            logger.error(f"[Dream] 做梦机制执行失败: {e}")
 
     async def _scheduled_profile_cleanup(self):
         """画像清理定时任务"""
@@ -709,18 +788,17 @@ class SelfEvolutionPlugin(Star):
         """
         user_id = event.get_sender_id()
         profile = await self.profile.load_profile(user_id)
-        import json
 
-        return json.dumps(profile, ensure_ascii=False, indent=2)
+        if not profile:
+            return "该用户暂无画像记录。"
+        return profile
 
     @filter.llm_tool(name="update_user_profile")
     async def update_user_profile(
         self,
         event: AstrMessageEvent,
         target_user_id: str,
-        tags: str = "",
-        traits: str = "",
-        reason: str = "",
+        content: str = "",
     ) -> str:
         """当你在对话中发现用户的兴趣偏好或性格特征时，调用此工具更新用户画像。
 
@@ -731,54 +809,28 @@ class SelfEvolutionPlugin(Star):
 
         Args:
             target_user_id(string): 要更新的目标用户ID（必填）
-            tags(string): 兴趣标签，多个用逗号分隔，如：Python,音乐,游戏（可选）
-            traits(string): 性格特征，多个用逗号分隔，如：内向,直接,幽默（可选）
-            reason(string): 更新理由，说明你为什么得出这个结论（必填）
+            content(string): 你对这个人的印象描述，用精简的纯文本（必填）
         """
-        import json
+        if not content:
+            return "请提供要更新的内容描述。"
 
-        # 构建更新数据
-        new_tags = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-        new_traits = (
-            [t.strip() for t in traits.split(",") if t.strip()] if traits else []
-        )
+        # 简单处理：直接追加到现有 Markdown
+        existing = await self.profile.load_profile(target_user_id)
 
-        if not new_tags and not new_traits:
-            return "没有提供任何要更新的标签，请至少填写 tags 或 traits 之一。"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        new_content = f"\n\n---\n**{timestamp}**\n{content}"
 
-        # 简单处理：直接追加，不经过复杂合并
-        profile = await self.profile.load_profile(target_user_id)
+        if existing:
+            updated = existing + new_content
+        else:
+            updated = f"# 用户印象笔记\n{new_content}"
 
-        # 添加新标签
-        for tag_name in new_tags:
-            if not any(t.get("name") == tag_name for t in profile.get("tags", [])):
-                profile.setdefault("tags", []).append(
-                    {
-                        "name": tag_name,
-                        "weight": 0.5,
-                        "last_seen": datetime.now().strftime("%Y-%m-%d"),
-                        "source_uuids": [],
-                        "reason": reason,
-                    }
-                )
+        # 限制长度
+        if len(updated) > 2000:
+            updated = updated[:2000] + "\n\n(...旧记录已截断)"
 
-        # 添加新性格
-        for trait_name in new_traits:
-            if not any(t.get("name") == trait_name for t in profile.get("traits", [])):
-                profile.setdefault("traits", []).append(
-                    {
-                        "name": trait_name,
-                        "weight": 0.5,
-                        "last_seen": datetime.now().strftime("%Y-%m-%d"),
-                        "source_uuids": [],
-                        "reason": reason,
-                    }
-                )
-
-        profile["updated_at"] = datetime.now().isoformat()
-        await self.profile.save_profile(target_user_id, profile)
-
-        return f"已更新用户 {target_user_id} 的画像。新增标签: {new_tags}, 新增性格: {new_traits}"
+        await self.profile.save_profile(target_user_id, updated)
+        return f"已更新用户 {target_user_id} 的画像。"
 
     @filter.llm_tool(name="get_user_messages")
     async def get_user_messages(
