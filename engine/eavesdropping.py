@@ -158,6 +158,16 @@ class EavesdroppingEngine:
                 yield result
             return
 
+        # 前置低算力拦截：快速过滤明显无需介入的情况
+        if not is_at and len(msg_text) < 6:
+            logger.debug(f"[CognitionCore] 消息过短，跳过评估: {msg_text[:10]}")
+            return
+
+        # 高信息熵直接跳过（全是重复字符/表情）
+        if entropy > 0.95 and not is_at:
+            logger.debug(f"[CognitionCore] 信息熵过高，跳过: {msg_text[:10]}")
+            return
+
         if is_at:
             async for result in self._evaluate_interjection(event, session_id):
                 yield result

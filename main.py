@@ -216,6 +216,13 @@ class SelfEvolutionPlugin(Star):
         )
 
     @property
+    def prompt_dream_user_incremental(self):
+        return self.config.get(
+            "prompt_dream_user_incremental",
+            "你是一个记忆助手。旧笔记：{old_note}。今日对话：{messages}。\n\n请只输出【新增或修正的内容】，不超过100字。不要重复旧笔记中已经存在的信息。只输出纯文本。",
+        )
+
+    @property
     def prompt_dream_user_system(self):
         return self.config.get(
             "prompt_dream_user_system",
@@ -494,6 +501,39 @@ class SelfEvolutionPlugin(Star):
         )
         user_id = event.get_sender_id()
         session_id = event.session_id
+        msg_text = event.message_str or ""
+
+        # 0. 动态上下文路由：轻量级消息分类，决定加载哪些模块
+        needs_profile = False
+        needs_graph = False
+        needs_preference = False
+        needs_surprise = False
+
+        # 快速正则分类
+        msg_lower = msg_text.lower()
+        preference_triggers = [
+            "我喜欢",
+            "我讨厌",
+            "我不喜欢",
+            "我爱",
+            "我决定",
+            "从现在起",
+        ]
+        surprise_triggers = ["我错了", "原来如此", "没想到", "居然", "震惊"]
+        graph_triggers = ["你经常", "他和", "她经常", "群里谁", "你们群"]
+
+        if any(t in msg_lower for t in preference_triggers):
+            needs_profile = True
+            needs_preference = True
+        if any(t in msg_lower for t in surprise_triggers):
+            needs_profile = True
+            needs_surprise = True
+        if any(t in msg_lower for t in graph_triggers):
+            needs_graph = True
+        # 打招呼类只加载基础人格
+        is_greeting = len(msg_text) < 10 and any(
+            g in msg_lower for g in ["早", "晚安", "你好", "hi", "hello", "在吗"]
+        )
 
         # 1. 情感矩阵拦截：节省 Token
         affinity = await self.dao.get_affinity(user_id)
@@ -582,8 +622,8 @@ class SelfEvolutionPlugin(Star):
         # 获取消息文本（提前定义以便后续使用）
         msg_text = event.message_str
 
-        # 4. 用户画像注入 - 直接读取 Markdown 文本拼接
-        if self.enable_profile_update:
+        # 4. 用户画像注入 - 按需加载（动态上下文路由）
+        if self.enable_profile_update and (needs_profile or is_greeting):
             profile_summary = await self.profile.get_profile_summary(user_id)
             if profile_summary:
                 req.system_prompt += f"\n\n[用户印象笔记]\n{profile_summary}\n"
@@ -594,8 +634,12 @@ class SelfEvolutionPlugin(Star):
                     '例如："我隐约记得你上个月是不是提过你要重构数据库？那个搞完了没？"'
                 )
 
-        # 4.1 关系图谱增强
-        if self.graph_enabled and hasattr(self, "graph"):
+        # 4.1 关系图谱增强 - 按需加载
+        if (
+            self.graph_enabled
+            and hasattr(self, "graph")
+            and (needs_graph or is_greeting)
+        ):
             graph_enhancement = await self.graph.enhance_recall(user_id, msg_text)
             if graph_enhancement:
                 req.system_prompt += graph_enhancement
@@ -628,8 +672,12 @@ class SelfEvolutionPlugin(Star):
                     "确保当天的记忆准确无误。"
                 )
 
-            # 4.6 Surprise Detection：检测用户认知颠覆/惊喜表达
-            if self.surprise_enabled and self.surprise_boost_keywords:
+            # 4.6 Surprise Detection：检测用户认知颠覆/惊喜表达（按需加载）
+            if (
+                self.surprise_enabled
+                and self.surprise_boost_keywords
+                and needs_surprise
+            ):
                 surprise_keywords = [
                     k.strip()
                     for k in self.surprise_boost_keywords.split(",")
@@ -863,17 +911,44 @@ class SelfEvolutionPlugin(Star):
 
                         old_note = existing_note[:500] if existing_note else "(暂无)"
                         messages_text = chr(10).join(messages[-20:])
-                        prompt = self.prompt_dream_user_summary.format(
-                            old_note=old_note, messages=messages_text
-                        )
 
-                        res = await llm_provider.text_chat(
-                            prompt=prompt,
-                            contexts=[],
-                            system_prompt=self.prompt_dream_user_system,
-                        )
+                        # 增量更新：如果已有笔记，只让 LLM 输出新增/修正内容
+                        if existing_note and len(existing_note) > 50:
+                            prompt = self.prompt_dream_user_incremental.format(
+                                old_note=old_note, messages=messages_text
+                            )
+                            res = await llm_provider.text_chat(
+                                prompt=prompt,
+                                contexts=[],
+                                system_prompt=self.prompt_dream_user_system,
+                            )
+                            incremental_note = res.completion_text.strip()
+                            if incremental_note:
+                                import time
 
-                        new_note = res.completion_text.strip()
+                                timestamp = time.strftime("%Y-%m-%d %H:%M")
+                                new_note = (
+                                    existing_note
+                                    + f"\n\n---\n**{timestamp}**\n"
+                                    + incremental_note
+                                )
+                                # 限制总长度
+                                if len(new_note) > 2000:
+                                    new_note = new_note[-2000:]
+                            else:
+                                new_note = existing_note
+                        else:
+                            # 首次生成或内容过少，使用全量生成
+                            prompt = self.prompt_dream_user_summary.format(
+                                old_note=old_note, messages=messages_text
+                            )
+                            res = await llm_provider.text_chat(
+                                prompt=prompt,
+                                contexts=[],
+                                system_prompt=self.prompt_dream_user_system,
+                            )
+                            new_note = res.completion_text.strip()
+
                         if new_note:
                             profile_path.write_text(new_note, encoding="utf-8")
                             processed += 1
@@ -1428,6 +1503,60 @@ class SelfEvolutionPlugin(Star):
 
         await self.profile.save_profile(target_user_id, updated)
         return f"已更新用户 {target_user_id} 的画像。"
+
+    @filter.llm_tool(name="upsert_cognitive_memory")
+    async def upsert_cognitive_memory(
+        self,
+        event: AstrMessageEvent,
+        category: str,
+        entity: str,
+        content: str,
+    ) -> str:
+        """【推荐使用】统一的认知记忆存储工具。根据 category 自动分发到对应的存储系统。
+
+        触发场景：当你在对话中发现任何需要永久记住的信息时，使用此工具。
+
+        Args:
+            category(string): 记忆分类，必填。选项：
+                - user_profile: 用户画像/印象（关于这个人的一切）
+                - user_preference: 用户偏好（喜欢/讨厌什么）
+                - group_rule: 群规/群共识
+                - general_fact: 一般性事实/知识
+            entity(string): 关联实体，必填。如：用户ID、群号、或"通用"
+            content(string): 要记忆的内容，必填。用精简的纯文本描述。
+        """
+        import time
+
+        if not category or not content:
+            return "请提供 category 和 content 参数。"
+
+        timestamp = time.strftime("%Y-%m-%d %H:%M")
+
+        if category == "user_profile" or category == "user_preference":
+            target_user_id = entity
+            profile_content = f"---\n**{timestamp}**\n{content}"
+            existing = await self.profile.load_profile(target_user_id)
+            if existing:
+                updated = existing + "\n" + profile_content
+            else:
+                updated = f"# 用户印象笔记\n{profile_content}"
+            if len(updated) > 2000:
+                updated = updated[:2000] + "\n(...旧记录已截断)"
+            await self.profile.save_profile(target_user_id, updated)
+            return f"已更新用户 {target_user_id} 的{('偏好' if category == 'user_preference' else '画像')}。"
+
+        elif category == "group_rule":
+            group_id = entity
+            fact = f"[{timestamp}] {content}"
+            await self.memory.save_group_knowledge(event, fact, "群规", None)
+            return f"已更新群 {group_id} 的群规。"
+
+        elif category == "general_fact":
+            await self.memory.commit_to_memory(event, content)
+            return "已存入一般性记忆。"
+
+        else:
+            return f"未知的 category: {category}。请使用 user_profile, user_preference, group_rule, general_fact。"
 
     @filter.llm_tool(name="get_user_messages")
     async def get_user_messages(

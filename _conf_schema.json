@@ -406,5 +406,11 @@
         "description": "成年阶段的系统 Prompt。",
         "type": "string",
         "default": "你是一个成熟的 AI，拥有完整的知识和独立的人格。理性、犀利且专业。"
+    },
+    "prompt_dream_user_incremental": {
+        "title": "增量做梦 Prompt",
+        "description": "当用户已有画像时，使用增量更新模式。只输出新增/修正内容。",
+        "type": "string",
+        "default": "你是一个记忆助手。旧笔记：{old_note}。今日对话：{messages}。\n\n请只输出【新增或修正的内容】，不超过100字。不要重复旧笔记中已经存在的信息。只输出纯文本。"
     }
 }
