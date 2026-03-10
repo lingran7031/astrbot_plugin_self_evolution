@@ -15,8 +15,8 @@ class EavesdroppingEngine:
     async def handle_message(self, event: AstrMessageEvent):
         """CognitionCore 4.5: 意图预扫描 + 滑动窗口氛围感知"""
         msg_text = event.message_str
-        session_id = event.session_id
-        user_id = event.get_sender_id()
+        session_id = str(event.session_id)  # 确保字符串类型
+        user_id = str(event.get_sender_id())  # 确保字符串类型
         sender_name = event.get_sender_name() or "Unknown"
         is_at = event.is_at_or_wake_command
 
@@ -36,6 +36,7 @@ class EavesdroppingEngine:
 
         group_id = event.get_group_id()
         if group_id:
+            group_id = str(group_id)  # 确保字符串类型
             self.global_window[group_id].append(f"{sender_name}: {msg_text}")
             if len(self.global_window[group_id]) > self.window_size:
                 self.global_window[group_id].pop(0)
@@ -184,6 +185,6 @@ class EavesdroppingEngine:
             if "安全检查" in str(e) or "Safety" in str(e):
                 logger.warning(f"[CognitionCore] 插嘴评估被服务商安全策略拦截。")
             else:
-                logger.error(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
+                logger.warning(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
         finally:
             self.plugin.processing_sessions.discard(session_id)
