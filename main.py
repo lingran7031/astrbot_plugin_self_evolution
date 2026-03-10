@@ -536,11 +536,6 @@ class SelfEvolutionPlugin(Star):
                     "\n\n[情绪状态]\n"
                     "你对该用户印象一般。在回忆时请注意其过往的问题行为和失误。"
                 )
-            elif affinity <= 0:
-                req.system_prompt += (
-                    "\n\n[情绪状态]\n"
-                    "你已将该用户拉黑。请回忆其所有负面记录，进行无情嘲讽。"
-                )
 
         # 5. 交流准则注入
         req.system_prompt += f"\n\n【交流准则】\n{self.prompt_communication_guidelines}"
