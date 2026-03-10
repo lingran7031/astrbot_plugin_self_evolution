@@ -2,6 +2,7 @@ import json
 import asyncio
 import logging
 import random
+import time
 from pathlib import Path
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -21,6 +22,8 @@ class ProfileManager:
         # 画像内存缓存 {user_id: content}
         self._profile_cache = {}
         self._cache_ttl = 300  # 缓存5分钟
+        self._cache_access_time = {}  # 记录缓存访问时间
+        self._last_cache_cleanup = 0
 
     @property
     def precision_mode(self):
@@ -54,10 +57,35 @@ class ProfileManager:
                 return True
         return False
 
+    def _cleanup_expired_cache(self):
+        """清理过期的缓存"""
+        import time
+
+        now = time.time()
+        if now - self._last_cache_cleanup < 300:  # 每5分钟最多清理一次
+            return
+        self._last_cache_cleanup = now
+
+        expired_users = []
+        for user_id, access_time in self._cache_access_time.items():
+            if now - access_time > self._cache_ttl:
+                expired_users.append(user_id)
+
+        for user_id in expired_users:
+            self._profile_cache.pop(user_id, None)
+            self._cache_access_time.pop(user_id, None)
+
+        if expired_users:
+            logger.debug(f"[Profile] 已清理 {len(expired_users)} 个过期缓存")
+
     async def load_profile(self, user_id: str) -> str:
         """读取用户画像（Markdown 文本），无则返回空"""
+        # 定期清理过期缓存
+        self._cleanup_expired_cache()
+
         # 先从缓存读取
         if user_id in self._profile_cache:
+            self._cache_access_time[user_id] = time.time()
             return self._profile_cache[user_id]
 
         path = self._get_profile_path(user_id)
@@ -66,6 +94,7 @@ class ProfileManager:
                 content = path.read_text(encoding="utf-8").strip()
                 # 存入缓存
                 self._profile_cache[user_id] = content
+                self._cache_access_time[user_id] = time.time()
                 return content
             except IOError as e:
                 logger.warning(f"[Profile] 读取画像失败 {user_id}: {e}")
@@ -73,10 +102,14 @@ class ProfileManager:
 
     async def save_profile(self, user_id: str, content: str):
         """保存用户画像（Markdown 文本）"""
+        # 定期清理过期缓存
+        self._cleanup_expired_cache()
+
         path = self._get_profile_path(user_id)
         path.write_text(content, encoding="utf-8")
         # 更新缓存
         self._profile_cache[user_id] = content
+        self._cache_access_time[user_id] = time.time()
         logger.info(f"[Profile] 已保存用户画像: {user_id}")
 
     async def get_profile_summary(self, user_id: str) -> str:

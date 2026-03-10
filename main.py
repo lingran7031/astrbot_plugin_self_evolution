@@ -3,6 +3,7 @@ from astrbot.api.event import filter
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import StarTools
 from astrbot.api import logger
+from astrbot.core.message.components import Plain
 import asyncio
 import os
 import time
@@ -117,7 +118,7 @@ class SelfEvolutionPlugin(Star):
                     biased_users.append(other_user)
             if biased_users:
                 return f"注意：你与用户 {biased_users[0]} 往来密切，需保持警惕。"
-        except:
+        except Exception:
             pass
         return ""
 
@@ -449,6 +450,42 @@ class SelfEvolutionPlugin(Star):
 
         async for result in self.eavesdropping.handle_message(event):
             yield result
+
+    @filter.on_decorating_result()
+    async def on_decorating_result(self, event: AstrMessageEvent):
+        """中间消息过滤器：拦截工具调用期间的过渡性消息"""
+        result = event.get_result()
+        if not result or not result.chain:
+            return
+
+        session_id = str(event.session_id)
+
+        # 清理过期的被拦截消息
+        self.eavesdropping.cleanup_expired_intercepted_messages()
+
+        # 检查消息链中是否有需要拦截的中间消息
+        filtered_chain = []
+        intercepted = False
+
+        for comp in result.chain:
+            if isinstance(comp, Plain) and comp.text:
+                text = comp.text.strip()
+                if self.eavesdropping.is_intermediate_message(text):
+                    self.eavesdropping.cache_intercepted_message(session_id, text)
+                    intercepted = True
+                    continue
+            filtered_chain.append(comp)
+
+        if intercepted and filtered_chain:
+            # 有消息被拦截，更新result.chain
+            result.chain = filtered_chain
+            logger.info(
+                f"[IntermediateFilter] 已拦截中间消息，剩余 {len(filtered_chain)} 个组件"
+            )
+        elif intercepted and not filtered_chain:
+            # 所有消息都被拦截，使用clear_result清空
+            event.clear_result()
+            logger.info(f"[IntermediateFilter] 拦截所有消息，暂停发送")
 
     async def _cleanup_stale_buffers(self):
         """清理超过1小时未活动的会话缓冲"""
@@ -818,7 +855,7 @@ class SelfEvolutionPlugin(Star):
                             gid = getattr(msg, "group_id", None)
                             if gid:
                                 group_ids.add(gid)
-                except:
+                except Exception:
                     continue
 
             semaphore = asyncio.Semaphore(max(1, self.dream_concurrency // 2))

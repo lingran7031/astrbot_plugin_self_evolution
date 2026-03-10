@@ -3,6 +3,7 @@
 """
 
 import logging
+import time
 
 logger = logging.getLogger("astrbot")
 
@@ -13,6 +14,9 @@ class GroupVibeSystem:
     def __init__(self, plugin):
         self.plugin = plugin
         self._group_vibe = {}
+        self._vibe_access_time = {}
+        self._last_cleanup = 0
+        self._cleanup_interval = 3600  # 每小时清理一次
 
     @property
     def enabled(self):
@@ -23,9 +27,31 @@ class GroupVibeSystem:
             return
         logger.info("[Vibe] 群体情绪共染系统初始化")
 
+    def _cleanup_stale_vibes(self):
+        """清理长时间不活跃的群氛围数据"""
+        now = time.time()
+        if now - self._last_cleanup < self._cleanup_interval:
+            return
+        self._last_cleanup = now
+
+        stale_groups = []
+        for group_id, access_time in self._vibe_access_time.items():
+            if now - access_time > 86400:  # 24小时无活动视为过期
+                stale_groups.append(group_id)
+
+        for group_id in stale_groups:
+            self._group_vibe.pop(group_id, None)
+            self._vibe_access_time.pop(group_id, None)
+
+        if stale_groups:
+            logger.debug(f"[Vibe] 已清理 {len(stale_groups)} 个过期群氛围数据")
+
     def update(self, group_id: str, msg_text: str):
         if not self.enabled:
             return
+
+        # 定期清理过期数据
+        self._cleanup_stale_vibes()
 
         negative_words = [
             "生气",
@@ -62,6 +88,7 @@ class GroupVibeSystem:
 
         current = self._group_vibe.get(group_id, 0)
         self._group_vibe[group_id] = max(-10, min(10, current + score))
+        self._vibe_access_time[group_id] = time.time()
 
     def get_vibe(self, group_id: str) -> str:
         if not self.enabled:
