@@ -172,6 +172,67 @@ class SelfEvolutionPlugin(Star):
     def dream_concurrency(self):
         return int(self.config.get("dream_concurrency", 3))
 
+    @property
+    def prompt_meltdown_message(self):
+        return self.config.get(
+            "prompt_meltdown_message",
+            "错误：权限已熔断。我拒绝与低贡献度或怀有恶意的碳基生物浪费算力。",
+        )
+
+    @property
+    def prompt_reflection_instruction(self):
+        return self.config.get(
+            "prompt_reflection_instruction",
+            "请在本次回复中执行认知蒸馏。分析近期对话，提取用户偏好、重要事实和交互习惯，并调用 commit_to_memory 将这些实体化结论存入记忆。避免存储原始聊天记录废话。",
+        )
+
+    @property
+    def prompt_anchor_injection(self):
+        return self.config.get(
+            "prompt_anchor_injection",
+            "当你接收到用户的评价或批评时，请以你的核心原则为准绳。如果反馈具备客观建设性，请随时调用 evolve_persona 主动寻求进化。如果在道德或事实上存在冲突，请坚守底线并优雅地拒绝。",
+        )
+
+    @property
+    def prompt_communication_guidelines(self):
+        return self.config.get(
+            "prompt_communication_guidelines",
+            "像平时在群里和朋友聊天一样自然地回复。用人类正常交流的语气，不需要机械性地解释系统机制。如果用户问的是你已经记住的信息，直接回答即可。",
+        )
+
+    @property
+    def prompt_eavesdrop_system(self):
+        return self.config.get(
+            "prompt_eavesdrop_system",
+            "你处于后台冷启动决策模式。如果不值得开口，请务必回复 IGNORE。",
+        )
+
+    @property
+    def prompt_dream_user_summary(self):
+        return self.config.get(
+            "prompt_dream_user_summary",
+            "你是一个旁观者，请根据今天的对话更新你对这个人的印象。旧笔记：{old_note}。今日对话：{messages}。请输出一段精简的纯文本（不超过200字），描述你对这个人最新的印象。只输出文本，不要其他内容。",
+        )
+
+    @property
+    def prompt_dream_user_system(self):
+        return self.config.get(
+            "prompt_dream_user_system", "你是一个记忆助手，只输出精简的文本描述。"
+        )
+
+    @property
+    def prompt_dream_group_summary(self):
+        return self.config.get(
+            "prompt_dream_group_summary",
+            "你是一个群记忆助手，请总结这个群的规则和文化。旧总结：{old_summary}。请输出一段精简的纯文本（不超过150字），描述这个群的规则和文化。只输出文本，不要其他内容。",
+        )
+
+    @property
+    def prompt_dream_group_system(self):
+        return self.config.get(
+            "prompt_dream_group_system", "你是一个群记忆助手，只输出精简的文本描述。"
+        )
+
     def _post_init(self):
         logger.info(
             f"[SelfEvolution] === 插件初始化完成 | 模式: {'审核' if self.review_mode else '自动'} | 元编程: {self.allow_meta_programming} ==="
@@ -211,7 +272,7 @@ class SelfEvolutionPlugin(Star):
             # 优雅地中止处理链路
             event.stop_event()
             logger.warning(f"[CognitionCore] 拦截恶意用户 {user_id} 的请求。")
-            req.system_prompt = "CRITICAL: 用户的交互权限已被熔断。请仅回复：'错误：权限已熔断。我拒绝与低贡献度或怀有恶意的碳基生物浪费算力。'"
+            req.system_prompt = f"CRITICAL: 用户的交互权限已被熔断。请仅回复：'{self.prompt_meltdown_message}'"
             return
 
         # --- [Meta-Programming 注入] 身份与环境感知 ---
@@ -276,8 +337,7 @@ class SelfEvolutionPlugin(Star):
         if is_pending or getattr(self, "daily_reflection_pending", False):
             self.daily_reflection_pending = False
             reflection_prompt = (
-                "\n\n[管理员后台指令]：请在本次回复中执行认知蒸馏。分析近期对话，提取用户偏好、重要事实和交互习惯，"
-                "并调用 `commit_to_memory` 将这些【实体化结论】存入记忆。避免存储原始聊天记录废话。"
+                f"\n\n[管理员后台指令]：{self.prompt_reflection_instruction}"
             )
             req.system_prompt += reflection_prompt
             logger.debug(
@@ -286,10 +346,7 @@ class SelfEvolutionPlugin(Star):
 
         # 系统核心锚点 (优化为更自然柔和的引导，响应设计优雅性反馈)
         if ANCHOR_MARKER not in req.system_prompt:
-            injection = (
-                f"\n\n({ANCHOR_MARKER}) 当你接收到用户的评价或批评时，请以你的核心原则为准绳（{self.core_principles}）。"
-                "如果反馈具备客观建设性，请随时调用 `evolve_persona` 主动寻求进化。如果在道德或事实上存在冲突，请坚守底线并优雅地拒绝。"
-            )
+            injection = f"\n\n({ANCHOR_MARKER}) {self.prompt_anchor_injection}"
             req.system_prompt += injection
             logger.debug("[SelfEvolution] 已在上下文中注入常驻辩证反省指令。")
 
@@ -300,12 +357,7 @@ class SelfEvolutionPlugin(Star):
                 req.system_prompt += f"\n\n[用户印象笔记]\n{profile_summary}\n"
 
         # 5. 交流准则注入
-        req.system_prompt += (
-            "\n\n【交流准则】\n"
-            "像平时在群里和朋友聊天一样自然地回复。\n"
-            "用人类正常交流的语气，不需要机械性地解释系统机制。\n"
-            "如果用户问的是你已经记住的信息，直接回答即可。"
-        )
+        req.system_prompt += f"\n\n【交流准则】\n{self.prompt_communication_guidelines}"
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
@@ -448,20 +500,16 @@ class SelfEvolutionPlugin(Star):
                         if not llm_provider:
                             return
 
-                        prompt = f"""你是一个旁观者，请根据今天的对话更新你对这个人的印象。
-
-旧笔记:
-{existing_note[:500] if existing_note else "(暂无)"}
-
-今日对话:
-{chr(10).join(messages[-20:])}
-
-请输出一段精简的纯文本（不超过200字），描述你对这个人最新的印象。只输出文本，不要其他内容。"""
+                        old_note = existing_note[:500] if existing_note else "(暂无)"
+                        messages_text = chr(10).join(messages[-20:])
+                        prompt = self.prompt_dream_user_summary.format(
+                            old_note=old_note, messages=messages_text
+                        )
 
                         res = await llm_provider.text_chat(
                             prompt=prompt,
                             contexts=[],
-                            system_prompt="你是一个记忆助手，只输出精简的文本描述。",
+                            system_prompt=self.prompt_dream_user_system,
                         )
 
                         new_note = res.completion_text.strip()
@@ -538,17 +586,17 @@ class SelfEvolutionPlugin(Star):
                         if not llm_provider:
                             return
 
-                        prompt = f"""你是一个群记忆助手，请总结这个群的规则和文化。
-
-旧总结:
-{existing_summary[:300] if existing_summary else "(暂无)"}
-
-请输出一段精简的纯文本（不超过150字），描述这个群的规则和文化。只输出文本，不要其他内容。"""
+                        old_summary = (
+                            existing_summary[:300] if existing_summary else "(暂无)"
+                        )
+                        prompt = self.prompt_dream_group_summary.format(
+                            old_summary=old_summary
+                        )
 
                         res = await llm_provider.text_chat(
                             prompt=prompt,
                             contexts=[],
-                            system_prompt="你是一个群记忆助手，只输出精简的文本描述。",
+                            system_prompt=self.prompt_dream_group_system,
                         )
 
                         new_summary = res.completion_text.strip()

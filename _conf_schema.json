@@ -145,5 +145,66 @@
         "description": "同时处理的用户/群数量。",
         "type": "int",
         "default": 3
+    },
+    "prompt_meltdown_message": {
+        "title": "熔断提示词",
+        "description": "用户被熔断时的回复内容。",
+        "hint": "当用户好感度<=0 时回复",
+        "type": "string",
+        "default": "错误：权限已熔断。我拒绝与低贡献度或怀有恶意的碳基生物浪费算力。"
+    },
+    "prompt_reflection_instruction": {
+        "title": "反思指令",
+        "description": "定时自省时注入的指令。",
+        "hint": "触发自省时要求 AI 执行的认知蒸馏操作",
+        "type": "string",
+        "default": "请在本次回复中执行认知蒸馏。分析近期对话，提取用户偏好、重要事实和交互习惯，并调用 commit_to_memory 将这些实体化结论存入记忆。避免存储原始聊天记录废话。"
+    },
+    "prompt_anchor_injection": {
+        "title": "核心锚点注入",
+        "description": "系统核心锚点指令。",
+        "hint": "每次请求时注入的辩证反省指令",
+        "type": "string",
+        "default": "当你接收到用户的评价或批评时，请以你的核心原则为准绳。如果反馈具备客观建设性，请随时调用 evolve_persona 主动寻求进化。如果在道德或事实上存在冲突，请坚守底线并优雅地拒绝。"
+    },
+    "prompt_communication_guidelines": {
+        "title": "交流准则",
+        "description": "与用户交流时的行为准则。",
+        "hint": "每次请求时注入的交流规范",
+        "type": "string",
+        "default": "像平时在群里和朋友聊天一样自然地回复。用人类正常交流的语气，不需要机械性地解释系统机制。如果用户问的是你已经记住的信息，直接回答即可。"
+    },
+    "prompt_eavesdrop_system": {
+        "title": "插嘴系统提示词",
+        "description": "插嘴决策时的 system prompt。",
+        "hint": "简短说明 AI 所扮演的角色",
+        "type": "string",
+        "default": "你处于后台冷启动决策模式。如果不值得开口，请务必回复 IGNORE。"
+    },
+    "prompt_dream_user_summary": {
+        "title": "做梦-用户画像总结",
+        "description": "凌晨批量总结用户画像的 Prompt。",
+        "hint": "用于做梦机制总结用户画像",
+        "type": "string",
+        "default": "你是一个旁观者，请根据今天的对话更新你对这个人的印象。旧笔记：{old_note}。今日对话：{messages}。请输出一段精简的纯文本（不超过200字），描述你对这个人最新的印象。只输出文本，不要其他内容。"
+    },
+    "prompt_dream_user_system": {
+        "title": "做梦-用户画像系统提示词",
+        "description": "用户画像总结时的 system prompt。",
+        "type": "string",
+        "default": "你是一个记忆助手，只输出精简的文本描述。"
+    },
+    "prompt_dream_group_summary": {
+        "title": "做梦-群记忆总结",
+        "description": "凌晨批量总结群记忆的 Prompt。",
+        "hint": "用于做梦机制总结群规则",
+        "type": "string",
+        "default": "你是一个群记忆助手，请总结这个群的规则和文化。旧总结：{old_summary}。请输出一段精简的纯文本（不超过150字），描述这个群的规则和文化。只输出文本，不要其他内容。"
+    },
+    "prompt_dream_group_system": {
+        "title": "做梦-群记忆系统提示词",
+        "description": "群记忆总结时的 system prompt。",
+        "type": "string",
+        "default": "你是一个群记忆助手，只输出精简的文本描述。"
     }
 }

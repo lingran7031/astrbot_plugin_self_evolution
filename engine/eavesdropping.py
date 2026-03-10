@@ -146,9 +146,10 @@ class EavesdroppingEngine:
             res = await llm_provider.text_chat(
                 prompt=decision_prompt,
                 contexts=[],
-                system_prompt=(
-                    f"你处于后台冷启动决策模式。你的人设是 {self.plugin.persona_name}。"
-                    "如果不值得开口，请务必回复 [IGNORE]。"
+                system_prompt=getattr(
+                    self.plugin,
+                    "prompt_eavesdrop_system",
+                    "你处于后台冷启动决策模式。如果不值得开口，请务必回复 IGNORE。",
                 ),
             )
 

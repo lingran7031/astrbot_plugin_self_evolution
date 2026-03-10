@@ -248,6 +248,15 @@ LLM 决策 (是否插嘴)
 | dream_schedule | string | 0 3 * * * | 做梦 Cron |
 | dream_max_users | int | 20 | 做梦最大处理用户数 |
 | dream_concurrency | int | 3 | 做梦并发数 |
+| prompt_meltdown_message | string | (见配置) | 熔断提示词 |
+| prompt_reflection_instruction | string | (见配置) | 反思指令 |
+| prompt_anchor_injection | string | (见配置) | 核心锚点注入 |
+| prompt_communication_guidelines | string | (见配置) | 交流准则 |
+| prompt_eavesdrop_system | string | (见配置) | 插嘴系统提示词 |
+| prompt_dream_user_summary | string | (见配置) | 做梦-用户画像总结 |
+| prompt_dream_user_system | string | (见配置) | 做梦-用户画像系统提示词 |
+| prompt_dream_group_summary | string | (见配置) | 做梦-群记忆总结 |
+| prompt_dream_group_system | string | (见配置) | 做梦-群记忆系统提示词 |
 
 ---
 

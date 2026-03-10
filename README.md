@@ -82,7 +82,7 @@
 | `review_mode` | bool | true | 管理员审核模式，进化申请需审批 |
 | `allow_meta_programming` | bool | false | 开启元编程（危险） |
 | `memory_kb_name` | string | self_evolution_memory | 知识库名称 |
-| `reflection_schedule` | string | 0 2 * * * | 每日自省计划 (Cron) |
+| `reflection_schedule` | string | 0 3 * * * | 每日自省计划 (Cron) |
 | `core_principles` | string | (见默认文本) | 机器人核心锚点 |
 | `admin_users` | list | [] | 管理员 ID 列表 |
 | `timeout_memory_commit` | float | 10.0 | 存入记忆超时(秒) |
@@ -91,6 +91,13 @@
 | `max_buffer_size` | int | 20 | 缓冲池硬上限 |
 | `enable_profile_update` | bool | true | 启用画像更新 |
 | `enable_context_recall` | bool | true | 启用上下文追踪 |
+| `dream_enabled` | bool | true | 启用做梦机制 |
+| `dream_max_users` | int | 20 | 做梦最大处理用户数 |
+| `dream_concurrency` | int | 3 | 做梦并发数 |
+| `prompt_meltdown_message` | string | (见配置) | 熔断提示词 |
+| `prompt_reflection_instruction` | string | (见配置) | 反思指令 |
+| `prompt_communication_guidelines` | string | (见配置) | 交流准则 |
+| `prompt_eavesdrop_system` | string | (见配置) | 插嘴系统提示词 |
 
 ---
 
