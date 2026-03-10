@@ -11,16 +11,38 @@ class EavesdroppingEngine:
         self.plugin = plugin
         self.global_window = defaultdict(list)
         self.window_size = 5
+        self.leaky_bucket = defaultdict(float)
+
+    def _get_leaky_params(self):
+        return {
+            "enabled": getattr(self.plugin, "leaky_integrator_enabled", True),
+            "decay": getattr(self.plugin, "leaky_decay_factor", 0.9),
+            "threshold": getattr(self.plugin, "leaky_trigger_threshold", 4.0),
+            "interest_boost": getattr(self.plugin, "interest_boost", 2.0),
+            "daily_boost": getattr(self.plugin, "daily_chat_boost", 0.2),
+        }
+
+    def _calculate_boost(self, msg_text: str) -> float:
+        params = self._get_leaky_params()
+
+        critical_keywords = getattr(self.plugin, "critical_keywords", "")
+        if critical_keywords:
+            try:
+                pattern = re.compile(f"({critical_keywords})", re.IGNORECASE)
+                if pattern.search(msg_text):
+                    return params["interest_boost"]
+            except:
+                pass
+
+        return params["daily_boost"]
 
     async def handle_message(self, event: AstrMessageEvent):
-        """CognitionCore 4.5: 意图预扫描 + 滑动窗口氛围感知"""
         msg_text = event.message_str
         session_id = str(event.session_id)
         user_id = str(event.get_sender_id())
         sender_name = event.get_sender_name() or "Unknown"
         is_at = event.is_at_or_wake_command
 
-        # 私聊不触发插嘴逻辑
         group_id = event.get_group_id()
         if not group_id:
             return
@@ -45,8 +67,6 @@ class EavesdroppingEngine:
             self.global_window[group_id].append(f"{sender_name}: {msg_text}")
             if len(self.global_window[group_id]) > self.window_size:
                 self.global_window[group_id].pop(0)
-            if len(self.global_window[group_id]) > self.window_size:
-                self.global_window[group_id].pop(0)
 
         critical_pattern = re.compile(
             f"({self.plugin.critical_keywords})", re.IGNORECASE
@@ -64,32 +84,54 @@ class EavesdroppingEngine:
                 yield result
             return
 
-        if session_id not in self.plugin.active_buffers:
-            self.plugin.active_buffers[session_id] = []
-            self.plugin._session_speakers = getattr(
-                self.plugin, "_session_speakers", {}
+        params = self._get_leaky_params()
+
+        if params["enabled"]:
+            boost = self._calculate_boost(msg_text)
+            self.leaky_bucket[session_id] = (
+                self.leaky_bucket[session_id] * params["decay"] + boost
             )
-            if session_id not in self.plugin._session_speakers:
-                self.plugin._session_speakers[session_id] = {}
 
-        speaker_map = self.plugin._session_speakers[session_id]
-        if user_id not in speaker_map:
-            speaker_map[user_id] = len(speaker_map) + 1
-        speaker_num = speaker_map[user_id]
+            current_z = self.leaky_bucket[session_id]
 
-        self.plugin.active_buffers[session_id].append(
-            f"[群成员{speaker_num}]{sender_name}({user_id}): {msg_text}"
-        )
+            if current_z >= params["threshold"]:
+                logger.info(
+                    f"[CognitionCore] 泄漏积分器触发! Z={current_z:.2f} >= {params['threshold']}"
+                )
+                async for result in self._evaluate_interjection(event, session_id):
+                    yield result
+                self.leaky_bucket[session_id] = 0
+        else:
+            if session_id not in self.plugin.active_buffers:
+                self.plugin.active_buffers[session_id] = []
+                self.plugin._session_speakers = getattr(
+                    self.plugin, "_session_speakers", {}
+                )
+                if session_id not in self.plugin._session_speakers:
+                    self.plugin._session_speakers[session_id] = {}
 
-        if len(self.plugin.active_buffers[session_id]) > self.plugin.max_buffer_size:
-            self.plugin.active_buffers[session_id].pop(0)
+            speaker_map = self.plugin._session_speakers[session_id]
+            if user_id not in speaker_map:
+                speaker_map[user_id] = len(speaker_map) + 1
+            speaker_num = speaker_map[user_id]
 
-        if (
-            len(self.plugin.active_buffers[session_id]) >= self.plugin.buffer_threshold
-            and session_id not in self.plugin.processing_sessions
-        ):
-            async for result in self._evaluate_interjection(event, session_id):
-                yield result
+            self.plugin.active_buffers[session_id].append(
+                f"[群成员{speaker_num}]{sender_name}({user_id}): {msg_text}"
+            )
+
+            if (
+                len(self.plugin.active_buffers[session_id])
+                > self.plugin.max_buffer_size
+            ):
+                self.plugin.active_buffers[session_id].pop(0)
+
+            if (
+                len(self.plugin.active_buffers[session_id])
+                >= self.plugin.buffer_threshold
+                and session_id not in self.plugin.processing_sessions
+            ):
+                async for result in self._evaluate_interjection(event, session_id):
+                    yield result
 
     async def _evaluate_interjection(
         self, event: AstrMessageEvent, session_id: str, force_immediate: bool = False
@@ -172,7 +214,6 @@ class EavesdroppingEngine:
                 and len(reply_text) > 10
             )
 
-            # 严格检查：不回复 IGNORE 相关的任何内容
             should_respond = False
             if reply_text:
                 reply_stripped = reply_text.strip().upper()

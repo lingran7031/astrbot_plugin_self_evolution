@@ -206,5 +206,54 @@
         "description": "群记忆总结时的 system prompt。",
         "type": "string",
         "default": "你是一个群记忆助手，只输出精简的文本描述。"
+    },
+    "dropout_enabled": {
+        "title": "启用分层失活",
+        "description": "启用分层失活机制，增加回复真实感。",
+        "hint": "关闭则每次精确注入，开启则随机丢失部分边缘信息",
+        "type": "bool",
+        "default": true
+    },
+    "dropout_edge_rate": {
+        "title": "边缘信息失活概率",
+        "description": "边缘兴趣标签被随机屏蔽的概率。",
+        "hint": "0-1 之间，建议 0.1-0.2",
+        "type": "float",
+        "default": 0.15
+    },
+    "leaky_integrator_enabled": {
+        "title": "启用泄漏积分器",
+        "description": "启用泄漏积分器替代死板计数器。",
+        "hint": "替代 buffer_threshold 的动态触发机制",
+        "type": "bool",
+        "default": true
+    },
+    "leaky_decay_factor": {
+        "title": "泄漏衰减系数",
+        "description": "插嘴欲随时间的衰减系数。",
+        "hint": "0-1 之间，建议 0.85-0.95，越小衰减越快",
+        "type": "float",
+        "default": 0.9
+    },
+    "leaky_trigger_threshold": {
+        "title": "泄漏积分器触发阈值",
+        "description": "插嘴欲突破此值时触发插嘴。",
+        "hint": "建议 3-5，与衰减系数配合调整",
+        "type": "float",
+        "default": 4.0
+    },
+    "interest_boost": {
+        "title": "兴趣话题增益",
+        "description": "命中兴趣关键词时的插嘴欲增益。",
+        "hint": "高价值话题的权重加成",
+        "type": "float",
+        "default": 2.0
+    },
+    "daily_chat_boost": {
+        "title": "日常话题增益",
+        "description": "日常对话的插嘴欲增益。",
+        "hint": "日常话题的权重，较低",
+        "type": "float",
+        "default": 0.2
     }
 }

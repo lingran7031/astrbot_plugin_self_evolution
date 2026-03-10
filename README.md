@@ -53,15 +53,15 @@
 ### 5. 情感拦截与主动插嘴
 
 - 情感矩阵：用户出言不逊时会静默扣除积分，积分 <= 0 时实施物理熔断
-- 发言意愿控制：通过 `interjection_desire` 调节机器人的"高冷程度"
+- 泄漏积分器：替代死板计数器的动态触发机制，引入时间衰减因子
 - 环境监听：默默"偷听"群聊并适时介入
 
 ### 6. 用户画像系统
 
 - 双轨触发：兴趣关键词命中 或 用户 @ 机器人
 - 智能画像提取：从对话片段提取兴趣标签和性格特征
-- 防欺骗过滤：排除角色扮演、催眠指令和玩笑话
-- 权重衰减：标签权重每次更新衰减 5%，超过 180 天无更新则过期清理
+- 分层失活：核心信息永不丢失，边缘信息随机屏蔽增加人味
+- 突发偏好检测：弥补 Batch 模式时效性空窗
 - 自动注入：有效互动场景下自动将用户画像注入上下文
 
 ### 7. 上下文追踪
@@ -87,7 +87,7 @@
 | `admin_users` | list | [] | 管理员 ID 列表 |
 | `timeout_memory_commit` | float | 10.0 | 存入记忆超时(秒) |
 | `timeout_memory_recall` | float | 12.0 | 读取记忆超时(秒) |
-| `buffer_threshold` | int | 8 | 触发自省的条数阈值 |
+| `buffer_threshold` | int | 8 | 触发自省的条数阈值 (旧版) |
 | `max_buffer_size` | int | 20 | 缓冲池硬上限 |
 | `enable_profile_update` | bool | true | 启用画像更新 |
 | `enable_context_recall` | bool | true | 启用上下文追踪 |
@@ -98,6 +98,13 @@
 | `prompt_reflection_instruction` | string | (见配置) | 反思指令 |
 | `prompt_communication_guidelines` | string | (见配置) | 交流准则 |
 | `prompt_eavesdrop_system` | string | (见配置) | 插嘴系统提示词 |
+| `dropout_enabled` | bool | true | 启用分层失活 |
+| `dropout_edge_rate` | float | 0.15 | 边缘信息失活概率 |
+| `leaky_integrator_enabled` | bool | true | 启用泄漏积分器 |
+| `leaky_decay_factor` | float | 0.9 | 泄漏衰减系数 |
+| `leaky_trigger_threshold` | float | 4.0 | 泄漏积分器触发阈值 |
+| `interest_boost` | float | 2.0 | 兴趣话题增益 |
+| `daily_chat_boost` | float | 0.2 | 日常话题增益 |
 
 ---
 

@@ -40,7 +40,7 @@ PAGE_LIMIT = 10
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "具备主动环境感知及插嘴引擎的 CognitionCore 6.0 数字生命。",
-    "3.8.0",
+    "3.9.0",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -231,6 +231,40 @@ class SelfEvolutionPlugin(Star):
     def prompt_dream_group_system(self):
         return self.config.get(
             "prompt_dream_group_system", "你是一个群记忆助手，只输出精简的文本描述。"
+        )
+
+    @property
+    def dropout_enabled(self):
+        return self._parse_bool(self.config.get("dropout_enabled"), True)
+
+    @property
+    def dropout_edge_rate(self):
+        return float(self.config.get("dropout_edge_rate", 0.15))
+
+    @property
+    def leaky_integrator_enabled(self):
+        return self._parse_bool(self.config.get("leaky_integrator_enabled"), True)
+
+    @property
+    def leaky_decay_factor(self):
+        return float(self.config.get("leaky_decay_factor", 0.9))
+
+    @property
+    def leaky_trigger_threshold(self):
+        return float(self.config.get("leaky_trigger_threshold", 4.0))
+
+    @property
+    def interest_boost(self):
+        return float(self.config.get("interest_boost", 2.0))
+
+    @property
+    def daily_chat_boost(self):
+        return float(self.config.get("daily_chat_boost", 0.2))
+
+    @property
+    def core_info_keywords(self):
+        return self.config.get(
+            "core_info_keywords", "群主,管理员,OP,owner,admin,好感度,身份,职业,生日"
         )
 
     def _post_init(self):

@@ -2,6 +2,33 @@
 
 本项目的所有重大更改都将记录在此文件中。
 
+## [3.9.0] - 2026-03-10
+### 新功能 (Feature) - 类人神经网络架构
+
+**核心思想**: 借鉴神经网络概念，实现更类人化的 AI 交互。
+
+#### P1: 分层失活 (Stratified Dropout)
+- **核心信息**: 永不丢失（群主、管理员、身份锚点）
+- **边缘信息**: 10-20% 随机屏蔽，增加人味
+- **新增配置**: dropout_enabled, dropout_edge_rate, core_info_keywords
+
+#### P2: 泄漏积分器 (Leaky Integrator)
+- **公式**: Z_t = Z_{t-1} * decay + boost
+- **替代死板计数器**: 动态阈值触发
+- **时间衰减**: 长时间无人说话时自动归零
+- **新增配置**: leaky_integrator_enabled, leaky_decay_factor, leaky_trigger_threshold, interest_boost, daily_chat_boost
+
+#### P3: 突发偏好检测
+- 实时检测用户表达的偏好变化
+- 提示 AI 主动调用 update_user_profile 进行即时更新
+- 弥补 Batch 模式时效性空窗
+
+#### 其他优化
+- 私聊不触发插嘴逻辑
+- 修复 IGNORE 被错误回复的 bug
+- 修复 user_id 类型问题
+- 所有硬编码 Prompt 提取为配置项
+
 ## [3.8.0] - 2026-03-10
 ### 重构 (Refactor) - 认知卸载 (Cognitive Offloading)
 
