@@ -109,6 +109,13 @@
         "type": "bool",
         "default": true
     },
+    "profile_group_whitelist": {
+        "title": "画像构建群白名单",
+        "description": "只对白名单中的群构建用户画像。空列表表示所有群。",
+        "hint": "多个群号用逗号分隔，如: 123456,789012",
+        "type": "string",
+        "default": ""
+    },
     "enable_context_recall": {
         "title": "启用上下文追踪",
         "description": "当用户引用 AI 之前的话时，是否自动注入上下文。",

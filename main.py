@@ -545,7 +545,11 @@ class SelfEvolutionPlugin(Star):
             active_users_to_process = []
             if hasattr(self, "eavesdropping"):
                 active_users = self.eavesdropping.active_users
+                whitelist = self.profile_group_whitelist
                 for group_id, users in active_users.items():
+                    # 群号白名单过滤
+                    if whitelist and group_id not in whitelist:
+                        continue
                     for user_id, data in users.items():
                         active_users_to_process.append((group_id, user_id))
 

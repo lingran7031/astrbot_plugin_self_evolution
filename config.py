@@ -133,6 +133,14 @@ class PluginConfig:
         return self._parse_bool(self._config.get("enable_profile_update"), True)
 
     @property
+    def profile_group_whitelist(self):
+        """用户画像构建的群号白名单，空列表表示所有群"""
+        whitelist = self._config.get("profile_group_whitelist", [])
+        if isinstance(whitelist, str):
+            whitelist = [g.strip() for g in whitelist.split(",") if g.strip()]
+        return [str(g) for g in whitelist]
+
+    @property
     def enable_context_recall(self):
         return self._parse_bool(self._config.get("enable_context_recall"), True)
 
