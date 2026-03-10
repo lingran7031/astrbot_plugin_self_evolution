@@ -164,6 +164,14 @@ class SelfEvolutionPlugin(Star):
     def dream_schedule(self):
         return self.config.get("dream_schedule", "0 3 * * *")
 
+    @property
+    def dream_max_users(self):
+        return int(self.config.get("dream_max_users", 20))
+
+    @property
+    def dream_concurrency(self):
+        return int(self.config.get("dream_concurrency", 3))
+
     def _post_init(self):
         logger.info(
             f"[SelfEvolution] === 插件初始化完成 | 模式: {'审核' if self.review_mode else '自动'} | 元编程: {self.allow_meta_programming} ==="
@@ -388,20 +396,26 @@ class SelfEvolutionPlugin(Star):
 
     async def _dream_processing(self):
         """做梦机制：凌晨批量总结用户画像和群记忆"""
-        logger.info("[Dream] 开始批量处理用户画像和群记忆...")
+        start_time = time.time()
 
         try:
             history_mgr = self.context.message_history_manager
             platform_id = "qq"
 
             profile_dir = self.profile.profile_dir
-            profile_files = list(profile_dir.glob("user_*.md"))
+            all_profile_files = list(profile_dir.glob("user_*.md"))
+            profile_files = all_profile_files[: self.dream_max_users]
 
-            semaphore = asyncio.Semaphore(3)
+            logger.info(
+                f"[Dream] 做梦任务开始，待处理用户数: {len(profile_files)} (总数: {len(all_profile_files)}, 限制: {self.dream_max_users})"
+            )
+
+            semaphore = asyncio.Semaphore(self.dream_concurrency)
             processed = 0
+            failed = 0
 
             async def process_user(profile_path):
-                nonlocal processed
+                nonlocal processed, failed
                 async with semaphore:
                     user_id = profile_path.stem.replace("user_", "")
                     try:
@@ -457,6 +471,7 @@ class SelfEvolutionPlugin(Star):
                             logger.info(f"[Dream] 已更新用户 {user_id} 的画像")
 
                     except Exception as e:
+                        failed += 1
                         logger.warning(f"[Dream] 处理用户 {user_id} 失败: {e}")
 
             tasks = [process_user(p) for p in profile_files]
@@ -464,7 +479,10 @@ class SelfEvolutionPlugin(Star):
 
             await self._dream_group_summary(history_mgr, platform_id)
 
-            logger.info(f"[Dream] 批量处理完成，共更新 {processed} 个用户画像")
+            elapsed = time.time() - start_time
+            logger.info(
+                f"[Dream] 做梦任务完成，耗时: {elapsed:.1f}秒，成功: {processed}, 失败: {failed}"
+            )
 
         except Exception as e:
             logger.error(f"[Dream] 做梦机制执行失败: {e}")
@@ -491,7 +509,7 @@ class SelfEvolutionPlugin(Star):
                 except:
                     continue
 
-            semaphore = asyncio.Semaphore(2)
+            semaphore = asyncio.Semaphore(max(1, self.dream_concurrency // 2))
 
             async def process_group(group_id):
                 async with semaphore:
