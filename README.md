@@ -16,7 +16,7 @@
 
 ## 核心功能
 
-### 🧠 主动插嘴引擎 (EavesdroppingEngine)
+### 主动插嘴引擎 (EavesdroppingEngine)
 
 **指数衰减积分器** - 模拟更自然的插嘴节奏
 ```
@@ -39,7 +39,7 @@ S_t = S_{t-1} * e^(-λ*Δt) + w_i
 
 ---
 
-### 👤 用户画像系统 (ProfileManager)
+### 用户画像系统 (ProfileManager)
 
 - **分层失活**: 核心信息永不丢失，边缘信息随机丢弃增加人味
 - **情绪依存记忆**: 根据好感度动态调整记忆检索倾向
@@ -48,7 +48,7 @@ S_t = S_{t-1} * e^(-λ*Δt) + w_i
 
 ---
 
-### 🧬 记忆系统 (MemoryManager)
+### 记忆系统 (MemoryManager)
 
 **认知卸载** - 把脏活扔给晚上的LLM
 - 凌晨批量构建用户画像
@@ -59,7 +59,7 @@ S_t = S_{t-1} * e^(-λ*Δt) + w_i
 
 ---
 
-### 🕸️ 关系图谱 (GraphRAG)
+### 关系图谱 (GraphRAG)
 
 - 记录用户在群聊中的互动关系
 - 追踪活跃群组和频繁互动用户
@@ -67,7 +67,7 @@ S_t = S_{t-1} * e^(-λ*Δt) + w_i
 
 ---
 
-### ⚡ 精力值系统 (SANSystem)
+### 精力值系统 (SANSystem)
 
 - 模拟心智疲劳
 - 每条消息消耗精力，定期恢复
@@ -75,7 +75,7 @@ S_t = S_{t-1} * e^(-λ*Δt) + w_i
 
 ---
 
-### 🌊 群体情绪共染 (GroupVibeSystem)
+### 群体情绪共染 (GroupVibeSystem)
 
 - 感知群聊整体情绪
 - 积极/消极词汇计分
@@ -83,7 +83,7 @@ S_t = S_{t-1} * e^(-λ*Δt) + w_i
 
 ---
 
-### 🔬 元级编程 (MetaInfra)
+### 元级编程 (MetaInfra)
 
 **多智能体对抗** - GAN 风格代码审查
 - 黑塔生成代码提案
@@ -151,19 +151,20 @@ S_t = S_{t-1} * e^(-λ*Δt) + w_i
 ```
 self_evolution/
 ├── main.py              # 插件入口
-├── config.py            # 配置系统         # 提示词配置
-├── dao.py               #
-├── prompts.yaml 数据库层
+├── config.py            # 配置系统
+├── prompts.yaml         # 提示词配置
+├── prompts.py          # 提示词加载器
+├── dao.py              # 数据库层
 ├── cognition/
-│   ├── san.py           # 精力值系统
-│   └── vibe.py          # 群体情绪
+│   ├── san.py          # 精力值系统
+│   └── vibe.py         # 群体情绪
 └── engine/
-    ├── eavesdropping.py  # 插嘴引擎
-    ├── memory.py        # 记忆管理
-    ├── profile.py       # 用户画像
-    ├── persona.py       # 人格进化
-    ├── meta_infra.py    # 元级编程
-    └── graph.py         # 关系图谱
+    ├── eavesdropping.py # 插嘴引擎
+    ├── memory.py       # 记忆管理
+    ├── profile.py      # 用户画像
+    ├── persona.py      # 人格进化
+    ├── meta_infra.py   # 元级编程
+    └── graph.py        # 关系图谱
 ```
 
 ---
