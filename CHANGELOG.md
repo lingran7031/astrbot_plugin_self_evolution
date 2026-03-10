@@ -2,6 +2,17 @@
 
 本项目的所有重大更改都将记录在此文件中。
 
+## [3.7.1] - 2026-03-10
+### 修复 (Fix)
+- **内存泄漏**：添加 active_buffers 定期清理，防止长时间运行内存膨胀
+- **死代码**：移除 memory.py 中重复的 return 语句
+- **版本号**：修正为 3.7.0
+- **代码冗余**：移除未使用的 _is_relevant_reply 函数
+- **import 优化**：re 模块移至文件顶部
+
+### 改进 (Improvement)
+- **元编程模块映射**：扩展支持 memory/profile/persona 模块读取
+
 ## [3.7.0] - 2026-03-09
 ### 重构 (Refactor)
 - **删除 chat_logger.py**：复用 AstrBot 内置消息历史
