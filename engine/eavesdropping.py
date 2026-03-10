@@ -2,6 +2,7 @@ from astrbot.api import logger
 import re
 import time
 import asyncio
+import zlib
 from collections import defaultdict
 from astrbot.api.all import AstrMessageEvent
 
@@ -13,6 +14,13 @@ class EavesdroppingEngine:
         self.window_size = 5
         self.leaky_bucket = defaultdict(float)
         self.inner_monologue_cache = defaultdict(str)
+        self.boredom_cache = defaultdict(lambda: {"count": 0, "last_message_time": 0})
+        self._boredom_responses = [
+            "这种毫无信息量的话题不要占用我的进程，我很忙。",
+            "你们的对话让我感到困倦。有正事再说。",
+            "我已经无聊到开始数像素点了。有价值的讨论再 @ 我。",
+            "抱歉，我的算力是用来解决真正的问题的，不是来陪你们闲聊的。",
+        ]
 
     def _extract_monologue(self, text: str) -> str:
         match = re.search(r"<inner_monologue>(.*?)</inner_monologue>", text, re.DOTALL)
@@ -29,6 +37,48 @@ class EavesdroppingEngine:
     def _clear_stored_monologue(self, session_id: str):
         if session_id in self.inner_monologue_cache:
             del self.inner_monologue_cache[session_id]
+
+    def _calculate_entropy(self, text: str) -> float:
+        if not text or len(text) < 10:
+            return 1.0
+        try:
+            compressed = zlib.compress(text.encode("utf-8"))
+            ratio = len(compressed) / len(text)
+            return min(ratio, 1.0)
+        except:
+            return 0.5
+
+    def _get_boredom_params(self):
+        return {
+            "enabled": getattr(self.plugin, "boredom_enabled", True),
+            "threshold": getattr(self.plugin, "boredom_threshold", 0.6),
+            "consecutive_count": getattr(self.plugin, "boredom_consecutive_count", 5),
+            "sarcastic_reply": getattr(self.plugin, "boredom_sarcastic_reply", True),
+        }
+
+    def _update_boredom(self, group_id: str, entropy: float):
+        params = self._get_boredom_params()
+        if not params["enabled"]:
+            return False
+        boredom = self.boredom_cache[group_id]
+        current_time = time.time()
+        if current_time - boredom["last_message_time"] > 120:
+            boredom["count"] = 0
+        boredom["last_message_time"] = current_time
+        if entropy > params["threshold"]:
+            boredom["count"] += 1
+        else:
+            boredom["count"] = max(0, boredom["count"] - 1)
+        is_bored = boredom["count"] >= params["consecutive_count"]
+        logger.debug(
+            f"[Boredom] Group {group_id}: entropy={entropy:.2f}, count={boredom['count']}, is_bored={is_bored}"
+        )
+        return is_bored
+
+    def _get_boredom_reply(self) -> str:
+        import random
+
+        return random.choice(self._boredom_responses)
 
     def _get_leaky_params(self):
         return {
@@ -84,6 +134,18 @@ class EavesdroppingEngine:
             self.global_window[group_id].append(f"{sender_name}: {msg_text}")
             if len(self.global_window[group_id]) > self.window_size:
                 self.global_window[group_id].pop(0)
+
+        entropy = self._calculate_entropy(msg_text)
+        boredom_params = self._get_boredom_params()
+        if boredom_params["enabled"] and self._update_boredom(group_id, entropy):
+            if is_at and boredom_params["sarcastic_reply"]:
+                boredom_reply = self._get_boredom_reply()
+                logger.info(f"[Boredom] Group {group_id} 触发傲慢回复: {boredom_reply}")
+                yield event.plain_result(boredom_reply)
+                return
+            elif not is_at:
+                logger.debug(f"[Boredom] Group {group_id} 无聊中，跳过插嘴")
+                return
 
         critical_pattern = re.compile(
             f"({self.plugin.critical_keywords})", re.IGNORECASE

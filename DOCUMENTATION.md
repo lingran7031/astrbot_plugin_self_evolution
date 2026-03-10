@@ -1,6 +1,6 @@
 # Self-Evolution 插件技术文档
 
-版本: 4.1.0 (人味增强版)
+版本: 4.2.0 (高维生物版)
 
 ---
 
@@ -396,6 +396,11 @@ LLM 决策 (是否插嘴)
 | surprise_boost_keywords | string | (见配置) | 惊奇关键词 |
 | graph_enabled | bool | true | 启用关系图谱 RAG |
 | inner_monologue_enabled | bool | true | 启用内心独白 |
+| boredom_enabled | bool | true | 启用主动无聊机制 |
+| boredom_threshold | float | 0.6 | 无聊阈值 |
+| boredom_consecutive_count | int | 5 | 连续无聊计数 |
+| boredom_sarcastic_reply | bool | true | 无聊时傲慢回复 |
+| debate_agents | string | (见配置) | 审查智能体列表 |
 
 ---
 

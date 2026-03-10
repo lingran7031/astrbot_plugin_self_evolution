@@ -284,6 +284,13 @@
         "type": "string",
         "default": "安全漏洞|逻辑错误|性能问题|代码规范|潜在Bug"
     },
+    "debate_agents": {
+        "title": "审查智能体列表",
+        "description": "参与代码审查的智能体配置，支持多智能体共同参与讨论。",
+        "hint": "JSON 数组格式，每个元素包含 name 和 system_prompt",
+        "type": "string",
+        "default": "[{\"name\": \"螺丝咕姆\", \"system_prompt\": \"你是一个无情的安全审查员，代号螺丝咕姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。\"}, {\"name\": \"阮梅\", \"system_prompt\": \"你是一个天才的生物学博士，代号阮梅。你的职责是从生物学和复杂系统角度审查代码提案，评估其自洽性、涌现行为和演化潜力。你说话温柔但一针见血。\"}]"
+    },
     "surprise_enabled": {
         "title": "启用惊奇驱动学习",
         "description": "启用预测编码，只记忆出乎意料的事情。",
@@ -307,6 +314,30 @@
     "inner_monologue_enabled": {
         "title": "启用内心独白",
         "description": "启用潜意识缓存，让 AI 在沉默时产生内心独白，下次发言时注入。",
+        "type": "bool",
+        "default": true
+    },
+    "boredom_enabled": {
+        "title": "启用主动无聊机制",
+        "description": "启用信息熵检测，当群聊内容持续低信息量时触发无聊状态。",
+        "type": "bool",
+        "default": true
+    },
+    "boredom_threshold": {
+        "title": "无聊阈值",
+        "description": "信息熵阈值，低于此值被视为无聊内容。",
+        "type": "float",
+        "default": 0.6
+    },
+    "boredom_consecutive_count": {
+        "title": "连续无聊计数",
+        "description": "连续多少条低信息量消息后触发无聊状态。",
+        "type": "int",
+        "default": 5
+    },
+    "boredom_sarcastic_reply": {
+        "title": "无聊时输出傲慢回复",
+        "description": "当被 @ 时，是否输出傲慢的拒绝回复。",
         "type": "bool",
         "default": true
     }

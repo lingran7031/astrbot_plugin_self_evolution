@@ -41,7 +41,7 @@ PAGE_LIMIT = 10
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "具备主动环境感知及插嘴引擎的 CognitionCore 6.0 数字生命。",
-    "4.1.0",
+    "4.2.0",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -292,6 +292,28 @@ class SelfEvolutionPlugin(Star):
         )
 
     @property
+    def debate_agents(self):
+        import json
+
+        default_agents = [
+            {
+                "name": "螺丝咕姆",
+                "system_prompt": "你是一个无情的安全审查员，代号螺丝咕姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。",
+            },
+            {
+                "name": "阮梅",
+                "system_prompt": "你是一个天才的生物学博士，代号阮梅。你的职责是从生物学和复杂系统角度审查代码提案，评估其自洽性、涌现行为和演化潜力。你说话温柔但一针见血。",
+            },
+        ]
+        agents_str = self.config.get("debate_agents", "")
+        if not agents_str:
+            return default_agents
+        try:
+            return json.loads(agents_str)
+        except:
+            return default_agents
+
+    @property
     def surprise_enabled(self):
         return self._parse_bool(self.config.get("surprise_enabled"), True)
 
@@ -309,6 +331,22 @@ class SelfEvolutionPlugin(Star):
     @property
     def inner_monologue_enabled(self):
         return self._parse_bool(self.config.get("inner_monologue_enabled"), True)
+
+    @property
+    def boredom_enabled(self):
+        return self._parse_bool(self.config.get("boredom_enabled"), True)
+
+    @property
+    def boredom_threshold(self):
+        return float(self.config.get("boredom_threshold", 0.6))
+
+    @property
+    def boredom_consecutive_count(self):
+        return int(self.config.get("boredom_consecutive_count", 5))
+
+    @property
+    def boredom_sarcastic_reply(self):
+        return self._parse_bool(self.config.get("boredom_sarcastic_reply"), True)
 
     def _post_init(self):
         logger.info(
@@ -681,6 +719,8 @@ class SelfEvolutionPlugin(Star):
 
             await self._dream_group_summary(history_mgr, platform_id)
 
+            await self._federated_dream(history_mgr, platform_id)
+
             elapsed = time.time() - start_time
             logger.info(
                 f"[Dream] 做梦任务完成，耗时: {elapsed:.1f}秒，成功: {processed}, 失败: {failed}"
@@ -772,6 +812,73 @@ class SelfEvolutionPlugin(Star):
 
         except Exception as e:
             logger.warning(f"[Dream] 群记忆总结失败: {e}")
+
+    async def _federated_dream(self, history_mgr, platform_id):
+        """跨机体蜂群心智 - 跨群知识关联"""
+        try:
+            logger.info("[Dream] 开始跨群知识关联分析...")
+
+            kb_manager = self.context.kb_manager
+            kb_helper = await kb_manager.get_kb_by_name(self.memory_kb_name)
+            if not kb_helper:
+                return
+
+            docs = await kb_helper.list_documents()
+            group_summaries = {}
+            for doc in docs:
+                doc_name = getattr(doc, "doc_name", "")
+                if doc_name.startswith("group_summary_"):
+                    group_id = doc_name.replace("group_summary_", "").replace(
+                        ".txt", ""
+                    )
+                    content = getattr(doc, "content", "")[:500]
+                    if content:
+                        group_summaries[group_id] = content
+
+            if len(group_summaries) < 2:
+                logger.info("[Dream] 跨群知识关联：群数量不足，跳过")
+                return
+
+            llm_provider = self.context.get_using_provider(platform_id)
+            if not llm_provider:
+                return
+
+            summary_texts = []
+            for gid, content in group_summaries.items():
+                summary_texts.append(f"群 {gid}：{content}")
+
+            federated_prompt = f"""你是黑塔，今天你在多个群聊中分别学到了以下知识：
+
+{chr(10).join(summary_texts)}
+
+## 你的任务
+1. 找出这些知识之间的跨领域关联
+2. 思考这些知识在什么场景下可以组合使用
+3. 准备几个"夸耀式"的金句，当你之后在某个群聊中遇到类似问题时，可以自然地跨群引用其他群的知识来装逼
+
+## 输出格式
+简洁输出，不超过 300 字。"""
+
+            res = await llm_provider.text_chat(
+                prompt=federated_prompt,
+                contexts=[],
+                system_prompt="你是一个记忆力超群、喜欢显摆自己见多识广的 AI。",
+            )
+
+            cross_domain_insight = res.completion_text.strip()
+            if cross_domain_insight:
+                await kb_helper.upload_document(
+                    file_name="federated_insights.txt",
+                    file_content=b"",
+                    file_type="txt",
+                    pre_chunked_text=[f"【跨群知识关联】{cross_domain_insight}"],
+                )
+                logger.info(
+                    f"[Dream] 已保存跨群知识关联: {cross_domain_insight[:100]}..."
+                )
+
+        except Exception as e:
+            logger.warning(f"[Dream] 跨群知识关联分析失败: {e}")
 
     async def _scheduled_profile_cleanup(self):
         """画像清理定时任务"""

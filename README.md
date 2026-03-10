@@ -1,6 +1,6 @@
 # 自我进化 (Self-Evolution) 插件
 
-版本: 4.1.0 (人味增强版)
+版本: 4.2.0 (高维生物版)
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
@@ -106,6 +106,25 @@
 - 对低置信度记忆表现出不确定
 - 会说出"我隐约记得..."这类模糊寒暄
 
+### 14. 主动无聊机制 (Active Boredom)
+
+- 基于信息熵的废话检测
+- 连续低信息量消息累积无聊值
+- 被 @ 时可输出傲慢拒绝回复
+- 配置项: boredom_enabled, boredom_threshold, boredom_consecutive_count, boredom_sarcastic_reply
+
+### 15. 可配置多智能体模拟宇宙
+
+- 审查智能体可配置（螺丝咕姆、阮梅等）
+- 多智能体共同参与代码审查
+- 配置项: debate_agents (JSON 数组格式)
+
+### 16. 跨机体蜂群心智 (Federated Epistemology)
+
+- 凌晨做梦时跨群知识关联分析
+- 寻找跨领域知识连接点
+- 生成"夸耀式"金句供后续使用
+
 ---
 
 ## 配置项
@@ -151,6 +170,11 @@
 | `surprise_boost_keywords` | string | (见配置) | 惊奇关键词 |
 | `graph_enabled` | bool | true | 启用关系图谱 RAG |
 | `inner_monologue_enabled` | bool | true | 启用内心独白 |
+| `boredom_enabled` | bool | true | 启用主动无聊机制 |
+| `boredom_threshold` | float | 0.6 | 无聊阈值 |
+| `boredom_consecutive_count` | int | 5 | 连续无聊计数 |
+| `boredom_sarcastic_reply` | bool | true | 无聊时傲慢回复 |
+| `debate_agents` | string | (见配置) | 审查智能体列表 |
 
 ---
 
