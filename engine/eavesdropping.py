@@ -248,7 +248,8 @@ class EavesdroppingEngine:
         if current_time - boredom["last_message_time"] > 120:
             boredom["count"] = 0
         boredom["last_message_time"] = current_time
-        if entropy > params["threshold"]:
+        # 熵值低（信息量小）→ 累积无聊；熵值高（信息量大）→ 消除无聊
+        if entropy < params["threshold"]:
             boredom["count"] += 1
         else:
             boredom["count"] = max(0, boredom["count"] - 1)
