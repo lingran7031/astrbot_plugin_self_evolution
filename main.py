@@ -579,6 +579,9 @@ class SelfEvolutionPlugin(Star):
             req.system_prompt += injection
             logger.debug("[SelfEvolution] 已在上下文中注入常驻辩证反省指令。")
 
+        # 获取消息文本（提前定义以便后续使用）
+        msg_text = event.message_str
+
         # 4. 用户画像注入 - 直接读取 Markdown 文本拼接
         if self.enable_profile_update:
             profile_summary = await self.profile.get_profile_summary(user_id)
@@ -591,8 +594,13 @@ class SelfEvolutionPlugin(Star):
                     '例如："我隐约记得你上个月是不是提过你要重构数据库？那个搞完了没？"'
                 )
 
+        # 4.1 关系图谱增强
+        if self.graph_enabled and hasattr(self, "graph"):
+            graph_enhancement = await self.graph.enhance_recall(user_id, msg_text)
+            if graph_enhancement:
+                req.system_prompt += graph_enhancement
+
         # 4.5 突发性偏好检测：弥补 Batch 模式的时效性空窗
-        msg_text = event.message_str
         if self.enable_profile_update:
             preference_triggers = [
                 "我改名了",
@@ -704,6 +712,43 @@ class SelfEvolutionPlugin(Star):
 
         if stale_sessions:
             logger.debug(f"[SelfEvolution] 已清理 {len(stale_sessions)} 个过期会话缓冲")
+
+        # 清理 EavesdroppingEngine 的缓存，防止内存泄漏
+        if hasattr(self, "eavesdropping"):
+            # 清理超过2小时的 leaky_bucket
+            stale_leaky_keys = []
+            for sid in list(self.eavesdropping.leaky_bucket.keys()):
+                if (
+                    now
+                    - getattr(
+                        self.eavesdropping.leaky_bucket.get(sid, {}), "last_update", now
+                    )
+                    > 7200
+                ):
+                    stale_leaky_keys.append(sid)
+            for sid in stale_leaky_keys:
+                del self.eavesdropping.leaky_bucket[sid]
+
+            # 清理超过2小时的 inner_monologue_cache
+            stale_monologue_keys = []
+            for sid in list(self.eavesdropping.inner_monologue_cache.keys()):
+                if (
+                    now
+                    - getattr(
+                        self.eavesdropping.inner_monologue_cache.get(sid, {}),
+                        "last_update",
+                        now,
+                    )
+                    > 7200
+                ):
+                    stale_monologue_keys.append(sid)
+            for sid in stale_monologue_keys:
+                del self.eavesdropping.inner_monologue_cache[sid]
+
+            if stale_leaky_keys or stale_monologue_keys:
+                logger.debug(
+                    f"[SelfEvolution] 已清理 Eavesdropping 缓存: leaky={len(stale_leaky_keys)}, monologue={len(stale_monologue_keys)}"
+                )
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
@@ -949,7 +994,11 @@ class SelfEvolutionPlugin(Star):
 
             docs = await kb_helper.list_documents()
             group_summaries = {}
+            max_groups = 20
+            count = 0
             for doc in docs:
+                if count >= max_groups:
+                    break
                 doc_name = getattr(doc, "doc_name", "")
                 if doc_name.startswith("group_summary_"):
                     group_id = doc_name.replace("group_summary_", "").replace(
@@ -958,10 +1007,13 @@ class SelfEvolutionPlugin(Star):
                     content = getattr(doc, "content", "")[:500]
                     if content:
                         group_summaries[group_id] = content
+                        count += 1
 
             if len(group_summaries) < 2:
                 logger.info("[Dream] 跨群知识关联：群数量不足，跳过")
                 return
+
+            logger.info(f"[Dream] 跨群知识关联：已加载 {len(group_summaries)} 个群记忆")
 
             llm_provider = self.context.get_using_provider(platform_id)
             if not llm_provider:
