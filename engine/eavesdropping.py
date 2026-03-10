@@ -311,9 +311,6 @@ class EavesdroppingEngine:
             monologue_text = ""
             if reply_text:
                 reply_stripped = reply_text.strip().upper()
-                logger.info(
-                    f"[CognitionCore] LLM响应: {reply_text[:100]}... reply_stripped: {reply_stripped[:50]}"
-                )
                 if (
                     "[IGNORE]" in reply_text.upper()
                     or "IGNORE" in reply_stripped
@@ -321,9 +318,6 @@ class EavesdroppingEngine:
                 ):
                     reason = "判定为噪音/无价值"
                     monologue_text = self._extract_monologue(reply_text)
-                    logger.info(
-                        f"[CognitionCore] 检测到IGNORE，不发送，monologue: {monologue_text}"
-                    )
                 elif is_meta:
                     reason = "触发元评论拦截"
                 else:
@@ -361,4 +355,7 @@ class EavesdroppingEngine:
             else:
                 logger.warning(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
         finally:
-            self.plugin.processing_sessions.discard(session_id)
+            try:
+                self.plugin.processing_sessions.discard(str(session_id))
+            except Exception as e:
+                logger.warning(f"[CognitionCore] 清理 processing_sessions 失败: {e}")
