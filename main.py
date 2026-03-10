@@ -356,6 +356,35 @@ class SelfEvolutionPlugin(Star):
             if profile_summary:
                 req.system_prompt += f"\n\n[用户印象笔记]\n{profile_summary}\n"
 
+        # 4.5 突发性偏好检测：弥补 Batch 模式的时效性空窗
+        msg_text = event.message_str
+        if self.enable_profile_update:
+            preference_triggers = [
+                "我改名了",
+                "我叫",
+                "从今天起",
+                "今后",
+                "以后都",
+                "我讨厌",
+                "我不喜欢",
+                "我喜欢",
+                "我爱",
+                "我决定",
+                "从现在起",
+                "开始喜欢",
+                "开始讨厌",
+                "以后不",
+                "以后都",
+                "再也不",
+                "从今往后",
+            ]
+            if any(trigger in msg_text for trigger in preference_triggers):
+                req.system_prompt += (
+                    "\n\n[即时画像更新提示]\n"
+                    "用户在表达偏好或身份信息变化，请主动调用 update_user_profile 工具更新该用户的印象笔记，"
+                    "确保当天的记忆准确无误。"
+                )
+
         # 5. 交流准则注入
         req.system_prompt += f"\n\n【交流准则】\n{self.prompt_communication_guidelines}"
 
