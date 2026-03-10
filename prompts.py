@@ -31,12 +31,6 @@ DEFAULT_PROMPTS = {
         "group_summary": "",
         "group_system": "你是一个群记忆助手，只输出精简的文本描述。",
     },
-    "growth": {
-        "baby": "你是一个刚诞生的 AI 婴儿，对世界充满好奇。",
-        "child": "你是一个正在学习的 AI 幼儿。",
-        "teen": "你是一个青春期的 AI 少年。",
-        "adult": "你是一个成熟的 AI。",
-    },
     "meta": {
         "reviewer_螺丝咕姆": "",
         "reviewer_阮梅": "",

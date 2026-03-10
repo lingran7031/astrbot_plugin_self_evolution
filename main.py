@@ -438,7 +438,6 @@ class SelfEvolutionPlugin(Star):
         # 定期清理过期缓冲数据，防止内存泄漏
         await self._cleanup_stale_buffers()
 
-        # 成长系统：累加经验值（每小时检查一次升级）
         # 自动学习触发：检测关键场景
         await self.memory.auto_learn_trigger(event)
 
