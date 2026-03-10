@@ -1,6 +1,30 @@
 # Self-Evolution 插件技术文档
 
-版本: 3.7.1
+版本: 3.8.0 (认知卸载版)
+
+---
+
+## 0. 核心设计理念：认知卸载 (Cognitive Offloading)
+
+**核心思想**: 把 CPU 干的脏活全扔给晚上的大模型，把白天的毫秒级响应还给代码。
+
+### 架构对比
+
+| 维度 | 旧架构 (3.7.x) | 新架构 (3.8.x) |
+|------|----------------|----------------|
+| 画像更新 | 实时 LLM 提取 | 凌晨批量总结 |
+| 画像存储 | JSON 结构化 | Markdown 文本 |
+| 记忆检索 | 实时向量检索 | AI 主动调用 |
+| 插嘴评估 | 复杂 Prompt | 精简版 |
+| 响应延迟 | 秒级 | 毫秒级 |
+
+### 做梦机制
+
+凌晨 3 点定时任务会：
+1. 拉取过去 24 小时对话
+2. 按用户分组
+3. 调用 LLM 总结为 Markdown 笔记
+4. 覆写画像文件
 
 ---
 
@@ -117,24 +141,26 @@ LLM 决策 (是否插嘴)
 
 ### 3.4 用户画像 (profile.py)
 
-**职责**: 提取和维护用户兴趣/性格特征
+**职责**: 维护用户印象笔记 (Markdown 格式)
 
-**数据结构**:
-```json
-{
-    "user_id": "xxx",
-    "tags": [{"name": "Python", "weight": 0.85, "last_seen": "2026-03-10"}],
-    "traits": [{"name": "内向", "weight": 0.7, "last_seen": "2026-03-09"}],
-    "updated_at": "2026-03-10T10:30:00"
-}
+**存储格式**: Markdown 文本 (不再是 JSON)
+```markdown
+# 用户印象笔记
+
+---
+**2026-03-10 14:30**
+这个用户喜欢讨论技术话题，对 Python 比较感兴趣，说话比较直接。
+
+---
+**2026-03-09 09:15**
+今天在群里讨论了模拟宇宙的相关内容，用户表现出对游戏剧情的兴趣。
 ```
 
-**权重机制**:
-- 新标签初始 weight = 0.5
-- 每次更新旧标签 weight *= 0.95 (衰减)
-- weight < 0.1 或 180 天无更新 → 删除
+**精度模式**:
+- `simple`: Markdown 文本摘要 (默认)
+- `detailed`: 结构化标签 (开发中)
 
-**存储**: 本地 JSON 文件 (`data/profiles/user_{id}.json`)
+**存储**: 本地 Markdown 文件 (`data/profiles/user_{id}.md`)
 
 ### 3.5 人格进化 (persona.py)
 
@@ -169,13 +195,13 @@ LLM 决策 (是否插嘴)
 ### 4.1 on_llm_request
 
 每次 LLM 请求前执行:
-1. 检查用户好感度，<= 0 则熔断
+1. 检查用户好感度，<= 0 则熔断 (最前置)
 2. 提取引用/At 信息
 3. 注入上下文 (身份、群组)
 4. 注入反思指令 (如果有待处理)
 5. 注入核心锚点
-6. 自动记忆检索注入
-7. 用户画像注入
+6. ~~自动记忆检索注入~~ (已移除，改为 AI 主动调用)
+7. 用户画像注入 (Markdown 文本直接拼接)
 8. 交流准则注入
 
 ### 4.2 on_message_listener
@@ -187,14 +213,14 @@ LLM 决策 (是否插嘴)
 
 ### 4.3 定时任务
 
-- **每日自省** (`_scheduled_reflection`): 
-  - 默认凌晨 2 点
+- **每日自省 + 做梦** (`_scheduled_reflection`): 
+  - 默认凌晨 3 点
   - 设置反思标志位
   - 执行"大赦天下" (恢复负面用户好感度)
-  
+  - **批量处理用户画像** (3.8.0 新增)
+   
 - **画像清理** (`_scheduled_profile_cleanup`):
-  - 每天凌晨 4 点
-  - 清理 180 天以上过期标签
+  - ~~每天凌晨 4 点~~ (已废弃，Markdown 格式无需清理)
 
 ---
 
@@ -210,13 +236,16 @@ LLM 决策 (是否插嘴)
 | review_mode | bool | true | 审核模式 |
 | allow_meta_programming | bool | false | 开启元编程 |
 | memory_kb_name | string | self_evolution_memory | 知识库名称 |
-| reflection_schedule | string | 0 2 * * * | 自省 Cron |
+| reflection_schedule | string | 0 3 * * * | 自省 Cron |
 | core_principles | string | (见配置) | 核心价值观 |
 | admin_users | list | [] | 管理员列表 |
 | buffer_threshold | int | 8 | 触发阈值 |
 | max_buffer_size | int | 20 | 缓冲上限 |
 | enable_profile_update | bool | true | 启用画像 |
 | enable_context_recall | bool | true | 启用上下文追踪 |
+| profile_precision_mode | string | simple | 画像精度模式 |
+| dream_enabled | bool | true | 启用做梦机制 |
+| dream_schedule | string | 0 3 * * * | 做梦 Cron |
 
 ---
 

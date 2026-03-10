@@ -1,6 +1,6 @@
 # 自我进化 (Self-Evolution) 插件
 
-版本: 3.7.1 (CognitionCore 6.0)
+版本: 3.8.0 (认知卸载版)
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
