@@ -162,12 +162,12 @@ class MemoryManager:
                 timeout=self.timeout_memory_commit,
             )
         except asyncio.TimeoutError:
-            logger.error("[SelfEvolution] 记忆库装载严重超时。")
+            logger.warning("[SelfEvolution] 记忆库装载超时。")
             return "与知识引擎服务器建立信道超时，中断存入以维持会话流畅。"
         except Exception as e:
             if isinstance(e, (TypeError, ValueError)):
                 raise
-            logger.error(f"[SelfEvolution] 记忆检索或系统网络失效: {e}")
+            logger.warning(f"[SelfEvolution] 记忆检索或系统网络失效: {e}")
             return "检索长期记忆时发生业务异常，请检查配置与联通状态。"
 
         if not kb_helper:
@@ -228,10 +228,10 @@ class MemoryManager:
             )
             return "事实已成功存入长期记忆库，我以后会记得这件事的。"
         except (TimeoutError, ConnectionError) as e:
-            logger.error(f"[SelfEvolution] 存入记忆网络通讯中断/超时: {e}")
+            logger.warning(f"[SelfEvolution] 存入记忆网络通讯中断/超时: {e}")
             return "与知识库服务器建立通讯失败，无法写入新数据。"
         except Exception as e:
-            logger.error(f"[SelfEvolution] 存入记忆失败: {str(e)}")
+            logger.warning(f"[SelfEvolution] 存入记忆失败: {str(e)}")
             return "存入记忆时出现未知级别异常，请通知排查。"
 
     async def recall_memories(self, event, query: str) -> str:
@@ -245,10 +245,10 @@ class MemoryManager:
                 timeout=self.timeout_memory_recall,
             )
         except asyncio.TimeoutError:
-            logger.error("[SelfEvolution] 检索记忆网络通信卡死/超时。")
+            logger.warning("[SelfEvolution] 检索记忆网络通信超时。")
             return "检索长期记忆时与核心向量库层通信严重超时，为防止阻塞当前对话流，已强制中止操作。"
         except Exception as e:
-            logger.error(f"[SelfEvolution] 检索记忆请求失败: {e}")
+            logger.warning(f"[SelfEvolution] 检索记忆请求失败: {e}")
             return "检索长期记忆时发生接口异常，请通知管理员检查日志。"
 
         if not results or not results.get("results"):
@@ -294,7 +294,7 @@ class MemoryManager:
                 timeout=self.timeout_memory_commit,
             )
         except Exception as e:
-            logger.error(f"[SelfEvolution] 获取知识库失败: {e}")
+            logger.warning(f"[SelfEvolution] 获取知识库失败: {e}")
             return f"获取知识库失败: {e}"
 
         if not kb_helper:
@@ -318,7 +318,7 @@ class MemoryManager:
             logger.info(f"[SelfEvolution] 清空记忆：成功删除 {deleted_count} 条记忆")
             return f"已成功清空 {deleted_count} 条记忆条目。"
         except Exception as e:
-            logger.error(f"[SelfEvolution] 清空记忆失败: {e}")
+            logger.warning(f"[SelfEvolution] 清空记忆失败: {e}")
             return f"清空记忆失败: {e}"
 
     async def list_memories(self, event, limit: int = 10) -> str:
@@ -329,6 +329,7 @@ class MemoryManager:
                 kb_manager.get_kb_by_name(self.memory_kb_name), timeout=5.0
             )
         except Exception as e:
+            logger.warning(f"[SelfEvolution] 获取知识库失败: {e}")
             return f"获取知识库失败: {e}"
 
         if not kb_helper:
@@ -348,7 +349,7 @@ class MemoryManager:
 
             return "\n".join(result)
         except Exception as e:
-            logger.error(f"[SelfEvolution] 列出记忆失败: {e}")
+            logger.warning(f"[SelfEvolution] 列出记忆失败: {e}")
             return f"列出记忆失败: {e}"
 
     async def delete_memory(self, event, doc_id: str) -> str:
@@ -359,6 +360,7 @@ class MemoryManager:
                 kb_manager.get_kb_by_name(self.memory_kb_name), timeout=5.0
             )
         except Exception as e:
+            logger.warning(f"[SelfEvolution] 获取知识库失败: {e}")
             return f"获取知识库失败: {e}"
 
         if not kb_helper:
@@ -369,7 +371,7 @@ class MemoryManager:
             logger.info(f"[SelfEvolution] 删除记忆：成功删除 doc_id={doc_id}")
             return f"已成功删除记忆条目 {doc_id}。"
         except Exception as e:
-            logger.error(f"[SelfEvolution] 删除记忆失败: {e}")
+            logger.warning(f"[SelfEvolution] 删除记忆失败: {e}")
             return f"删除记忆失败: {e}"
 
     async def auto_recall(self, event, topic: str = "") -> str:
@@ -387,7 +389,7 @@ class MemoryManager:
         except asyncio.TimeoutError:
             return "检索记忆超时，请稍后重试。"
         except Exception as e:
-            logger.error(f"[SelfEvolution] auto_recall 失败: {e}")
+            logger.warning(f"[SelfEvolution] auto_recall 失败: {e}")
             return "检索记忆时发生异常。"
 
         if not results or not results.get("results"):
