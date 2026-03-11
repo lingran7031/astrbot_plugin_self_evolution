@@ -93,19 +93,6 @@ class PluginConfig:
         return int(self._config.get("max_buffer_size", 20))
 
     @property
-    def session_whitelist(self):
-        """滑动上下文窗口的白名单群ID，空列表表示所有群"""
-        whitelist = self._config.get("session_whitelist", [])
-        if isinstance(whitelist, str):
-            whitelist = [g.strip() for g in whitelist.split(",") if g.strip()]
-        return [str(g) for g in whitelist]
-
-    @property
-    def session_max_tokens(self):
-        """滑动上下文窗口的最大 token 数，默认 4k"""
-        return int(self._config.get("session_max_tokens", 4000))
-
-    @property
     def review_mode(self):
         return self._parse_bool(self._config.get("review_mode"), True)
 

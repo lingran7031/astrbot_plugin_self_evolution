@@ -136,7 +136,7 @@ class SelfEvolutionPlugin(Star):
         if not msg_text:
             return
 
-        max_tokens = getattr(self, "session_max_tokens", 4000)
+        max_tokens = self.session_max_tokens
 
         msg = f"[{sender_name}]({user_id}): {msg_text}"
         tokens = self._estimate_tokens(msg)
@@ -484,7 +484,7 @@ class SelfEvolutionPlugin(Star):
 
         # 6. 滑动上下文窗口注入
         if group_id:
-            whitelist = getattr(self, "session_whitelist", [])
+            whitelist = self.session_whitelist
             if not whitelist or group_id in whitelist:
                 session_context = self._get_session_context(group_id)
                 if session_context:
@@ -502,7 +502,7 @@ class SelfEvolutionPlugin(Star):
         msg_text = event.message_str
 
         # 白名单检查
-        whitelist = getattr(self, "session_whitelist", [])
+        whitelist = self.session_whitelist
 
         # 滑动上下文窗口：记录消息
         if group_id:
