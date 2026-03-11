@@ -451,7 +451,7 @@ class EavesdroppingEngine:
             if (
                 len(self.plugin.active_buffers[session_id])
                 >= self.plugin.buffer_threshold
-                and session_id not in self.plugin.processing_sessions
+                and session_id not in self.plugin.session_manager.processing_sessions
             ):
                 async for result in self._evaluate_interjection(event, session_id):
                     yield result
@@ -460,10 +460,10 @@ class EavesdroppingEngine:
         self, event: AstrMessageEvent, session_id: str, force_immediate: bool = False
     ):
         """插嘴评估层：简化逻辑，只做关键词预过滤"""
-        if session_id in self.plugin.processing_sessions:
+        if session_id in self.plugin.session_manager.processing_sessions:
             return
 
-        self.plugin.processing_sessions.add(session_id)
+        self.plugin.session_manager.processing_sessions.add(session_id)
         try:
             buffer = self.plugin.active_buffers.get(session_id)
             if not isinstance(buffer, list):
@@ -616,7 +616,7 @@ class EavesdroppingEngine:
                 logger.warning(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
         finally:
             try:
-                self.plugin.processing_sessions.discard(str(session_id))
+                self.plugin.session_manager.processing_sessions.discard(str(session_id))
             except Exception as e:
                 logger.warning(f"[CognitionCore] 清理 processing_sessions 失败: {e}")
 
@@ -629,7 +629,9 @@ class EavesdroppingEngine:
 
             threshold = getattr(self.plugin, "eavesdrop_message_threshold", 20)
             whitelist = getattr(self.plugin, "session_whitelist", [])
-            processing = getattr(self.plugin, "processing_sessions", set())
+            processing = getattr(
+                self.plugin.session_manager, "processing_sessions", set()
+            )
 
             candidates = []
             for group_id, buffer in session_buffers.items():
