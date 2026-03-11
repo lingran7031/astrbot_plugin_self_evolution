@@ -501,27 +501,19 @@ class EavesdroppingEngine:
                 f'【当前社交阈值】：你的"发言意愿"设定为 {self.plugin.interjection_desire}/10。数值越低你越冷漠。\n'
                 + boredom_hint
                 + "\n"
-                "【后台监控任务】：评估以下实时对话片段，决定是否需要以你的身份进行[即时干预]。\n\n"
+                "【后台监控任务】：评估以下实时对话片段，判断是否值得以你的身份发言。\n\n"
                 f"--- 监控片段 ---\n{chat_history}\n----------------\n\n"
-                "【严格执行指令】：\n"
-                "1. **静默判定 [IGNORE]**：如果满足以下任一条件，必须仅回复 [IGNORE]：\n"
-                f"   - 话题的重要性、趣味性或技术价值评分低于你的发言意愿阈值 ({self.plugin.interjection_desire}/10)。\n"
-                "   - 对话内容为简单的表情、无意义的语气词、或低信息量的日常寒暄。\n"
-                "2. **干预判定 [COMMENT]**：唯有满足以下任一条件，方可输出你的简练评论：\n"
-                "   - 话题触及你的核心关键词。\n"
-                "   - 对方在发表明显的逻辑谬误或常识性错误。\n"
-                f"3. **表达风格**：回复必须极度简略（通常不超过 20 字），语气要冷淡且专业，像真正的 {persona_name} 一样。\n"
-                '【禁止事项】：绝对禁止发表类似"对话缺乏信息密度"、"建议继续检测"等关于后台评估过程本身的任何评论。\n'
                 "【输出格式】（必须严格遵守）：\n"
-                "你的回复必须包含以下判断和调整：\n\n"
+                "只需返回判断和调整，无需生成回复内容：\n\n"
                 "[INTERESTING] +5 - 对话有趣，增加5点欲望，阈值降低5\n"
-                "[BORING] -3 - 对话无聊，降低3点心情，阈值增加3\n\n"
+                "[BORING] -3 - 对话无聊，降低3点心情，阈值增加3\n"
+                "[IGNORE] - 无话可说，不调整\n\n"
                 "数值范围：\n"
                 "- 欲望/心情调整：±1~10（由AI自行判断给出）\n"
                 "- 阈值调整：±1~5\n"
-                "- 可选：简短评论（不超过20字）\n"
-                "- 示例：[INTERESTING] +3 这个话题挺有意思的\n"
-                "- 示例：[BORING] 又在聊这些无聊的东西\n" + monologue_instruction
+                "- 示例：[INTERESTING] +3\n"
+                "- 示例：[BORING] -5\n"
+                "- 示例：[IGNORE]\n"
             )
 
             llm_provider = self.plugin.context.get_using_provider(
@@ -604,6 +596,16 @@ class EavesdroppingEngine:
                 logger.info(
                     f"[CognitionCore] 有趣判定！欲望+{value}，阈值降至 {new_threshold}"
                 )
+                # 有趣时，生成正式回复
+                formal_reply = await self._generate_formal_reply(
+                    event, session_id, chat_history, persona_name
+                )
+                if formal_reply:
+                    logger.info(
+                        f"[CognitionCore] 有趣判定生成正式回复: {formal_reply[:30]}"
+                    )
+                    yield event.plain_result(formal_reply)
+                return
             elif boring_match:
                 value = int(boring_match.group(1))
                 current_threshold = session_buffer.get("threshold", 20)
@@ -613,38 +615,17 @@ class EavesdroppingEngine:
                 logger.info(
                     f"[CognitionCore] 无聊判定！SAN-{value}，阈值升至 {new_threshold}"
                 )
-
-            # 清理标签，只保留评论
-            reply_text = re.sub(
-                r"\[(INTERESTING|BORING)\][^a-zA-Z0-9]*[+-]?\d+",
-                "",
-                reply_text,
-                flags=re.IGNORECASE,
-            ).strip()
-
-            if should_respond:
-                inner_monologue = self._get_stored_monologue(session_id)
-                reply_text = re.sub(
-                    r"<inner_monologue>.*?</inner_monologue>",
-                    "",
-                    reply_text,
-                    flags=re.DOTALL,
-                ).strip()
-                if inner_monologue:
-                    full_response = f"{inner_monologue} {reply_text}"
-                    logger.info(
-                        f"[CognitionCore] 插嘴评估通过！注入内心独白: {inner_monologue}"
-                    )
-                    yield event.plain_result(full_response)
-                else:
-                    logger.info(f"[CognitionCore] 插嘴评估通过！响应: {reply_text}")
-                    yield event.plain_result(reply_text)
-                self._clear_stored_monologue(session_id)
-            else:
+                # 无聊时，存储内心独白
+                monologue_text = self._extract_monologue(reply_text)
                 if monologue_text:
                     self._store_monologue(session_id, monologue_text)
                     logger.info(f"[CognitionCore] 已存储内心独白: {monologue_text}")
-                logger.info(f"[CognitionCore] 插嘴评估未通过：{reason}。")
+                logger.info(f"[CognitionCore] 无聊判定，不插话。")
+                return
+            else:
+                # IGNORE 或其他情况，不插话
+                logger.info(f"[CognitionCore] 判定为不插话。")
+                return
         except Exception as e:
             if "安全检查" in str(e) or "Safety" in str(e):
                 logger.warning(f"[CognitionCore] 插嘴评估被服务商安全策略拦截。")
@@ -730,3 +711,48 @@ class EavesdroppingEngine:
                 logger.info(f"[CognitionCore] 无聊判定，降低SAN: -{value}")
         except Exception as e:
             logger.warning(f"[CognitionCore] 降低SAN失败: {e}")
+
+    async def _generate_formal_reply(
+        self,
+        event: AstrMessageEvent,
+        session_id: str,
+        chat_history: str,
+        persona_name: str,
+    ) -> str:
+        """有趣时生成正式回复（带人设+上下文）"""
+        try:
+            # 获取人设
+            system_prompt = getattr(self.plugin, "prompt_eavesdrop_system", "")
+            if not system_prompt:
+                system_prompt = "你是一个有趣的AI助手。"
+
+            # 构建正式回复的prompt
+            formal_prompt = (
+                f"你现在是 {persona_name}。\n\n"
+                f"【群聊最近对话】：\n{chat_history}\n\n"
+                "【任务】：根据以上对话，以符合你人设的方式回复。\n"
+                "【要求】：\n"
+                "- 回复要简短、有趣、符合人设\n"
+                "- 可以吐槽、调侃或提供有价值的信息\n"
+                "- 不要太正式，像朋友聊天一样\n"
+            )
+
+            llm_provider = self.plugin.context.get_using_provider(
+                event.unified_msg_origin
+            )
+            if not llm_provider:
+                return ""
+
+            logger.info(f"[CognitionCore] 正在请求正式回复...")
+            res = await llm_provider.text_chat(
+                prompt=formal_prompt,
+                contexts=[],
+                system_prompt=system_prompt,
+            )
+
+            reply = res.completion_text.strip()
+            return reply
+
+        except Exception as e:
+            logger.warning(f"[CognitionCore] 生成正式回复失败: {e}")
+            return ""
