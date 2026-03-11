@@ -89,9 +89,6 @@ class SelfEvolutionPlugin(Star):
         # CognitionCore 6.0: 状态容器
         self._lock = None  # 用于元编程写锁
         self.daily_reflection_pending = False
-        self.active_buffers = {}  # 插嘴缓存
-        self._session_speakers = {}  # 会话发言者映射
-        self.buffer_threshold = self.eavesdrop_message_threshold  # 从配置读取
 
     def __getattr__(self, name):
         """代理配置访问到 cfg"""

@@ -51,19 +51,6 @@
         "type": "list",
         "default": []
     },
-    "buffer_threshold": {
-        "title": "主动自省：触发阈值(条)",
-        "description": "触发 LLM 后台自省的条数。",
-        "hint": "建议 8-15，设置过小极耗 Tokens。",
-        "type": "int",
-        "default": 8
-    },
-    "max_buffer_size": {
-        "title": "主动自省：缓冲池硬上限",
-        "description": "防止水群导致内存溢出。",
-        "type": "int",
-        "default": 20
-    },
     "critical_keywords": {
         "title": "意图预扫描关键词",
         "description": "命中时立即触发插嘴评估。",

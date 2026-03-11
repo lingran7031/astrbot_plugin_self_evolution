@@ -419,73 +419,38 @@ class EavesdroppingEngine:
                     "last_time": current_time,
                 }
         else:
-            existing_buffer = self.plugin.active_buffers.get(session_id)
-            if not isinstance(existing_buffer, list):
-                self.plugin.active_buffers[session_id] = []
-                self.plugin._session_speakers = getattr(
-                    self.plugin, "_session_speakers", {}
+            if session_id not in self.plugin.session_manager.processing_sessions:
+                msg_count = len(
+                    self.plugin.session_manager.session_buffers.get(session_id, {}).get(
+                        "messages", []
+                    )
                 )
-                if session_id not in self.plugin._session_speakers:
-                    self.plugin._session_speakers[session_id] = {}
-            else:
-                self.plugin._session_speakers = getattr(
-                    self.plugin, "_session_speakers", {}
-                )
-                if session_id not in self.plugin._session_speakers:
-                    self.plugin._session_speakers[session_id] = {}
-
-            speaker_map = self.plugin._session_speakers[session_id]
-            if user_id not in speaker_map:
-                speaker_map[user_id] = len(speaker_map) + 1
-            speaker_num = speaker_map[user_id]
-
-            self.plugin.active_buffers[session_id].append(
-                f"[群成员{speaker_num}]{sender_name}({user_id}): {msg_text}"
-            )
-
-            if (
-                len(self.plugin.active_buffers[session_id])
-                > self.plugin.max_buffer_size
-            ):
-                self.plugin.active_buffers[session_id].pop(0)
-
-            if (
-                len(self.plugin.active_buffers[session_id])
-                >= self.plugin.buffer_threshold
-                and session_id not in self.plugin.session_manager.processing_sessions
-            ):
-                async for result in self._evaluate_interjection(event, session_id):
-                    yield result
+                if msg_count >= self.plugin.eavesdrop_message_threshold:
+                    async for result in self._evaluate_interjection(event, session_id):
+                        yield result
 
     async def _evaluate_interjection(
         self, event: AstrMessageEvent, session_id: str, force_immediate: bool = False
     ):
-        """插嘴评估层：简化逻辑，只做关键词预过滤"""
+        """插嘴评估层：使用 session_buffers 作为上下文"""
         if session_id in self.plugin.session_manager.processing_sessions:
             return
 
         self.plugin.session_manager.processing_sessions.add(session_id)
         try:
-            buffer = self.plugin.active_buffers.get(session_id)
-            if not isinstance(buffer, list):
-                buffer = []
-                self.plugin.active_buffers[session_id] = buffer
+            session_buffer = self.plugin.session_manager.session_buffers.get(session_id)
+            if not session_buffer:
+                session_buffer = {"messages": [], "token_count": 0}
 
-            snap_len = 0
-            sender_name = event.get_sender_name() or "Unknown"
-            sender_id = str(event.get_sender_id())
-            speaker_map = getattr(self.plugin, "_session_speakers", {}).get(
-                session_id, {}
-            )
-            if sender_id not in speaker_map:
-                speaker_map[sender_id] = len(speaker_map) + 1
-            speaker_num = speaker_map[sender_id]
+            buffer = session_buffer.get("messages", [])
+            snap_len = len(buffer)
 
             if force_immediate:
-                chat_history = f"[群成员{speaker_num}]{sender_name}({sender_id}): {event.message_str}"
+                sender_name = event.get_sender_name() or "Unknown"
+                sender_id = str(event.get_sender_id())
+                chat_history = f"{sender_name}({sender_id}): {event.message_str}"
             else:
-                snap_len = len(buffer)
-                chat_history = "\n".join(buffer[:snap_len])
+                chat_history = "\n".join(buffer)
 
             inner_monologue_enabled = getattr(
                 self.plugin, "inner_monologue_enabled", True
@@ -622,13 +587,6 @@ class EavesdroppingEngine:
                     self._store_monologue(session_id, monologue_text)
                     logger.info(f"[CognitionCore] 已存储内心独白: {monologue_text}")
                 logger.info(f"[CognitionCore] 插嘴评估未通过：{reason}。")
-
-            if not force_immediate:
-                buffer = self.plugin.active_buffers.get(session_id)
-                if isinstance(buffer, list):
-                    self.plugin.active_buffers[session_id] = buffer[snap_len:]
-                else:
-                    self.plugin.active_buffers[session_id] = []
         except Exception as e:
             if "安全检查" in str(e) or "Safety" in str(e):
                 logger.warning(f"[CognitionCore] 插嘴评估被服务商安全策略拦截。")

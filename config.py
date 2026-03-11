@@ -85,14 +85,6 @@ class PluginConfig:
         )
 
     @property
-    def buffer_threshold(self):
-        return int(self._config.get("buffer_threshold", 8))
-
-    @property
-    def max_buffer_size(self):
-        return int(self._config.get("max_buffer_size", 20))
-
-    @property
     def review_mode(self):
         return self._parse_bool(self._config.get("review_mode"), True)
 
