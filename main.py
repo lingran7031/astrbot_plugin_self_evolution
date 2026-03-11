@@ -1151,22 +1151,26 @@ class SelfEvolutionPlugin(Star):
         """
         return await self.memory.recall_memories(event, query)
 
-    @filter.llm_tool(name="get_session_context")
-    async def get_session_context(self, event: AstrMessageEvent) -> str:
-        """获取当前群的滑动窗口缓存内容。
+    @filter.command("session")
+    async def get_session_context(self, event: AstrMessageEvent):
+        """查看当前群的会话上下文"""
+        if not event.is_admin() and (
+            not self.admin_users or str(event.get_sender_id()) not in self.admin_users
+        ):
+            yield event.plain_result("权限不足：此操作仅限管理员执行")
+            return
 
-        Returns:
-            当前群的最近对话记录
-        """
         gid = event.get_group_id()
         if not gid:
-            return "当前不在群聊中，无法获取滑动窗口"
+            yield event.plain_result("当前不在群聊中")
+            return
 
         context = self.session_manager.get_context(str(gid))
         if not context:
-            return f"群 {gid} 暂无滑动窗口缓存"
+            yield event.plain_result(f"群 {gid} 暂无会话缓存")
+            return
 
-        return f"【群聊最近对话】\n{context}"
+        yield event.plain_result(f"【群聊最近对话】\n{context}")
 
     @filter.llm_tool(name="learn_from_context")
     async def learn_from_context(
