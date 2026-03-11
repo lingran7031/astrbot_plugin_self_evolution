@@ -322,6 +322,19 @@ class SelfEvolutionPlugin(Star):
                 f"[CognitionCore] 已向 session_id:{session_id} 注入认知蒸馏指令。"
             )
 
+        # 获取并注入框架人格
+        try:
+            personality = await self.context.persona_manager.get_default_persona_v3(
+                event.unified_msg_origin
+            )
+            if personality and personality.get("prompt"):
+                req.system_prompt += f"\n\n【人格设定】\n{personality['prompt']}"
+                logger.debug(
+                    f"[SelfEvolution] 已注入框架人格: {personality.get('name', 'unknown')}"
+                )
+        except Exception as e:
+            logger.warning(f"[SelfEvolution] 获取框架人格失败: {e}")
+
         # 系统核心锚点 (优化为更自然柔和的引导，响应设计优雅性反馈)
         if ANCHOR_MARKER not in req.system_prompt:
             injection = f"\n\n({ANCHOR_MARKER}) {self.prompt_anchor_injection}"

@@ -509,8 +509,21 @@ class EavesdroppingEngine:
                     "如果决定回复，可以适当表现出慵懒或不耐烦的语气，但不要过于无礼。"
                 )
 
+            # 获取框架人格信息
+            persona_name = "AI"
+            try:
+                personality = (
+                    await self.plugin.context.persona_manager.get_default_persona_v3(
+                        event.unified_msg_origin
+                    )
+                )
+                if personality:
+                    persona_name = personality.get("name", "AI")
+            except Exception:
+                pass
+
             decision_prompt = (
-                f"你现在是 {self.plugin.persona_name}（{self.plugin.persona_title}），特点是：{self.plugin.persona_style}。\n"
+                f"你现在是 {persona_name}。\n"
                 f'【当前社交阈值】：你的"发言意愿"设定为 {self.plugin.interjection_desire}/10。数值越低你越冷漠。\n'
                 + boredom_hint
                 + "\n"
@@ -523,7 +536,7 @@ class EavesdroppingEngine:
                 "2. **干预判定 [COMMENT]**：唯有满足以下任一条件，方可输出你的简练评论：\n"
                 "   - 话题触及你的核心关键词。\n"
                 "   - 对方在发表明显的逻辑谬误或常识性错误。\n"
-                f"3. **表达风格**：回复必须极度简略（通常不超过 20 字），语气要冷淡且专业，像真正的 {self.plugin.persona_name} 一样。\n"
+                f"3. **表达风格**：回复必须极度简略（通常不超过 20 字），语气要冷淡且专业，像真正的 {persona_name} 一样。\n"
                 '【禁止事项】：绝对禁止发表类似"对话缺乏信息密度"、"建议继续检测"等关于后台评估过程本身的任何评论。'
                 + monologue_instruction
             )
