@@ -201,7 +201,7 @@
         "description": "日常对话的插嘴欲增益。",
         "hint": "日常话题的权重，较低",
         "type": "float",
-        "default": 0.2
+        "default": 1
     },
     "debate_enabled": {
         "title": "启用多智能体对抗",
@@ -215,7 +215,7 @@
         "description": "主控和审查 Agent 之间的辩论轮次。",
         "hint": "建议 1-3 轮",
         "type": "int",
-        "default": 2
+        "default": 3
     },
     "debate_system_prompt": {
         "title": "审查 Agent 系统提示词",
@@ -276,7 +276,7 @@
         "title": "无聊阈值",
         "description": "信息熵阈值，低于此值被视为无聊内容。",
         "type": "float",
-        "default": 0.6
+        "default": 0.3
     },
     "boredom_consecutive_count": {
         "title": "连续无聊计数",

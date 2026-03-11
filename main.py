@@ -384,10 +384,9 @@ class SelfEvolutionPlugin(Star):
                 and self.surprise_boost_keywords
                 and needs_surprise
             ):
+                keywords_str = self.surprise_boost_keywords.replace("|", ",")
                 surprise_keywords = [
-                    k.strip()
-                    for k in self.surprise_boost_keywords.split(",")
-                    if k.strip()
+                    k.strip() for k in keywords_str.split(",") if k.strip()
                 ]
                 if any(kw in msg_text for kw in surprise_keywords):
                     req.system_prompt += (
