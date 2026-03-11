@@ -1136,21 +1136,15 @@ class SelfEvolutionPlugin(Star):
         return await self.memory.recall_memories(event, query)
 
     @filter.llm_tool(name="get_session_context")
-    async def get_session_context(
-        self, event: AstrMessageEvent, group_id: str = ""
-    ) -> str:
-        """获取当前群或指定群的滑动窗口缓存内容。
+    async def get_session_context(self, event: AstrMessageEvent) -> str:
+        """获取当前群的滑动窗口缓存内容。
 
-        Args:
-            group_id(string, optional): 群号，不填则使用当前群
+        Returns:
+            当前群的最近对话记录
         """
-        if not group_id:
-            gid = event.get_group_id()
-        else:
-            gid = group_id
-
+        gid = event.get_group_id()
         if not gid:
-            return "无法获取群 ID"
+            return "当前不在群聊中，无法获取滑动窗口"
 
         context = self.session_manager.get_context(str(gid))
         if not context:
