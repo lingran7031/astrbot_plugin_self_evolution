@@ -430,9 +430,18 @@ class SelfEvolutionPlugin(Star):
 
         # 6. 滑动上下文窗口注入
         if group_id:
+            logger.info(f"[Session] 获取滑动窗口上下文，群 {group_id}")
             session_context = self.session_manager.get_context(group_id)
+            logger.info(f"[Session] 滑动窗口内容长度: {len(session_context)} 字符")
             if session_context:
                 req.system_prompt += f"\n\n【群聊最近对话】\n{session_context}"
+                logger.info(
+                    f"[Session] 已注入滑动窗口上下文: {len(session_context)} 字符"
+                )
+            else:
+                logger.warning(f"[Session] 滑动窗口为空，群 {group_id}")
+        else:
+            logger.warning(f"[Session] group_id 为空，无法获取滑动窗口上下文")
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
