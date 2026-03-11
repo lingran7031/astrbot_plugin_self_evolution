@@ -56,6 +56,7 @@ class SessionManager:
                 "messages": [],
                 "token_count": 0,
                 "last_active": time.time(),
+                "eavesdrop_count": 0,
             }
             logger.info(f"[Session] 新建会话缓冲: {group_id}")
 
@@ -211,6 +212,11 @@ class SessionManager:
     def clear(self):
         """清理所有缓冲"""
         self.session_buffers.clear()
+
+    def reset_eavesdrop_count(self, group_id: str):
+        """重置插话触发计数器"""
+        if group_id in self.session_buffers:
+            self.session_buffers[group_id]["eavesdrop_count"] = 0
 
     async def _commit_session_to_memory(self, messages: list, group_id: str):
         """将会话内容存入知识库"""

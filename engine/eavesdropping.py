@@ -420,14 +420,20 @@ class EavesdroppingEngine:
                 }
         else:
             if session_id not in self.plugin.session_manager.processing_sessions:
-                msg_count = len(
-                    self.plugin.session_manager.session_buffers.get(session_id, {}).get(
-                        "messages", []
-                    )
+                session_buffer = self.plugin.session_manager.session_buffers.get(
+                    session_id, {}
                 )
+                msg_count = len(session_buffer.get("messages", []))
+
                 if msg_count >= self.plugin.eavesdrop_message_threshold:
-                    async for result in self._evaluate_interjection(event, session_id):
-                        yield result
+                    count = session_buffer.get("eavesdrop_count", 0) + 1
+                    session_buffer["eavesdrop_count"] = count
+
+                    if count >= 1:
+                        async for result in self._evaluate_interjection(
+                            event, session_id
+                        ):
+                            yield result
 
     async def _evaluate_interjection(
         self, event: AstrMessageEvent, session_id: str, force_immediate: bool = False
@@ -594,6 +600,7 @@ class EavesdroppingEngine:
                 logger.warning(f"[CognitionCore] 插嘴评估过程发生异常: {e}")
         finally:
             try:
+                self.plugin.session_manager.reset_eavesdrop_count(str(session_id))
                 self.plugin.session_manager.processing_sessions.discard(str(session_id))
             except Exception as e:
                 logger.warning(f"[CognitionCore] 清理 processing_sessions 失败: {e}")
