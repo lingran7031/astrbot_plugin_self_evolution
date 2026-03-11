@@ -13,7 +13,6 @@ class EavesdroppingEngine:
         self.global_window = defaultdict(list)
         self.window_size = 5
         self.leaky_bucket = defaultdict(dict)  # {"value": float, "last_time": float}
-        self.inner_monologue_cache = defaultdict(str)
         self.boredom_cache = defaultdict(lambda: {"count": 0, "last_message_time": 0.0})
 
         # 中间消息拦截缓存：{session_id: {"messages": [], "last_update": timestamp}}
@@ -114,22 +113,6 @@ class EavesdroppingEngine:
                 expired_sessions.append(session_id)
         for session_id in expired_sessions:
             del self.intercepted_messages[session_id]
-
-    def _extract_monologue(self, text: str) -> str:
-        match = re.search(r"<inner_monologue>(.*?)</inner_monologue>", text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        return ""
-
-    def _store_monologue(self, session_id: str, monologue: str):
-        self.inner_monologue_cache[session_id] = monologue
-
-    def _get_stored_monologue(self, session_id: str) -> str:
-        return self.inner_monologue_cache.get(session_id, "")
-
-    def _clear_stored_monologue(self, session_id: str):
-        if session_id in self.inner_monologue_cache:
-            del self.inner_monologue_cache[session_id]
 
     def _calculate_entropy(self, text: str) -> float:
         if not text or len(text) < 10:
@@ -461,19 +444,6 @@ class EavesdroppingEngine:
             else:
                 chat_history = "\n".join(buffer)
 
-            inner_monologue_enabled = getattr(
-                self.plugin, "inner_monologue_enabled", True
-            )
-
-            monologue_instruction = ""
-            if inner_monologue_enabled:
-                monologue_instruction = (
-                    "\n\n【潜意识任务】（即使判定为 IGNORE 也必须执行）：\n"
-                    "请输出一个 20 字以内的简短内心独白，描述你对这个对话片段的真实腹诽或吐槽。\n"
-                    "格式：<inner_monologue>你的内心独白</inner_monologue>\n"
-                    "示例：<inner_monologue>这帮人又在聊毫无营养的八卦</inner_monologue>"
-                )
-
             # 获取无聊状态
             is_bored = getattr(self, "_current_boredom_state", False)
             boredom_hint = ""
@@ -564,13 +534,11 @@ class EavesdroppingEngine:
                     or reply_stripped == "IGNORE"
                 ):
                     reason = "判定为噪音/无价值"
-                    monologue_text = self._extract_monologue(reply_text)
                 elif is_meta:
                     reason = "触发元评论拦截"
                 else:
                     should_respond = True
                     reason = "评估通过"
-                    monologue_text = self._extract_monologue(reply_text)
             else:
                 reason = "内容为空"
 
@@ -615,11 +583,6 @@ class EavesdroppingEngine:
                 logger.info(
                     f"[CognitionCore] 无聊判定！SAN-{value}，阈值升至 {new_threshold}"
                 )
-                # 无聊时，存储内心独白
-                monologue_text = self._extract_monologue(reply_text)
-                if monologue_text:
-                    self._store_monologue(session_id, monologue_text)
-                    logger.info(f"[CognitionCore] 已存储内心独白: {monologue_text}")
                 logger.info(f"[CognitionCore] 无聊判定，不插话。")
                 return
             else:
