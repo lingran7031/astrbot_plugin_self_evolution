@@ -353,5 +353,12 @@
         "hint": "超过20条消息时检查，建议 15-30",
         "type": "int",
         "default": 20
+    },
+    "session_cleanup_timeout": {
+        "title": "会话缓冲超时时间",
+        "description": "会话缓冲超时时间",
+        "hint": "滑动窗口会话多久无新消息后被清理，单位秒，默认600秒（10分钟）",
+        "type": "int",
+        "default": 600
     }
 }

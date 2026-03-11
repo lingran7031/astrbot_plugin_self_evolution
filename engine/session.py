@@ -50,10 +50,15 @@ class SessionManager:
         tokens = self._estimate_tokens(msg)
 
         if group_id not in self.session_buffers:
-            self.session_buffers[group_id] = {"messages": [], "token_count": 0}
+            self.session_buffers[group_id] = {
+                "messages": [],
+                "token_count": 0,
+                "last_active": time.time(),
+            }
             logger.info(f"[Session] 新建会话缓冲: {group_id}")
 
         buffer = self.session_buffers[group_id]
+        buffer["last_active"] = time.time()
 
         if tokens > max_tokens:
             msg = msg[: max_tokens * 2] + "...(截断)"
@@ -97,8 +102,9 @@ class SessionManager:
     def cleanup_stale(self):
         """清理过期缓冲"""
         now = time.time()
+        timeout = getattr(self.plugin, "session_cleanup_timeout", 600)
         logger.info(
-            f"[Session] cleanup_stale 检查，当前缓冲: {list(self.session_buffers.keys())}"
+            f"[Session] cleanup_stale 检查，当前缓冲: {list(self.session_buffers.keys())}，超时时间: {timeout}秒"
         )
         if now - self._last_cleanup < 300:
             logger.info(
@@ -106,13 +112,13 @@ class SessionManager:
             )
             return
         self._last_cleanup = now
-        logger.info(
-            f"[Session] cleanup_stale 执行清理，当前 processing_sessions: {self.processing_sessions}"
-        )
 
-        stale = [
-            gid for gid in self.session_buffers if gid not in self.processing_sessions
-        ]
+        stale = []
+        for gid, buffer in self.session_buffers.items():
+            last_active = buffer.get("last_active", 0)
+            if now - last_active > timeout:
+                stale.append(gid)
+
         for gid in stale:
             del self.session_buffers[gid]
 

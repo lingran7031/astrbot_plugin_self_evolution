@@ -334,6 +334,10 @@ class PluginConfig:
     def eavesdrop_message_threshold(self):
         return int(self._config.get("eavesdrop_message_threshold", 20))
 
+    @property
+    def session_cleanup_timeout(self):
+        return int(self._config.get("session_cleanup_timeout", 600))
+
     def get(self, key, default=None):
         """通用获取配置"""
         return self._config.get(key, default)
