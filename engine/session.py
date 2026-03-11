@@ -119,7 +119,14 @@ class SessionManager:
             if now - last_active > timeout:
                 stale.append(gid)
 
+        import asyncio
+
         for gid in stale:
+            buffer = self.session_buffers.get(gid)
+            if buffer:
+                messages = buffer.get("messages", [])
+                if messages:
+                    asyncio.create_task(self._commit_session_to_memory(messages, gid))
             del self.session_buffers[gid]
 
         if stale:
@@ -205,3 +212,50 @@ class SessionManager:
     def clear(self):
         """清理所有缓冲"""
         self.session_buffers.clear()
+
+    async def _commit_session_to_memory(self, messages: list, group_id: str):
+        """将会话内容存入知识库"""
+        import asyncio
+
+        auto_commit = getattr(self.plugin, "session_auto_commit", True)
+        threshold = getattr(self.plugin, "session_commit_threshold", 5)
+
+        if not auto_commit:
+            return
+
+        if len(messages) < threshold:
+            logger.info(
+                f"[Session] 消息数 {len(messages)} 少于阈值 {threshold}，跳过存入"
+            )
+            return
+
+        try:
+            memory_kb_name = getattr(
+                self.plugin, "memory_kb_name", "self_evolution_memory"
+            )
+            kb_manager = self.plugin.context.kb_manager
+            kb_helper = await kb_manager.get_kb_by_name(memory_kb_name)
+
+            if not kb_helper:
+                logger.warning(f"[Session] 知识库 {memory_kb_name} 不存在，跳过存入")
+                return
+
+            content = "\n".join(messages)
+            formatted = f"""【群聊会话记录】
+群号: {group_id}
+消息数: {len(messages)}
+---
+{content}
+"""
+
+            await kb_helper.upload_document(
+                file_name=f"session_{group_id}_{int(asyncio.get_event_loop().time() * 1000)}.txt",
+                file_content=b"",
+                file_type="txt",
+                pre_chunked_text=[formatted],
+            )
+            logger.info(
+                f"[Session] 已将会话存入知识库，群 {group_id}，{len(messages)} 条消息"
+            )
+        except Exception as e:
+            logger.warning(f"[Session] 存入知识库失败: {e}")

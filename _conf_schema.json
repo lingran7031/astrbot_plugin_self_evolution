@@ -360,5 +360,19 @@
         "hint": "滑动窗口会话多久无新消息后被清理，单位秒，默认600秒（10分钟）",
         "type": "int",
         "default": 600
+    },
+    "session_auto_commit": {
+        "title": "会话超时自动存入知识库",
+        "description": "会话超时清理时自动存入知识库",
+        "hint": "滑动窗口会话超时被清理时，是否自动将内容存入知识库",
+        "type": "bool",
+        "default": true
+    },
+    "session_commit_threshold": {
+        "title": "会话存入知识库的阈值",
+        "description": "会话存入知识库的阈值",
+        "hint": "滑动窗口消息数超过此值时才存入知识库，避免存入太少内容",
+        "type": "int",
+        "default": 5
     }
 }

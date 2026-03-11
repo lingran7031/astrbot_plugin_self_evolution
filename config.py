@@ -338,6 +338,14 @@ class PluginConfig:
     def session_cleanup_timeout(self):
         return int(self._config.get("session_cleanup_timeout", 600))
 
+    @property
+    def session_auto_commit(self):
+        return self._parse_bool(self._config.get("session_auto_commit"), True)
+
+    @property
+    def session_commit_threshold(self):
+        return int(self._config.get("session_commit_threshold", 5))
+
     def get(self, key, default=None):
         """通用获取配置"""
         return self._config.get(key, default)
