@@ -322,5 +322,19 @@
         "description": "群氛围会影响 AI 的情绪和行为。",
         "type": "bool",
         "default": true
+    },
+    "session_whitelist": {
+        "title": "滑动上下文白名单群ID",
+        "description": "只为白名单中的群维护滑动上下文。空列表表示所有群。",
+        "hint": "多个群号用逗号分隔，如: 123456,789012",
+        "type": "string",
+        "default": ""
+    },
+    "session_max_tokens": {
+        "title": "滑动上下文最大Token数",
+        "description": "每个群维护的最大Token数，用于上下文记忆。",
+        "hint": "建议 2000-4000，默认 4000",
+        "type": "int",
+        "default": 4000
     }
 }
