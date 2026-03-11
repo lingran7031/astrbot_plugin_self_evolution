@@ -488,6 +488,25 @@ class SelfEvolutionPlugin(Star):
             event.clear_result()
             logger.info(f"[IntermediateFilter] 拦截所有消息，暂停发送")
 
+        # AI 回复发送成功后，存入 session
+        if result and result.chain and not intercepted:
+            group_id = event.get_group_id()
+            if group_id:
+                try:
+                    reply_parts = []
+                    for comp in result.chain:
+                        if isinstance(comp, Plain):
+                            reply_parts.append(comp.text)
+                    reply_text = "".join(reply_parts)
+                    if reply_text:
+                        bot_name = getattr(self, "persona_name", "AI")
+                        self.session_manager.add_message(
+                            str(group_id), bot_name, "bot", reply_text
+                        )
+                        logger.debug(f"[Session] 已存入AI回复: {reply_text[:30]}")
+                except Exception as e:
+                    logger.warning(f"[Session] 存入AI回复失败: {e}")
+
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
         """
