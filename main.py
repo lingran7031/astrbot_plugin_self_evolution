@@ -1,5 +1,6 @@
 from astrbot.api.all import Context, AstrMessageEvent, Star, register
 from astrbot.api.event import filter
+from astrbot.api.event.filter import PermissionType
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import StarTools
 from astrbot.api import logger
@@ -175,12 +176,11 @@ class SelfEvolutionPlugin(Star):
         CognitionCore 2.0: 情感拦截与身份感知注入。
         级别: Level 3+
         """
-        logger.info(
-            f"[CognitionCore] 进入 LLM 请求拦截层。用户: {event.get_sender_id()} | 消息: '{event.message_str}'"
-        )
         user_id = event.get_sender_id()
         session_id = event.session_id
         msg_text = event.message_str or ""
+
+        logger.info(f"[CognitionCore] 进入 LLM 请求拦截层。用户: {user_id}")
 
         # SAN 值检查：精力耗尽时拒绝服务
         if self.san_enabled:
@@ -1289,6 +1289,7 @@ class SelfEvolutionPlugin(Star):
             logger.warning(f"[SelfEvolution] 工具切换业务失败: {e}")
             return "工具切换时遭遇系统异常。"
 
+    @filter.permission_type(PermissionType.ADMIN)
     @filter.llm_tool(name="get_plugin_source")
     async def get_plugin_source(
         self, event: AstrMessageEvent, mod_name: str = "main"
@@ -1300,6 +1301,7 @@ class SelfEvolutionPlugin(Star):
         """
         return await self.meta_infra.get_plugin_source(mod_name)
 
+    @filter.permission_type(PermissionType.ADMIN)
     @filter.llm_tool(name="update_plugin_source")
     async def update_plugin_source(
         self,
