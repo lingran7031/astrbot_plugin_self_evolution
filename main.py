@@ -1244,7 +1244,7 @@ class SelfEvolutionPlugin(Star):
         Args:
             knowledge(string): 用最简练的冷白描手法记录事实。必须包含明确的时间状语（如：今晚八点开会）。（必填）
             knowledge_type(string): 记忆的分类：群规/约定活动/群共识（默认约定活动）
-            source_uuids(list): 必须提供触发记录的原始消息 UUID 列表，用于后期溯源。（必填）
+            source_uuids(list): 触发记录的原始消息 UUID 列表，用于后期溯源。（可选，不填则自动记录时间戳）
         """
         return await self.memory.save_group_knowledge(
             event, knowledge, knowledge_type, source_uuids
@@ -1471,10 +1471,6 @@ class SelfEvolutionPlugin(Star):
         import json
 
         target = target_user_id or event.get_sender_id()
-        group_id = event.get_group_id()
-
-        if not group_id:
-            return "只有群聊才能获取历史消息，私聊场景不支持此功能。"
 
         # 限制数量
         limit = min(max(1, limit), 1000)
@@ -1483,35 +1479,22 @@ class SelfEvolutionPlugin(Star):
             history_mgr = self.context.message_history_manager
             platform_id = event.get_platform_name() or "qq"
 
-            # 修复：正确的参数顺序应该是 group_id + user_id
             history = await history_mgr.get(
                 platform_id=platform_id,
-                group_id=group_id,
                 user_id=target,
                 page=1,
                 page_size=limit,
             )
 
             if not history:
-                return f"未找到用户 {target} 在该群的历史消息记录。"
-
-            # 按用户过滤
-            user_messages = [
-                {
-                    "sender": getattr(msg, "sender_name", "Unknown"),
-                    "content": getattr(msg, "message_str", "")[:200],
-                }
-                for msg in history
-                if str(getattr(msg, "sender_id", "")) == str(target)
-            ]
-
-            if not user_messages:
-                return f"未找到用户 {target} 在该群的历史消息记录。"
+                return f"未找到用户 {target} 的历史消息记录。"
 
             # 格式化为文本
-            result = [f"用户 {target} 的历史消息（共 {len(user_messages)} 条）："]
-            for i, msg in enumerate(user_messages[:20], 1):  # 最多显示20条
-                result.append(f"{i}. {msg['sender']}: {msg['content']}")
+            result = [f"用户 {target} 的历史消息（共 {len(history)} 条）："]
+            for i, msg in enumerate(history[:20], 1):  # 最多显示20条
+                result.append(
+                    f"{i}. {getattr(msg, 'sender_name', 'Unknown')}: {getattr(msg, 'message_str', '')}"
+                )
 
             return "\n".join(result)
 
