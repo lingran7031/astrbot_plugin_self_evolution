@@ -2,6 +2,31 @@
 
 本项目的所有重大更改都将记录在此文件中。
 
+## [5.0.16] - 2026-03-11
+### 重构 (Refactoring) - 模块化与架构优化
+
+#### P1: 会话管理模块化
+- 新增 `engine/session.py` - 滑动上下文窗口管理模块
+- SessionManager 类封装滑动窗口逻辑（4k Token 维护）
+- 定时插话检查机制（默认每10分钟或消息>20条）
+- 定时检查复用 EavesdroppingEngine 完整评估逻辑
+- 配置参数：`session_whitelist`、`session_max_tokens`、`eavesdrop_interval_minutes`、`eavesdrop_message_threshold`
+
+#### P2: 定时任务注册修复
+- 修复 `persistent=True` 确保重启后定时任务恢复
+- 修复 handler 丢失时重新注册逻辑
+- 添加管理员权限装饰器到元编程工具
+
+#### P3: Bug 修复
+- 修复配置访问方式，使用 `self.xxx` 代理而非 `getattr`
+- 修复 config.py 属性拼写错误（eavesdrip -> eavesdrop）
+- 清理冗余代码（active_buffers、_cleanup_stale_buffers 等）
+
+#### P4: 类型安全增强
+- 修复 active_buffers 类型检查，防止类型错误导致异常
+
+---
+
 ## [5.0.15] - 2026-03-10
 ### 优化 (Optimization) - 健壮性与用户体验提升
 

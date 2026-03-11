@@ -10,17 +10,36 @@
 
 这是 AstrBot 的认知增强插件，赋予 AI 主动环境感知、长期记忆、用户认知、情感模拟等高级能力。
 
-**核心理念**: 让 AI 拥有"高维生物感"——不只是响应命令，而是像真正的生命体一样感知、记忆、学习、成长。
+**核心理念**: 让 AI 拥有"高维生物感"——不只是响应命令，而是像真正的生命体一样感知、记忆，学习、成长。
 
 ---
 
 ## 核心功能
 
+### 滑动上下文窗口 (SessionManager)
+
+**设计思想**: 像人类一样"偶尔瞥一眼"群聊，而不是时刻监听
+
+- 按 4k Token 维护群聊历史滑动窗口
+- 支持白名单群配置，空则所有群
+- 定时检查触发插话（默认每10分钟或消息>20条）
+- 定时检查会调用 EavesdroppingEngine 的完整评估逻辑
+
+配置参数:
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `session_whitelist` | "" | 白名单群ID，空=所有群 |
+| `session_max_tokens` | 4000 | 最大Token数 |
+| `eavesdrop_interval_minutes` | 10 | 插话检查间隔(分钟) |
+| `eavesdrop_message_threshold` | 20 | 消息数阈值 |
+
+---
+
 ### 主动插嘴引擎 (EavesdroppingEngine)
 
 **指数衰减积分器** - 模拟更自然的插嘴节奏
 ```
-S_t = S_{t-1} * e^(-λ*Δt) + w_i
+S_t = S_{t-1} * e^(-lambda*Delta_t) + w_i
 ```
 - 长时间无人说话时自动冷静
 - 关键词命中时瞬间冲动
@@ -99,13 +118,14 @@ S_t = S_{t-1} * e^(-λ*Δt) + w_i
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `persona_name` | 黑塔 | 机器人名称 |
-| `interjection_desire` | 3 | 发言意愿 (1-10，越高越爱说话) |
+| `interjection_desire` | 5 | 发言意愿 (1-10，越高越爱说话) |
 | `leaky_integrator_enabled` | true | 启用积分器 |
 | `boredom_enabled` | true | 启用无聊检测 |
 | `dream_enabled` | true | 启用凌晨画像构建 |
 | `dropout_enabled` | true | 启用分层失活 |
 | `graph_enabled` | true | 启用关系图谱 |
 | `san_enabled` | true | 启用精力值 |
+| `session_max_tokens` | 4000 | 滑动上下文Token数 |
 
 ---
 
@@ -159,6 +179,7 @@ self_evolution/
 │   ├── san.py          # 精力值系统
 │   └── vibe.py         # 群体情绪
 └── engine/
+    ├── session.py      # 滑动上下文管理
     ├── eavesdropping.py # 插嘴引擎
     ├── memory.py       # 记忆管理
     ├── profile.py      # 用户画像
