@@ -91,6 +91,9 @@ class SelfEvolutionPlugin(Star):
         self.daily_reflection_pending = False
         self._last_buffer_cleanup = 0
 
+        # 滑动上下文窗口（按 token 计数）
+        self.session_buffers = {}  # {group_id: {"messages": [msg_list], "token_count": int}}
+
     def __getattr__(self, name):
         """代理配置访问到 cfg"""
         if name.startswith("_") or name in ("cfg", "config", "context"):
@@ -117,6 +120,56 @@ class SelfEvolutionPlugin(Star):
         except Exception:
             pass
         return ""
+
+    def _estimate_tokens(self, text: str) -> int:
+        """估算 token 数量（中英文混合）"""
+        if not text:
+            return 0
+        chinese = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+        other = len(text) - chinese
+        return int(chinese * 0.7 + other * 0.25)
+
+    def _add_message_to_buffer(
+        self, group_id: str, sender_name: str, user_id: str, msg_text: str
+    ):
+        """添加消息到滑动窗口，按 token 计数维护"""
+        if not msg_text:
+            return
+
+        max_tokens = getattr(self, "session_max_tokens", 4000)
+
+        msg = f"[{sender_name}]({user_id}): {msg_text}"
+        tokens = self._estimate_tokens(msg)
+
+        if group_id not in self.session_buffers:
+            self.session_buffers[group_id] = {"messages": [], "token_count": 0}
+
+        buffer = self.session_buffers[group_id]
+
+        if tokens > max_tokens:
+            msg = msg[: max_tokens * 2] + "...(截断)"
+            tokens = self._estimate_tokens(msg)
+
+        buffer["messages"].append(msg)
+        buffer["token_count"] += tokens
+
+        while buffer["token_count"] > max_tokens and buffer["messages"]:
+            old_msg = buffer["messages"].pop(0)
+            buffer["token_count"] -= self._estimate_tokens(old_msg)
+
+        if buffer["token_count"] < 0:
+            buffer["token_count"] = 0
+
+    def _get_session_context(self, group_id: str) -> str:
+        """获取滑动窗口上下文"""
+        if group_id not in self.session_buffers:
+            return ""
+
+        buffer = self.session_buffers[group_id]
+        if not buffer["messages"]:
+            return ""
+
+        return "\n".join(buffer["messages"])
 
     def _clean_messages(self, messages: list) -> list:
         """清洗消息：去重+长度过滤"""
@@ -164,11 +217,13 @@ class SelfEvolutionPlugin(Star):
         """
         try:
             await self.dao.close()
+            # 清理滑动上下文窗口
+            self.session_buffers.clear()
             logger.info(
-                "[SelfEvolution] 插件卸载钩子触发：DAO 长连接及底层句柄已安全脱离释放。"
+                "[SelfEvolution] 插件卸载钩子触发：DAO 长连接及滑动窗口已安全释放。"
             )
         except Exception as e:
-            logger.warning(f"[SelfEvolution] 释放 DAO 资源异常: {e}")
+            logger.warning(f"[SelfEvolution] 释放资源异常: {e}")
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
@@ -427,20 +482,40 @@ class SelfEvolutionPlugin(Star):
         # 5. 交流准则注入
         req.system_prompt += f"\n\n【交流准则】\n{self.prompt_communication_guidelines}"
 
+        # 6. 滑动上下文窗口注入
+        if group_id:
+            whitelist = getattr(self, "session_whitelist", [])
+            if not whitelist or group_id in whitelist:
+                session_context = self._get_session_context(group_id)
+                if session_context:
+                    req.system_prompt += f"\n\n【群聊最近对话】\n{session_context}"
+
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
-        """CognitionCore 6.0: 被动监听转发至 EavesdroppingEngine"""
+        """CognitionCore 6.0: 被动监听 - 滑动上下文窗口"""
         # 定期清理过期缓冲数据，防止内存泄漏
         await self._cleanup_stale_buffers()
 
-        # 关系图谱：记录用户互动
         user_id = event.get_sender_id()
         group_id = event.get_group_id()
+        sender_name = event.get_sender_name() or "Unknown"
+        msg_text = event.message_str
+
+        # 白名单检查
+        whitelist = getattr(self, "session_whitelist", [])
+
+        # 滑动上下文窗口：记录消息
         if group_id:
+            # 关系图谱：记录用户互动
             await self.graph.record_interaction(user_id, group_id)
 
-        async for result in self.eavesdropping.handle_message(event):
-            yield result
+            # 检查是否在白名单中（空列表表示所有群）
+            if not whitelist or group_id in whitelist:
+                self._add_message_to_buffer(group_id, sender_name, user_id, msg_text)
+
+        # TODO: 暂时注释掉插嘴功能，后续可移除
+        # async for result in self.eavesdropping.handle_message(event):
+        #     yield result
 
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
