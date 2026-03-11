@@ -121,63 +121,50 @@ class SessionManager:
 
             for group_id in target_groups:
                 logger.info(f"[Session] 定时插话检查触发，群 {group_id}")
-                await self._trigger_interjection(group_id)
+                await self._trigger_interjection_via_eavesdropping(group_id)
 
         except Exception as e:
             logger.warning(f"[Session] 定时插话检查异常: {e}")
 
-    async def _trigger_interjection(self, group_id: str):
-        """触发插话评估"""
-        from astrbot.api.message_components import Plain
-        from astrbot.api.all import AstrMessageEvent
-
+    async def _trigger_interjection_via_eavesdropping(self, group_id: str):
+        """通过 EavesdroppingEngine 触发插话评估"""
         self.processing_sessions.add(group_id)
 
         try:
+            eavesdropping = getattr(self.plugin, "eavesdropping", None)
+            if not eavesdropping:
+                logger.warning("[Session] EavesdroppingEngine 未初始化")
+                return
+
             context = self.get_context(group_id)
             if not context:
                 return
 
-            llm_provider = getattr(self.plugin, "context", None)
-            if not llm_provider:
-                llm_provider = llm_provider.get_using_provider("qq")
+            class DummyEvent:
+                def __init__(self, gid):
+                    self.session_id = gid
+                    self._group_id = gid
+                    self.message_str = ""
+                    self.is_at_or_wake_command = False
 
-            if not llm_provider:
-                logger.warning("[Session] 无法获取 LLM 提供者")
-                return
+                def get_group_id(self):
+                    return self._group_id
 
-            system_prompt = getattr(self.plugin, "prompt_eavesdrop_system", "")
-            if not system_prompt:
-                system_prompt = (
-                    "你是黑塔，一个理性的天才。你可以根据群聊上下文决定是否插话。"
-                )
+                def get_sender_id(self):
+                    return "periodic_check"
 
-            prompt = f"{system_prompt}\n\n【群聊最近对话】\n{context}\n\n请判断是否需要插话，格式：\n- [IGNORE] 不插话\n- [COMMENT] + 内容：插话并给出评论"
+                def get_sender_name(self):
+                    return "System"
 
-            response = await llm_provider.text_chat(
-                prompt=prompt, system_prompt="", conversation=None
-            )
+            dummy_event = DummyEvent(group_id)
 
-            response_text = response.completion_text if response else ""
-
-            if not response_text:
-                return
-
-            response_text = response_text.strip()
-
-            if response_text.startswith("[IGNORE]"):
-                logger.info(f"[Session] 评估决定不插话: {response_text}")
-                return
-
-            if response_text.startswith("[COMMENT]"):
-                comment = response_text[9:].strip()
-                if comment:
-                    logger.info(f"[Session] 触发插话: {comment}")
-                    # TODO: 发送消息到群聊
-                    # 需要通过 event 发送，这里暂时无法直接发送
+            async for _ in eavesdropping._evaluate_interjection(
+                dummy_event, group_id, force_immediate=True
+            ):
+                pass
 
         except Exception as e:
-            logger.warning(f"[Session] 插话评估异常: {e}")
+            logger.warning(f"[Session] 通过 EavesdroppingEngine 触发插话异常: {e}")
 
         finally:
             self.processing_sessions.discard(group_id)
