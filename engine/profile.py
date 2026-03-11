@@ -151,9 +151,30 @@ class ProfileManager:
 
         return result
 
-    async def cleanup_expired_profiles(self):
-        """清理过期画像 - Markdown 模式下只需检查文件修改时间"""
-        pass
+    async def cleanup_expired_profiles(self, days: int = 90):
+        """清理过期画像 - 根据文件修改时间删除长时间未更新的画像"""
+        try:
+            from datetime import timedelta
+
+            cutoff_time = time.time() - (days * 86400)
+            deleted_count = 0
+
+            for profile_path in self.profile_dir.glob("user_*.md"):
+                try:
+                    mtime = profile_path.stat().st_mtime
+                    if mtime < cutoff_time:
+                        profile_path.unlink()
+                        deleted_count += 1
+                        logger.info(f"[Profile] 已删除过期画像: {profile_path.name}")
+                except Exception as e:
+                    logger.warning(f"[Profile] 删除画像失败 {profile_path.name}: {e}")
+
+            if deleted_count > 0:
+                logger.info(f"[Profile] 清理完成，共删除 {deleted_count} 个过期画像")
+            return deleted_count
+        except Exception as e:
+            logger.warning(f"[Profile] 清理过期画像失败: {e}")
+            return 0
 
     async def view_profile(self, user_id: str) -> str:
         """查看用户画像"""

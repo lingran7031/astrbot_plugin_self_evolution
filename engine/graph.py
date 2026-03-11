@@ -27,7 +27,7 @@ class GraphRAG:
 
         try:
             if group_id:
-                await self.dao.record_interaction(str(user_id), "", str(group_id))
+                await self.dao.record_interaction(str(user_id), None, str(group_id))
             if other_user_id and group_id:
                 await self.dao.record_interaction(
                     str(user_id), str(other_user_id), str(group_id)

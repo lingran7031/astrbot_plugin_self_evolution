@@ -98,22 +98,17 @@ class SelfEvolutionPlugin(Star):
             )
         return getattr(self.cfg, name)
 
-    def _check_social_bias(self, user_id: str) -> str:
+    async def _check_social_bias(self, user_id: str) -> str:
         if not self.graph_enabled:
             return ""
         try:
             frequent = getattr(self.graph, "get_frequent_interactors", None)
             if not frequent:
                 return ""
-            import asyncio
-
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                return ""
-            interactors = loop.run_until_complete(frequent(str(user_id), 3))
+            interactors = await frequent(str(user_id), 3)
             biased_users = []
             for other_user, count in interactors:
-                affinity = loop.run_until_complete(self.dao.get_affinity(other_user))
+                affinity = await self.dao.get_affinity(other_user)
                 if affinity <= 0:
                     biased_users.append(other_user)
             if biased_users:
@@ -204,7 +199,7 @@ class SelfEvolutionPlugin(Star):
             self.vibe_system.update(str(group_id), msg_text)
 
         # 社交偏见检查：好友的好友警惕
-        social_bias_hint = self._check_social_bias(user_id)
+        social_bias_hint = await self._check_social_bias(user_id)
 
         # 0. 动态上下文路由：轻量级消息分类，决定加载哪些模块
         needs_profile = False
@@ -736,9 +731,6 @@ class SelfEvolutionPlugin(Star):
 
             async def process_user(profile_path):
                 """处理已有画像文件"""
-                nonlocal processed, failed
-                async with semaphore:
-                    user_id = profile_path.stem.replace("user_", "")
                 nonlocal processed, failed
                 async with semaphore:
                     user_id = profile_path.stem.replace("user_", "")

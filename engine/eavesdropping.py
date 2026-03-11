@@ -311,10 +311,7 @@ class EavesdroppingEngine:
             )
 
         # 清理过期的活跃用户（每100条消息清理一次）
-        if hasattr(self, "_msg_counter"):
-            self._msg_counter += 1
-        else:
-            self._msg_counter = 1
+        self._msg_counter = getattr(self, "_msg_counter", 0) + 1
         if self._msg_counter % 100 == 0:
             self.cleanup_expired_active_users()
             self.cleanup_expired_intercepted_messages()
@@ -397,7 +394,7 @@ class EavesdroppingEngine:
             last_time = bucket_data.get("last_time", current_time)
             delta_t = current_time - last_time
 
-            decay_factor = params.get("decay_exp", 0.5)
+            decay_factor = params.get("decay", 0.9)
             exp_decay = math.exp(-decay_factor * delta_t / 60)
 
             old_value = float(bucket_data.get("value", 0))
