@@ -341,6 +341,20 @@
         "type": "int",
         "default": 20
     },
+    "eavesdrop_threshold_min": {
+        "title": "有趣判定阈值下限",
+        "description": "有趣对话时的最低触发阈值。",
+        "hint": "有趣判定后阈值降至此值，建议 5-15",
+        "type": "int",
+        "default": 10
+    },
+    "eavesdrop_threshold_max": {
+        "title": "无聊判定阈值上限",
+        "description": "无聊对话时的最高触发阈值。",
+        "hint": "无聊判定后阈值升至此值，建议 30-50",
+        "type": "int",
+        "default": 50
+    },
     "session_cleanup_timeout": {
         "title": "会话缓冲超时时间",
         "description": "会话缓冲超时时间",

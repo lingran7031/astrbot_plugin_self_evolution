@@ -327,6 +327,14 @@ class PluginConfig:
         return int(self._config.get("eavesdrop_message_threshold", 20))
 
     @property
+    def eavesdrop_threshold_min(self):
+        return int(self._config.get("eavesdrop_threshold_min", 10))
+
+    @property
+    def eavesdrop_threshold_max(self):
+        return int(self._config.get("eavesdrop_threshold_max", 50))
+
+    @property
     def session_cleanup_timeout(self):
         return int(self._config.get("session_cleanup_timeout", 600))
 

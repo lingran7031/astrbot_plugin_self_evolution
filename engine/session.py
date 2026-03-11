@@ -57,6 +57,7 @@ class SessionManager:
                 "token_count": 0,
                 "last_active": time.time(),
                 "eavesdrop_count": 0,
+                "threshold": self.plugin.eavesdrop_message_threshold,
             }
             logger.info(f"[Session] 新建会话缓冲: {group_id}")
 
@@ -217,6 +218,13 @@ class SessionManager:
         """重置插话触发计数器"""
         if group_id in self.session_buffers:
             self.session_buffers[group_id]["eavesdrop_count"] = 0
+
+    def reset_threshold(self, group_id: str):
+        """重置触发阈值为默认值"""
+        if group_id in self.session_buffers:
+            self.session_buffers[group_id]["threshold"] = (
+                self.plugin.eavesdrop_message_threshold
+            )
 
     async def _commit_session_to_memory(self, messages: list, group_id: str):
         """将会话内容存入知识库"""

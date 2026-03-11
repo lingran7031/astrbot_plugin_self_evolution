@@ -424,8 +424,11 @@ class EavesdroppingEngine:
                     session_id, {}
                 )
                 msg_count = len(session_buffer.get("messages", []))
+                dynamic_threshold = session_buffer.get(
+                    "threshold", self.plugin.eavesdrop_message_threshold
+                )
 
-                if msg_count >= self.plugin.eavesdrop_message_threshold:
+                if msg_count >= dynamic_threshold:
                     count = session_buffer.get("eavesdrop_count", 0) + 1
                     session_buffer["eavesdrop_count"] = count
 
@@ -508,8 +511,17 @@ class EavesdroppingEngine:
                 "   - 话题触及你的核心关键词。\n"
                 "   - 对方在发表明显的逻辑谬误或常识性错误。\n"
                 f"3. **表达风格**：回复必须极度简略（通常不超过 20 字），语气要冷淡且专业，像真正的 {persona_name} 一样。\n"
-                '【禁止事项】：绝对禁止发表类似"对话缺乏信息密度"、"建议继续检测"等关于后台评估过程本身的任何评论。'
-                + monologue_instruction
+                '【禁止事项】：绝对禁止发表类似"对话缺乏信息密度"、"建议继续检测"等关于后台评估过程本身的任何评论。\n'
+                "【输出格式】（必须严格遵守）：\n"
+                "你的回复必须包含以下判断和调整：\n\n"
+                "[INTERESTING] +5 - 对话有趣，增加5点欲望，阈值降低5\n"
+                "[BORING] -3 - 对话无聊，降低3点心情，阈值增加3\n\n"
+                "数值范围：\n"
+                "- 欲望/心情调整：±1~10（由AI自行判断给出）\n"
+                "- 阈值调整：±1~5\n"
+                "- 可选：简短评论（不超过20字）\n"
+                "- 示例：[INTERESTING] +3 这个话题挺有意思的\n"
+                "- 示例：[BORING] 又在聊这些无聊的东西\n" + monologue_instruction
             )
 
             llm_provider = self.plugin.context.get_using_provider(
@@ -569,6 +581,46 @@ class EavesdroppingEngine:
                     monologue_text = self._extract_monologue(reply_text)
             else:
                 reason = "内容为空"
+
+            # 解析有趣/无聊判定并调整阈值和SAN
+            session_buffer = self.plugin.session_manager.session_buffers.get(
+                session_id, {}
+            )
+            threshold_min = getattr(self.plugin, "eavesdrop_threshold_min", 10)
+            threshold_max = getattr(self.plugin, "eavesdrop_threshold_max", 50)
+
+            interesting_match = re.search(
+                r"\[INTERESTING\]\s*\+(\d+)", reply_text, re.IGNORECASE
+            )
+            boring_match = re.search(r"\[BORING\]\s*-(\d+)", reply_text, re.IGNORECASE)
+
+            if interesting_match:
+                value = int(interesting_match.group(1))
+                current_threshold = session_buffer.get("threshold", 20)
+                new_threshold = max(threshold_min, current_threshold - value)
+                session_buffer["threshold"] = new_threshold
+                if session_id in self.leaky_bucket:
+                    self.leaky_bucket[session_id]["value"] += value
+                logger.info(
+                    f"[CognitionCore] 有趣判定！欲望+{value}，阈值降至 {new_threshold}"
+                )
+            elif boring_match:
+                value = int(boring_match.group(1))
+                current_threshold = session_buffer.get("threshold", 20)
+                new_threshold = min(threshold_max, current_threshold + value)
+                session_buffer["threshold"] = new_threshold
+                await self._decrease_san(event, value)
+                logger.info(
+                    f"[CognitionCore] 无聊判定！SAN-{value}，阈值升至 {new_threshold}"
+                )
+
+            # 清理标签，只保留评论
+            reply_text = re.sub(
+                r"\[(INTERESTING|BORING)\][^a-zA-Z0-9]*[+-]?\d+",
+                "",
+                reply_text,
+                flags=re.IGNORECASE,
+            ).strip()
 
             if should_respond:
                 inner_monologue = self._get_stored_monologue(session_id)
@@ -668,3 +720,13 @@ class EavesdroppingEngine:
 
         except Exception as e:
             logger.warning(f"[CognitionCore] 定时插话检查异常: {e}")
+
+    async def _decrease_san(self, event: AstrMessageEvent, value: int):
+        """降低SAN精力值"""
+        try:
+            san = getattr(self.plugin, "san", None)
+            if san and hasattr(san, "consume"):
+                await san.consume(value)
+                logger.info(f"[CognitionCore] 无聊判定，降低SAN: -{value}")
+        except Exception as e:
+            logger.warning(f"[CognitionCore] 降低SAN失败: {e}")
