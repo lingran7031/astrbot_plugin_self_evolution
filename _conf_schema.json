@@ -267,7 +267,8 @@
     },
     "boredom_enabled": {
         "title": "启用主动无聊机制",
-        "description": "启用信息熵检测，当群聊内容持续低信息量时触发无聊状态。",
+        "description": "启用信息熵检测",
+        "hint": "当群聊内容持续低信息量时触发无聊状态。",
         "type": "bool",
         "default": true
     },
