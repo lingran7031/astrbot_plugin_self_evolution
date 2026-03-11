@@ -434,7 +434,7 @@ class SelfEvolutionPlugin(Star):
         """CognitionCore 6.0: 被动监听 - 滑动上下文窗口"""
         logger.debug(f"[SelfEvolution] 收到消息: {event.message_str[:30]}")
         # 定期清理过期缓冲数据
-        self.session_manager.cleanup_stale()
+        await self.session_manager.cleanup_stale()
 
         user_id = event.get_sender_id()
         group_id = event.get_group_id()

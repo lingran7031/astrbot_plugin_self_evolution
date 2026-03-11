@@ -15,7 +15,6 @@ class SessionManager:
         self.plugin = plugin
         self.session_buffers = {}  # {group_id: {"messages": [msg_list], "token_count": int}}
         self.processing_sessions = set()
-        self._last_cleanup = 0
 
     @property
     def max_tokens(self):
@@ -99,19 +98,13 @@ class SessionManager:
         )
         return context
 
-    def cleanup_stale(self):
+    async def cleanup_stale(self):
         """清理过期缓冲"""
         now = time.time()
         timeout = getattr(self.plugin, "session_cleanup_timeout", 600)
         logger.info(
             f"[Session] cleanup_stale 检查，当前缓冲: {list(self.session_buffers.keys())}，超时时间: {timeout}秒"
         )
-        if now - self._last_cleanup < 300:
-            logger.info(
-                f"[Session] cleanup_stale 跳过，距上次清理 {int(now - self._last_cleanup)} 秒"
-            )
-            return
-        self._last_cleanup = now
 
         stale = []
         for gid, buffer in self.session_buffers.items():
@@ -119,15 +112,18 @@ class SessionManager:
             if now - last_active > timeout:
                 stale.append(gid)
 
-        import asyncio
-
         for gid in stale:
             buffer = self.session_buffers.get(gid)
             if buffer:
                 messages = buffer.get("messages", [])
                 if messages:
-                    asyncio.create_task(self._commit_session_to_memory(messages, gid))
-            del self.session_buffers[gid]
+                    try:
+                        await self._commit_session_to_memory(messages, gid)
+                        del self.session_buffers[gid]
+                    except Exception as e:
+                        logger.warning(f"[Session] 存入失败，保留缓冲: {gid}, {e}")
+            else:
+                del self.session_buffers[gid]
 
         if stale:
             logger.info(f"[Session] 已清理 {len(stale)} 个过期会话: {stale}")
@@ -215,8 +211,6 @@ class SessionManager:
 
     async def _commit_session_to_memory(self, messages: list, group_id: str):
         """将会话内容存入知识库"""
-        import asyncio
-
         auto_commit = getattr(self.plugin, "session_auto_commit", True)
         threshold = getattr(self.plugin, "session_commit_threshold", 5)
 
@@ -249,7 +243,7 @@ class SessionManager:
 """
 
             await kb_helper.upload_document(
-                file_name=f"session_{group_id}_{int(asyncio.get_event_loop().time() * 1000)}.txt",
+                file_name=f"session_{group_id}_{int(time.time() * 1000)}.txt",
                 file_content=b"",
                 file_type="txt",
                 pre_chunked_text=[formatted],
