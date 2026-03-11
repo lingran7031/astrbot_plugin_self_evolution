@@ -91,7 +91,7 @@ class SelfEvolutionPlugin(Star):
         self.daily_reflection_pending = False
         self.active_buffers = {}  # 插嘴缓存
         self._session_speakers = {}  # 会话发言者映射
-        self.buffer_threshold = 20  # 插嘴消息数阈值
+        self.buffer_threshold = self.eavesdrop_message_threshold  # 从配置读取
 
     def __getattr__(self, name):
         """代理配置访问到 cfg"""
