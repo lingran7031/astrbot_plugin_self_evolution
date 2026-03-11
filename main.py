@@ -851,7 +851,7 @@ class SelfEvolutionPlugin(Star):
 
             for path in profile_dir.glob("user_*.md"):
                 try:
-                    history = history_mgr.get(
+                    history = await history_mgr.get(
                         platform_id=platform_id,
                         user_id=path.stem.replace("user_", ""),
                         page=1,
@@ -1074,6 +1074,9 @@ class SelfEvolutionPlugin(Star):
             delta(number): 调整值（如 -10 表示冒犯, +5 表示赞赏）。积分跌至 0 将导致系统自动拦截。
             reason(string): 调整理由（必须说明用户具体哪项言行导致了积分变动）。
         """
+        MAX_DELTA = 20
+        delta = max(-MAX_DELTA, min(MAX_DELTA, delta))
+
         user_id = event.get_sender_id()
         await self.dao.update_affinity(user_id, delta)
         logger.warning(
@@ -1203,6 +1206,10 @@ class SelfEvolutionPlugin(Star):
         Args:
             confirm(boolean): 必须传入 true 才能执行清空操作（防止误操作）
         """
+        if not event.is_admin() and (
+            not self.admin_users or str(event.get_sender_id()) not in self.admin_users
+        ):
+            return "权限拒绝：此操作仅限系统管理员执行。"
         return await self.memory.clear_all_memory(event, confirm)
 
     @filter.llm_tool(name="list_memories")
@@ -1400,9 +1407,9 @@ class SelfEvolutionPlugin(Star):
         else:
             updated = f"# 用户印象笔记\n{new_content}"
 
-        # 限制长度
+        # 限制长度，保留最新内容
         if len(updated) > 2000:
-            updated = updated[:2000] + "\n\n(...旧记录已截断)"
+            updated = updated[-2000:] + "\n\n(...早期记录已截断)"
 
         await self.profile.save_profile(target_user_id, updated)
         return f"已更新用户 {target_user_id} 的画像。"
@@ -1444,7 +1451,7 @@ class SelfEvolutionPlugin(Star):
             else:
                 updated = f"# 用户印象笔记\n{profile_content}"
             if len(updated) > 2000:
-                updated = updated[:2000] + "\n(...旧记录已截断)"
+                updated = updated[-2000:] + "\n(...早期记录已截断)"
             await self.profile.save_profile(target_user_id, updated)
             return f"已更新用户 {target_user_id} 的{('偏好' if category == 'user_preference' else '画像')}。"
 
