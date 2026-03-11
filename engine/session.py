@@ -97,9 +97,18 @@ class SessionManager:
     def cleanup_stale(self):
         """清理过期缓冲"""
         now = time.time()
+        logger.info(
+            f"[Session] cleanup_stale 检查，当前缓冲: {list(self.session_buffers.keys())}"
+        )
         if now - self._last_cleanup < 300:
+            logger.info(
+                f"[Session] cleanup_stale 跳过，距上次清理 {int(now - self._last_cleanup)} 秒"
+            )
             return
         self._last_cleanup = now
+        logger.info(
+            f"[Session] cleanup_stale 执行清理，当前 processing_sessions: {self.processing_sessions}"
+        )
 
         stale = [
             gid for gid in self.session_buffers if gid not in self.processing_sessions
@@ -108,7 +117,7 @@ class SessionManager:
             del self.session_buffers[gid]
 
         if stale:
-            logger.debug(f"[Session] 已清理 {len(stale)} 个过期会话")
+            logger.info(f"[Session] 已清理 {len(stale)} 个过期会话: {stale}")
 
     async def periodic_check(self):
         """定时检查是否需要插话"""
