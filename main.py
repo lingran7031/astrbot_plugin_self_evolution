@@ -312,18 +312,6 @@ class SelfEvolutionPlugin(Star):
         # 3. 后台反思与定时自省逻辑 (持久化隔离不同用户的状态)
         session_id = event.session_id
         is_pending = await self.dao.pop_pending_reflection(session_id)
-        # 获取并注入框架人格
-        try:
-            personality = await self.context.persona_manager.get_default_persona_v3(
-                event.unified_msg_origin
-            )
-            if personality and personality.get("prompt"):
-                req.system_prompt += f"\n\n【人格设定】\n{personality['prompt']}"
-                logger.debug(
-                    f"[SelfEvolution] 已注入框架人格: {personality.get('name', 'unknown')}"
-                )
-        except Exception as e:
-            logger.warning(f"[SelfEvolution] 获取框架人格失败: {e}")
 
         # 获取消息文本（提前定义以便后续使用）
         msg_text = event.message_str
@@ -399,19 +387,6 @@ class SelfEvolutionPlugin(Star):
                         f"[Surprise] 检测到用户 {user_id} 的认知颠覆表达，触发即时画像更新。"
                     )
 
-            # 4.7 情绪依存记忆 (State-Dependent Memory)
-            # 根据 affinity 注入不同的隐性指令，影响记忆检索倾向
-            if affinity > 60:
-                req.system_prompt += (
-                    "\n\n[情绪状态]\n"
-                    "你与该用户关系良好。在回忆时请多关注你们共同的兴趣和愉快的经历。"
-                )
-            elif affinity < 30 and affinity > 0:
-                req.system_prompt += (
-                    "\n\n[情绪状态]\n"
-                    "你对该用户印象一般。在回忆时请注意其过往的问题行为和失误。"
-                )
-
         # 4.8 SAN 值系统注入
         if self.san_enabled:
             req.system_prompt += self.san_system.get_prompt_injection()
@@ -423,9 +398,6 @@ class SelfEvolutionPlugin(Star):
         # 4.11 社交偏见注入
         if social_bias_hint:
             req.system_prompt += f"\n\n【潜意识警告】{social_bias_hint}"
-
-        # 5. 交流准则注入
-        req.system_prompt += f"\n\n【交流准则】\n{self.prompt_communication_guidelines}"
 
         # 6. 滑动上下文窗口注入
         if group_id:
@@ -441,6 +413,21 @@ class SelfEvolutionPlugin(Star):
                 logger.warning(f"[Session] 滑动窗口为空，群 {group_id}")
         else:
             logger.warning(f"[Session] group_id 为空，无法获取滑动窗口上下文")
+
+        # 最后注入框架人格（确保人格设定优先，不被稀释）
+        try:
+            personality = await self.context.persona_manager.get_default_persona_v3(
+                event.unified_msg_origin
+            )
+            if personality and personality.get("prompt"):
+                req.system_prompt = (
+                    f"【人格设定】\n{personality['prompt']}\n\n" + req.system_prompt
+                )
+                logger.debug(
+                    f"[SelfEvolution] 已注入框架人格: {personality.get('name', 'unknown')}"
+                )
+        except Exception as e:
+            logger.warning(f"[SelfEvolution] 获取框架人格失败: {e}")
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
