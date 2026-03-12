@@ -284,8 +284,8 @@ class SelfEvolutionPlugin(Star):
 
         at_info = f"，消息中提到了: {', '.join(at_targets)}" if at_targets else ""
 
-        # 构造上下文注入
-        context_info = f"\n\n[当前交互上下文环境信息]：\n- 发送者ID: {sender_id}\n- 发送者昵称: {sender_name}{role_info}\n- 情感积分: {affinity}/100\n"
+        # 构造上下文注入（内部参考，不要输出）
+        context_info = f"\n\n【内部参考信息 - 不要输出】：\n- 发送者ID: {sender_id}\n- 发送者昵称: {sender_name}{role_info}\n- 情感积分: {affinity}/100\n"
         if is_group:
             context_info += f"- 来源：群聊\n- 交互上下文: 你{quoted_info}{at_info}\n"
         else:
