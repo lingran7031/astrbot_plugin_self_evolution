@@ -93,6 +93,18 @@ class SessionManager:
                 f"[Session] 滑动窗口溢出，收集被移除消息，当前 evicted 队列: {len(evicted)} 条"
             )
 
+            evicted_commit_threshold = getattr(
+                self.plugin, "session_evicted_commit_threshold", 30
+            )
+            if len(evicted) >= evicted_commit_threshold:
+                asyncio.create_task(
+                    self._commit_evicted_to_memory(group_id, evicted.copy())
+                )
+                buffer["evicted_messages"] = []
+                logger.info(
+                    f"[Session] 溢出队列已满（{len(evicted)} 条），异步存入知识库"
+                )
+
         if buffer["token_count"] < 0:
             buffer["token_count"] = 0
 
@@ -320,3 +332,39 @@ class SessionManager:
             )
         except Exception as e:
             logger.warning(f"[Session] 存入知识库失败: {e}")
+
+    async def _commit_evicted_to_memory(self, group_id: str, evicted_messages: list):
+        """异步存入溢出消息到知识库（只存溢出内容，简化逻辑）"""
+        if not evicted_messages:
+            return
+
+        try:
+            memory_kb_name = getattr(
+                self.plugin, "memory_kb_name", "self_evolution_memory"
+            )
+            kb_manager = self.plugin.context.kb_manager
+            kb_helper = await kb_manager.get_kb_by_name(memory_kb_name)
+
+            if not kb_helper:
+                logger.warning(f"[Session] 知识库 {memory_kb_name} 不存在，跳过存入")
+                return
+
+            evicted_text = "\n".join(evicted_messages)
+            formatted = f"""【滑动窗口溢出记录】
+群号: {group_id}
+消息数: {len(evicted_messages)}
+---
+{evicted_text}
+"""
+
+            await kb_helper.upload_document(
+                file_name=f"evicted_{group_id}_{int(time.time() * 1000)}.txt",
+                file_content=b"",
+                file_type="txt",
+                pre_chunked_text=[formatted],
+            )
+            logger.info(
+                f"[Session] 已异步存入溢出消息 {len(evicted_messages)} 条到知识库，群 {group_id}"
+            )
+        except Exception as e:
+            logger.warning(f"[Session] 异步存入溢出消息失败: {e}")

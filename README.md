@@ -320,6 +320,8 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `eavesdrop_threshold_max` | int | 50 | 无聊判定时的最高阈值 |
 | `session_cleanup_timeout` | int | 600 | 会话缓冲超时时间（秒） |
 | `session_auto_commit` | bool | true | 超时清理时自动存入知识库 |
+| `session_evicted_max` | int | 30 | 滑动窗口溢出消息保留数 |
+| `session_evicted_commit_threshold` | int | 30 | 溢出队列达到此条数时自动存入知识库 |
 | `session_commit_threshold` | int | 5 | 存入知识库的最少消息条数 |
 
 ### 记忆系统

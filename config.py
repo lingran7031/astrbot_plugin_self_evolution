@@ -319,6 +319,10 @@ class PluginConfig:
         return int(self._config.get("session_evicted_max", 30))
 
     @property
+    def session_evicted_commit_threshold(self):
+        return int(self._config.get("session_evicted_commit_threshold", 30))
+
+    @property
     def session_commit_threshold(self):
         return int(self._config.get("session_commit_threshold", 5))
 
