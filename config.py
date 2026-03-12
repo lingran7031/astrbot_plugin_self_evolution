@@ -183,6 +183,10 @@ class PluginConfig:
         )
 
     @property
+    def prompt_dream_group_summary(self):
+        return self._prompt("memory.group_summary", "请总结这个群的规则和文化。")
+
+    @property
     def san_enabled(self):
         return self._parse_bool(self._config.get("san_enabled"), True)
 

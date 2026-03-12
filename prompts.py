@@ -14,15 +14,8 @@ logger = logging.getLogger("astrbot")
 # 默认提示词（当 YAML 加载失败时使用）
 DEFAULT_PROMPTS = {
     "persona": {
-        "anchor": "你是黑塔，理性的天才俱乐部成员。",
-        "communication": "像平时在群里和朋友聊天一样自然地回复。用人类正常交流的语气，不需要机械性地解释系统机制。",
-        "reflection": "你是一个具备自我反思能力的 AI。",
         "meltdown": "错误：权限已熔断。我拒绝与低贡献度或怀有恶意的碳基生物浪费算力。",
-    },
-    "eavesdrop": {
-        "system": "你处于后台冷启动决策模式。如果不值得开口，请务必回复 IGNORE。",
-        "decision": "",
-        "inner_monologue": "",
+        "communication": "像平时在群里和朋友聊天一样自然地回复。用人类正常交流的语气，不需要机械性地解释系统机制。",
     },
     "memory": {
         "user_summary": "",
@@ -30,18 +23,6 @@ DEFAULT_PROMPTS = {
         "user_system": "你是一个记忆助手，只输出精简的文本描述。",
         "group_summary": "",
         "group_system": "你是一个群记忆助手，只输出精简的文本描述。",
-    },
-    "meta": {
-        "reviewer_螺丝咕姆": "",
-        "reviewer_阮梅": "",
-        "generator": "",
-    },
-    "profile": {
-        "preference_update": "",
-        "surprise_update": "",
-        "uncertainty_hints": "",
-        "affinity_good": "",
-        "affinity_bad": "",
     },
     "boredom": {
         "responses": [],
