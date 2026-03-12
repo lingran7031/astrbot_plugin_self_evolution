@@ -483,6 +483,8 @@ class EavesdroppingEngine:
                 "last_time": current_time,
                 "is_cooling_down": is_cooling_down,
                 "cooling_end_time": cooling_end_time,
+                "triggered": bucket_data.get("triggered", False),
+                "consecutive_replies": bucket_data.get("consecutive_replies", 0),
             }
 
             current_z = new_value
