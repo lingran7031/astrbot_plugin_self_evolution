@@ -726,9 +726,56 @@ class EavesdroppingEngine:
                 logger.info(f"[CognitionCore] 判定为忽略，不回应。")
                 return
             else:
-                # 无法解析，直接忽略
-                logger.warning(f"[CognitionCore] 无法解析 LLM 响应，已拦截")
-                return
+                # 无法解析，但有回复内容，视为有趣直接发送
+                if reply_text and len(reply_text.strip()) > 0:
+                    logger.info(f"[CognitionCore] LLM 直接回复，视为有趣")
+                    yield event.plain_result(reply_text)
+
+                    # 增加连续回复计数器
+                    bucket_data = self.leaky_bucket.get(session_id, {})
+                    if bucket_data.get("triggered", False):
+                        consecutive_replies = (
+                            bucket_data.get("consecutive_replies", 0) + 1
+                        )
+                        cooldown_messages = getattr(
+                            self.plugin, "desire_cooldown_messages", 5
+                        )
+
+                        msg_for_check = event.message_str or ""
+                        critical_pattern_check = re.compile(
+                            f"({self.plugin.critical_keywords})", re.IGNORECASE
+                        )
+                        if critical_pattern_check.search(msg_for_check):
+                            bucket_data["consecutive_replies"] = 0
+                            logger.info(
+                                f"[CognitionCore] 本条消息包含兴趣关键词，重置观察计数器，继续回复"
+                            )
+                        else:
+                            bucket_data["consecutive_replies"] = consecutive_replies
+                            logger.info(
+                                f"[CognitionCore] AI 回复第 {consecutive_replies}/{cooldown_messages} 条"
+                            )
+
+                        if consecutive_replies >= cooldown_messages:
+                            import time
+
+                            current_time = time.time()
+                            new_urge = bucket_data.get("value", 2.0) * 0.1
+                            bucket_data["value"] = new_urge
+                            bucket_data["is_cooling_down"] = True
+                            bucket_data["cooling_end_time"] = current_time + 60
+                            bucket_data["triggered"] = False
+                            bucket_data["consecutive_replies"] = 0
+                            self.leaky_bucket[session_id] = bucket_data
+                            logger.info(
+                                f"[CognitionCore] 连续回复 {consecutive_replies} 条，进入贤者时间，欲望降至 {new_urge:.2f}"
+                            )
+                        else:
+                            self.leaky_bucket[session_id] = bucket_data
+                    return
+                else:
+                    logger.warning(f"[CognitionCore] 无法解析 LLM 响应，已拦截")
+                    return
         except Exception as e:
             if "安全检查" in str(e) or "Safety" in str(e):
                 logger.warning(f"[CognitionCore] 插嘴评估被服务商安全策略拦截。")
