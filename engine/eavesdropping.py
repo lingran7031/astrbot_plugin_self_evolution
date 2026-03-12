@@ -404,7 +404,7 @@ class EavesdroppingEngine:
         else:
             if session_id not in self.plugin.session_manager.processing_sessions:
                 session_buffer = self.plugin.session_manager.session_buffers.get(
-                    session_id, {}
+                    group_id, {}
                 )
                 msg_count = len(session_buffer.get("messages", []))
                 dynamic_threshold = session_buffer.get(
@@ -430,7 +430,8 @@ class EavesdroppingEngine:
 
         self.plugin.session_manager.processing_sessions.add(session_id)
         try:
-            session_buffer = self.plugin.session_manager.session_buffers.get(session_id)
+            group_id = str(event.get_group_id()) if event.get_group_id() else session_id
+            session_buffer = self.plugin.session_manager.session_buffers.get(group_id)
             if not session_buffer:
                 session_buffer = {"messages": [], "token_count": 0}
 
@@ -497,7 +498,7 @@ class EavesdroppingEngine:
 
             # 解析有趣/无聊判定并调整阈值和SAN
             session_buffer = self.plugin.session_manager.session_buffers.get(
-                session_id, {}
+                group_id, {}
             )
             threshold_min = getattr(self.plugin, "eavesdrop_threshold_min", 10)
             threshold_max = getattr(self.plugin, "eavesdrop_threshold_max", 50)
