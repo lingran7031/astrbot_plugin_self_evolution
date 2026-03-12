@@ -278,11 +278,21 @@ class EavesdroppingEngine:
         is_at = event.is_at_or_wake_command
 
         group_id = event.get_group_id()
+
+        is_private = not group_id
+        if is_private:
+            buffer_key = f"private_{user_id}"
+            label = f"私聊 {user_id}"
+        else:
+            buffer_key = str(group_id)
+            label = f"群 {group_id}"
+
         if not group_id:
-            return
+            group_id = user_id
+            is_private = True
 
         group_id = str(group_id)
-        logger.debug(f"[CognitionCore] 被动监听消息，群 {group_id}: {msg_text[:30]}")
+        logger.debug(f"[CognitionCore] 被动监听消息，{label}: {msg_text[:30]}")
 
         # 漏斗机制：检测用户是否活跃
         level1_triggered = self._check_funnel_level1(event)
@@ -391,6 +401,10 @@ class EavesdroppingEngine:
 
             current_z = new_value
 
+            logger.debug(
+                f"[CognitionCore] 泄漏积分器 Z={current_z:.2f}/{params['threshold']} ({label})"
+            )
+
             if current_z >= params["threshold"]:
                 logger.info(
                     f"[CognitionCore] 泄漏积分器触发! Z={current_z:.2f} >= {params['threshold']}"
@@ -404,7 +418,7 @@ class EavesdroppingEngine:
         else:
             if session_id not in self.plugin.session_manager.processing_sessions:
                 session_buffer = self.plugin.session_manager.session_buffers.get(
-                    group_id, {}
+                    buffer_key, {}
                 )
                 msg_count = len(session_buffer.get("messages", []))
                 dynamic_threshold = session_buffer.get(
@@ -430,8 +444,13 @@ class EavesdroppingEngine:
 
         self.plugin.session_manager.processing_sessions.add(session_id)
         try:
-            group_id = str(event.get_group_id()) if event.get_group_id() else session_id
-            session_buffer = self.plugin.session_manager.session_buffers.get(group_id)
+            group_id = event.get_group_id()
+            user_id = str(event.get_sender_id())
+            if group_id:
+                lookup_key = str(group_id)
+            else:
+                lookup_key = f"private_{user_id}"
+            session_buffer = self.plugin.session_manager.session_buffers.get(lookup_key)
             if not session_buffer:
                 session_buffer = {"messages": [], "token_count": 0}
 
@@ -502,7 +521,7 @@ class EavesdroppingEngine:
 
             # 解析有趣/无聊判定并调整阈值和SAN
             session_buffer = self.plugin.session_manager.session_buffers.get(
-                group_id, {}
+                lookup_key, {}
             )
             threshold_min = getattr(self.plugin, "eavesdrop_threshold_min", 10)
             threshold_max = getattr(self.plugin, "eavesdrop_threshold_max", 50)

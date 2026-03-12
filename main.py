@@ -1182,16 +1182,21 @@ class SelfEvolutionPlugin(Star):
             return
 
         gid = event.get_group_id()
-        if not gid:
-            yield event.plain_result("当前不在群聊中")
-            return
+        user_id = str(event.get_sender_id())
 
-        context = self.session_manager.get_context(str(gid))
-        if not context:
-            yield event.plain_result(f"群 {gid} 暂无会话缓存")
-            return
-
-        yield event.plain_result(f"【群聊最近对话】\n{context}")
+        if gid:
+            context = self.session_manager.get_context(group_id=str(gid))
+            if not context:
+                yield event.plain_result(f"群 {gid} 暂无会话缓存")
+                return
+            yield event.plain_result(f"【群聊最近对话】\n{context}")
+        else:
+            # 私聊查询
+            context = self.session_manager.get_context(user_id=user_id)
+            if not context:
+                yield event.plain_result(f"私聊暂无会话缓存")
+                return
+            yield event.plain_result(f"【私聊最近对话】\n{context}")
 
     @filter.llm_tool(name="learn_from_context")
     async def learn_from_context(
