@@ -828,7 +828,9 @@ class EavesdroppingEngine:
                 prompt_parts.append(persona_prompt)
             prompt_parts.append(f"\n对话：\n{chat_history}\n")
             prompt_parts.append(
-                "你觉得这个对话很有趣，决定参与。现在该你参与互动了。请严格遵照自己的人格，不要做出任何有违人格的回复。"
+                "你觉得这个对话很有趣，决定参与。现在该你参与互动了。"
+                "请严格遵照自己的人格回复。"
+                "【重要】如果涉及图片，不要描述图片的具体特征和内容，只描述你看到这个图片的感想即可。"
             )
             formal_prompt = "".join(prompt_parts)
 
