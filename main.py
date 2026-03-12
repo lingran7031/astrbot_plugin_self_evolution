@@ -410,6 +410,8 @@ class SelfEvolutionPlugin(Star):
             else:
                 logger.warning(f"[Session] 滑动窗口为空，群 {group_id}")
         elif private_session_enabled and user_id:
+            # 先记录私聊消息到滑动窗口
+            self.session_manager.add_message(None, sender_name, user_id, msg_text)
             logger.info(f"[Session] 获取滑动窗口上下文，私聊 {user_id}")
             session_context = self.session_manager.get_context(user_id=user_id)
             logger.info(f"[Session] 滑动窗口内容长度: {len(session_context)} 字符")
