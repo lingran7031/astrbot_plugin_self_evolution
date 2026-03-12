@@ -126,7 +126,11 @@ class SessionManager:
                         await self._commit_session_to_memory(messages, gid)
                         del self.session_buffers[gid]
                     except Exception as e:
-                        logger.warning(f"[Session] 存入失败，保留缓冲: {gid}, {e}")
+                        import traceback
+
+                        logger.warning(
+                            f"[Session] 存入失败，保留缓冲: {gid}, 异常: {e}, 堆栈: {traceback.format_exc()}"
+                        )
             else:
                 del self.session_buffers[gid]
 

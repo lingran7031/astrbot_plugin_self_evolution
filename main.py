@@ -520,25 +520,17 @@ class SelfEvolutionPlugin(Star):
         try:
             cron_mgr = self.context.cron_manager
             jobs = await cron_mgr.list_jobs(job_type="basic")
-            job_name = "SelfEvolution_DailyReflection"
 
-            target_job = next((job for job in jobs if job.name == job_name), None)
-            if target_job:
-                if target_job.cron_expression != self.reflection_schedule:
-                    await cron_mgr.delete_job(target_job.job_id)
-                elif target_job.job_id in cron_mgr._basic_handlers:
-                    return
-
-            await cron_mgr.add_basic_job(
-                name=job_name,
-                cron_expression=self.reflection_schedule,
-                handler=self._scheduled_reflection,
-                description="自我进化插件：每日定时深度自省标记。",
-                persistent=True,
-            )
-            logger.info(
-                f"[SelfEvolution] 已注册定时自省任务: {self.reflection_schedule}"
-            )
+            # 清理所有旧的SelfEvolution任务，避免处理器丢失
+            for job in jobs:
+                if job.name.startswith("SelfEvolution_"):
+                    try:
+                        await cron_mgr.delete_job(job.job_id)
+                        logger.info(f"[SelfEvolution] 已清理旧任务: {job.name}")
+                    except Exception as e:
+                        logger.warning(
+                            f"[SelfEvolution] 清理旧任务失败: {job.name}, {e}"
+                        )
 
             # 注册画像清理任务（每天凌晨 4 点）
             cleanup_job_name = "SelfEvolution_ProfileCleanup"
@@ -553,34 +545,29 @@ class SelfEvolutionPlugin(Star):
 
             # 注册定时插话检查任务
             eavesdrop_job_name = "SelfEvolution_EavesdropCheck"
-            target_job = next(
-                (job for job in jobs if job.name == eavesdrop_job_name), None
-            )
             interval_minutes = self.eavesdrop_interval_minutes
             cron_expr = f"*/{interval_minutes} * * * *"
-            if target_job:
-                if target_job.cron_expression != cron_expr:
-                    await cron_mgr.delete_job(target_job.job_id)
-                elif target_job.job_id in cron_mgr._basic_handlers:
-                    pass  # 已有任务，跳过
-                else:
-                    await cron_mgr.add_basic_job(
-                        name=eavesdrop_job_name,
-                        cron_expression=cron_expr,
-                        handler=self._scheduled_eavesdrop_check,
-                        description="自我进化插件：定时检查是否需要插话。",
-                        persistent=True,
-                    )
-                    logger.info(f"[SelfEvolution] 已注册定时插话检查任务: {cron_expr}")
-            else:
-                await cron_mgr.add_basic_job(
-                    name=eavesdrop_job_name,
-                    cron_expression=cron_expr,
-                    handler=self._scheduled_eavesdrop_check,
-                    description="自我进化插件：定时检查是否需要插话。",
-                    persistent=True,
-                )
-                logger.info(f"[SelfEvolution] 已注册定时插话检查任务: {cron_expr}")
+            await cron_mgr.add_basic_job(
+                name=eavesdrop_job_name,
+                cron_expression=cron_expr,
+                handler=self._scheduled_eavesdrop_check,
+                description="自我进化插件：定时插话检查。",
+                persistent=True,
+            )
+            logger.info(f"[SelfEvolution] 已注册插话检查任务: {cron_expr}")
+
+            # 注册每日自省任务
+            job_name = "SelfEvolution_DailyReflection"
+            await cron_mgr.add_basic_job(
+                name=job_name,
+                cron_expression=self.reflection_schedule,
+                handler=self._scheduled_reflection,
+                description="自我进化插件：每日定时深度自省标记。",
+                persistent=True,
+            )
+            logger.info(
+                f"[SelfEvolution] 已注册定时自省任务: {self.reflection_schedule}"
+            )
 
         except Exception as e:
             logger.warning(f"[SelfEvolution] 注册定时任务失败: {e}")
