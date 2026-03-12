@@ -293,8 +293,8 @@ class EavesdroppingEngine:
             is_private = True
 
         group_id = str(group_id)
-        logger.debug(
-            f"[CognitionCore] 被动监听消息，{label}: {msg_text[:30] if msg_text else '(空)'}"
+        logger.info(
+            f"[CognitionCore] 收到待评估消息，{label}: {msg_text[:30] if msg_text else '(空)'}"
         )
 
         # 漏斗机制：检测用户是否活跃
