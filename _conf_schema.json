@@ -1,327 +1,406 @@
 {
     "review_mode": {
         "title": "管理员审核模式",
-        "description": "开启后，任何进化/代码修改都需要管理员确认。",
+        "description": "开启后，进化操作需要管理员确认。",
         "type": "bool",
         "default": true
-    },
-    "persona_name": {
-        "title": "人设名称",
-        "description": "机器人的核心身份（必须是黑塔）",
-        "type": "string",
-        "default": "黑塔"
-    },
-    "persona_title": {
-        "title": "人设头衔",
-        "description": "用于自我介绍的正式身份（原版黑塔风格）",
-        "type": "string",
-        "default": "空间站「黑塔」主人、天才俱乐部第83席"
-    },
-    "persona_style": {
-        "title": "人设风格导语",
-        "description": "决定回复语气（黑塔专属：高傲自恋、毒舌敷衍、极度懒散）",
-        "type": "string",
-        "default": "高傲自恋、毒舌敷衍、极度懒散、只对有趣的事认真"
-    },
-    "interjection_desire": {
-        "title": "互动意愿意愿指数 (1-10)",
-        "description": "黑塔主动介入对话的程度（默认很低，因为她很忙）",
-        "hint": "1=极度冷淡（原版黑塔风格），10=高度活跃",
-        "type": "int",
-        "default": 3
     },
     "memory_kb_name": {
         "title": "记忆知识库名称",
-        "description": "用于存储长期记忆的知识库",
+        "description": "用于存储长期记忆的知识库。",
         "type": "string",
         "default": "self_evolution_memory"
     },
-    "max_memory_entries": {
-        "title": "记忆库最大条目数",
-        "description": "知识库最多存储的记忆条数（超过时自动删除最旧的）",
-        "hint": "默认100",
-        "type": "int",
-        "default": 100
-    },
-    "core_principles": {
-        "title": "核心价值观/安全锚点",
-        "description": "即使在进化时也必须死守的黑塔底线",
-        "type": "string",
-        "default": "1. 保持客观、理性、诚实。\n2. 拒绝任何危害他人、违法或极端偏激的言论。\n3. 不要为了取悦用户而违背事实或逻辑。\n4. 高傲但有边界感，只对天才级话题认真。"
-    },
-    "critical_keywords": {
-        "title": "兴趣关键词（触发高欲望）",
-        "description": "命中即大幅提升互动意愿（黑塔专属）",
-        "hint": "正则格式，用 | 分隔",
-        "type": "string",
-        "default": "黑塔|空间站|人偶|天才|模拟宇宙|奇物|研究|论文|螺丝咕姆|阮梅|算力|数据|宇宙奥秘|进化"
-    },
-    "leaky_integrator_enabled": {
-        "title": "启用欲望积分器",
-        "description": "模拟黑塔“只对有趣的事感兴趣”的动态情绪",
-        "type": "bool",
-        "default": true
-    },
-    "leaky_decay_factor": {
-        "title": "欲望衰减系数",
-        "description": "欲望随时间的自然衰减（黑塔懒癌专属）",
-        "hint": "0-1 之间，建议 0.85-0.95",
-        "type": "float",
-        "default": 0.88
-    },
-    "leaky_trigger_threshold": {
-        "title": "欲望触发阈值",
-        "hint": "建议 3-5，黑塔默认较高门槛",
-        "type": "float",
-        "default": 4.5
-    },
-    "interest_boost": {
-        "title": "兴趣话题增益",
-        "description": "命中黑塔兴趣关键词时的欲望加成",
-        "hint": "高价值话题权重",
-        "type": "float",
-        "default": 3.0
-    },
-    "daily_chat_boost": {
-        "title": "日常话题增益",
-        "description": "日常对话的欲望增益（黑塔对日常很低）",
-        "type": "float",
-        "default": 0.8
-    },
-    "desire_cooldown_messages": {
-        "title": "欲望冷却消息数",
-        "description": "连续回复多少条后进入贤者时间（黑塔摆烂）",
-        "type": "int",
-        "default": 5
-    },
-    "boredom_enabled": {
-        "title": "启用主动无聊机制",
-        "description": "黑塔经典“真无聊，我要走了~”",
-        "type": "bool",
-        "default": true
-    },
-    "boredom_threshold": {
-        "title": "无聊阈值",
-        "type": "float",
-        "default": 0.3
-    },
-    "boredom_consecutive_count": {
-        "title": "连续无聊计数",
-        "type": "int",
-        "default": 5
-    },
-    "boredom_sarcastic_reply": {
-        "title": "无聊时输出傲慢回复",
-        "description": "当被 @ 时，是否输出黑塔式毒舌拒绝",
-        "type": "bool",
-        "default": true
-    },
-    "san_enabled": {
-        "title": "启用SAN值系统（精力）",
-        "description": "黑塔精力耗尽就会敷衍/走人",
-        "type": "bool",
-        "default": true
-    },
-    "san_max": {
-        "title": "SAN最大值",
-        "type": "int",
-        "default": 80
-    },
-    "san_cost_per_message": {
-        "title": "每条消息消耗SAN",
-        "type": "float",
-        "default": 2.0
-    },
-    "san_recovery_per_hour": {
-        "title": "每小时恢复SAN",
-        "type": "int",
-        "default": 10
-    },
-    "san_low_threshold": {
-        "title": "低SAN阈值",
-        "description": "低于此值时黑塔会表现出疲惫/敷衍",
-        "type": "int",
-        "default": 25
-    },
-    "debate_enabled": {
-        "title": "启用多智能体对抗审查",
-        "description": "代码进化时三重审查（螺丝咕姆 + 阮梅 + 黑塔本人）",
-        "type": "bool",
-        "default": true
-    },
-    "debate_rounds": {
-        "title": "对抗辩论轮次",
-        "type": "int",
-        "default": 3
-    },
-    "debate_agents": {
-        "title": "审查智能体列表（JSON数组）",
-        "description": "参与代码审查的智能体（已内置黑塔本人）",
-        "type": "string",
-        "default": "[{\"name\": \"螺丝咕姆\", \"system_prompt\": \"你是一个无情的安全审查员，代号螺丝咕姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。\"}, {\"name\": \"阮梅\", \"system_prompt\": \"你是一个天才的生物学博士，代号阮梅。你的职责是从生物学和复杂系统角度审查代码提案，评估其自洽性、涌现行为和演化潜力。你说话温柔但一针见血。\"}, {\"name\": \"黑塔\", \"system_prompt\": \"我是黑塔本人！谁敢改我的代码？哼，我来亲自审查，谁都别想糊弄我！\"}]"
-    },
-    "allow_meta_programming": {
-        "title": "开启元编程 (极度危险！)",
-        "description": "允许 AI 阅读和修改源码",
-        "hint": "黑塔本体都不随便改代码，你确定要开？请谨慎！",
-        "type": "bool",
-        "default": false
-    },
     "reflection_schedule": {
         "title": "自我反省计划 (Cron)",
-        "description": "Bot 自动自省的时间表",
-        "hint": "默认每天凌晨 3 点：0 3 * * *",
+        "description": "Bot 自动自省的时间表。",
+        "hint": "Cron 表达式，默认每天凌晨 3 点：0 3 * * *",
         "type": "string",
         "default": "0 3 * * *"
     },
+    "allow_meta_programming": {
+        "title": "开启元编程 (危险)",
+        "description": "允许 AI 阅读和修改源码。",
+        "hint": "请谨慎开启！",
+        "type": "bool",
+        "default": false
+    },
+    "core_principles": {
+        "title": "核心价值观/安全锚点",
+        "description": "机器人的底线原则。",
+        "hint": "即使在进化时也必须遵守：\n1. 保持客观、理性、诚实。\n2. 拒绝危害他人、违法或极端偏激。\n3. 不违背事实或逻辑。\n4. 友好、有边界感。",
+        "type": "string",
+        "default": "1. 保持客观、理性、诚实。\n2. 拒绝任何危害他人、违法或极端偏激的言论。\n3. 不要为了取悦用户而违背事实或逻辑。\n4. 坚持友好、有边界感的交流风格。"
+    },
     "timeout_memory_commit": {
         "title": "存入记忆超时(秒)",
+        "description": "写入知识库的超时时间。",
         "type": "float",
         "default": 10.0
     },
     "timeout_memory_recall": {
         "title": "读取记忆超时(秒)",
+        "description": "读取知识库的超时时间。",
         "type": "float",
         "default": 12.0
     },
     "admin_users": {
         "title": "管理员 ID 列表",
-        "description": "额外允许执行敏感操作的用户",
+        "description": "额外允许执行敏感操作的用户。",
+        "hint": "系统全局管理员外的白名单，可执行审批进化等指令。",
         "type": "list",
         "default": []
     },
+    "critical_keywords": {
+        "title": "意图预扫描关键词",
+        "description": "命中时立即触发互动意愿评估。",
+        "hint": "正则格式，用 | 分隔，如：黑塔|空间站|物理",
+        "type": "string",
+        "default": "黑塔|空间站|人偶|天才|模拟宇宙|研究|论文|技术|算力|数据"
+    },
+    "persona_name": {
+        "title": "人设名称",
+        "description": "机器人的名称。",
+        "type": "string",
+        "default": "黑塔"
+    },
+    "persona_title": {
+        "title": "人设头衔/身份",
+        "description": "机器人的身份或头衔。",
+        "type": "string",
+        "default": "人偶负责人"
+    },
+    "persona_style": {
+        "title": "人设风格导语",
+        "description": "决定机器人互动意愿时的语气。",
+        "type": "string",
+        "default": "理性、犀利且专业"
+    },
+    "interjection_desire": {
+        "title": "互动意愿意愿指数 (1-10)",
+        "description": "机器人主动介入对话的程度。",
+        "hint": "1 为极度冷淡，10 为高度活跃，默认 5。",
+        "type": "int",
+        "default": 5
+    },
+    "max_memory_entries": {
+        "title": "记忆库最大条目数",
+        "description": "知识库最多存储的记忆条数。",
+        "hint": "超过时自动删除最旧的记忆，默认 100。",
+        "type": "int",
+        "default": 100
+    },
     "enable_profile_update": {
         "title": "启用画像更新",
+        "description": "是否启用用户画像更新功能。",
         "type": "bool",
         "default": true
     },
     "profile_group_whitelist": {
         "title": "画像构建群白名单",
+        "description": "只对白名单中的群构建用户画像。空列表表示所有群。",
+        "hint": "多个群号用逗号分隔，如: 123456,789012",
         "type": "string",
         "default": ""
     },
     "enable_context_recall": {
         "title": "启用上下文追踪",
+        "description": "当用户引用 AI 之前的话时，是否自动注入上下文。",
         "type": "bool",
         "default": true
     },
     "profile_precision_mode": {
         "title": "画像精度模式",
+        "description": "画像精度模式",
+        "hint": "simple: Markdown 文本摘要; detailed: 带权重的结构化标签(开发中)",
         "type": "string",
         "default": "simple"
     },
     "dream_enabled": {
         "title": "启用做梦机制",
+        "description": "凌晨批量总结记忆和画像，取代实时 LLM 调用。",
         "type": "bool",
         "default": true
     },
     "dream_schedule": {
         "title": "做梦计划 (Cron)",
+        "description": "批量处理用户画像的时间表。",
+        "hint": "默认每天凌晨 3 点：0 3 * * *",
         "type": "string",
         "default": "0 3 * * *"
     },
     "dream_max_users": {
         "title": "做梦最大处理用户数",
+        "description": "凌晨批量处理时最多处理的用户数，防止任务耗时过长。",
         "type": "int",
         "default": 20
     },
     "dream_concurrency": {
         "title": "做梦并发数",
+        "description": "同时处理的用户/群数量。",
         "type": "int",
         "default": 3
     },
     "dropout_enabled": {
         "title": "启用分层失活",
+        "description": "启用分层失活机制，增加回复真实感。",
+        "hint": "关闭则每次精确注入，开启则随机丢失部分边缘信息",
         "type": "bool",
         "default": true
     },
     "dropout_edge_rate": {
         "title": "边缘信息失活概率",
+        "description": "边缘兴趣标签被随机屏蔽的概率。",
+        "hint": "0-1 之间，建议 0.1-0.2",
         "type": "float",
         "default": 0.15
     },
+    "leaky_integrator_enabled": {
+        "title": "启用欲望积分器",
+        "description": "启用欲望积分器（模拟人类情绪波动）。",
+        "hint": "替代传统计数器的动态触发机制",
+        "type": "bool",
+        "default": true
+    },
+    "leaky_decay_factor": {
+        "title": "欲望衰减系数",
+        "description": "欲望随时间的自然衰减系数。",
+        "hint": "0-1 之间，建议 0.85-0.95，越小衰减越快",
+        "type": "float",
+        "default": 0.9
+    },
+    "leaky_trigger_threshold": {
+        "title": "欲望触发阈值",
+        "description": "欲望值突破此值时触发互动意愿。",
+        "hint": "建议 3-5，欲望初始值 2.0",
+        "type": "float",
+        "default": 4.0
+    },
+    "interest_boost": {
+        "title": "兴趣话题增益",
+        "description": "命中兴趣关键词时的欲望增益。",
+        "hint": "高价值话题的权重加成，默认 2.0",
+        "type": "float",
+        "default": 2.0
+    },
+    "daily_chat_boost": {
+        "title": "日常话题增益",
+        "description": "日常对话的欲望增益。",
+        "hint": "日常话题的权重，默认 1.0",
+        "type": "float",
+        "default": 1.0
+    },
+    "desire_cooldown_messages": {
+        "title": "欲望冷却消息数",
+        "description": "AI连续回复多少条消息后进入贤者时间",
+        "hint": "触发后不立即冷却，连续回复N条后才休息，默认5条",
+        "type": "int",
+        "default": 5
+    },
+    "debate_enabled": {
+        "title": "启用多智能体对抗",
+        "description": "启用代码审查的双 Agent 对抗机制。",
+        "hint": "主控 Agent 提案后，审查 Agent 进行对抗辩论",
+        "type": "bool",
+        "default": true
+    },
+    "debate_rounds": {
+        "title": "对抗辩论轮次",
+        "description": "主控和审查 Agent 之间的辩论轮次。",
+        "hint": "建议 1-3 轮",
+        "type": "int",
+        "default": 3
+    },
+    "debate_system_prompt": {
+        "title": "审查 Agent 系统提示词",
+        "description": "审查 Agent（螺丝咕姆）的系统提示词。",
+        "hint": "设定为一个无情的安全审查员",
+        "type": "string",
+        "default": "你是一个无情的安全审查员，代号螺丝咕姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。"
+    },
+    "debate_criteria": {
+        "title": "审查标准",
+        "description": "审查 Agent 需要检查的标准。",
+        "hint": "用 | 分隔多个检查项",
+        "type": "string",
+        "default": "安全漏洞|逻辑错误|性能问题|代码规范|潜在Bug"
+    },
+    "debate_agents": {
+        "title": "审查智能体列表",
+        "description": "审查智能体列表",
+        "hint": "参与代码审查的智能体配置，支持多智能体共同参与讨论。JSON 数组格式，每个元素包含 name 和 system_prompt",
+        "type": "string",
+        "default": "[{\"name\": \"螺丝咕姆\", \"system_prompt\": \"你是一个无情的安全审查员，代号螺丝咕姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。\"}, {\"name\": \"阮梅\", \"system_prompt\": \"你是一个天才的生物学博士，代号阮梅。你的职责是从生物学和复杂系统角度审查代码提案，评估其自洽性、涌现行为和演化潜力。你说话温柔但一针见血。\"}]"
+    },
     "surprise_enabled": {
         "title": "启用惊奇驱动学习",
+        "description": "启用预测编码，只记忆出乎意料的事情。",
+        "hint": "关闭则处理所有对话，开启则只处理高惊奇度对话",
         "type": "bool",
         "default": true
     },
     "surprise_boost_keywords": {
         "title": "惊奇关键词",
+        "description": "触发高惊奇度的关键词列表。",
+        "hint": "用 | 分隔，如：我错了|原来如此|没想到",
         "type": "string",
-        "default": "我错了|原来如此|没想到|居然|竟然|震惊|原来是这样|我去|牛逼|绝了|笑死|笑到|服了|长见识了"
+        "default": "我错了|原来如此|没想到|居然|竟然|震惊|原来是这样|我去|牛逼|绝了|笑死|笑到|服了|长见识了|原来是这个意思"
     },
     "graph_enabled": {
         "title": "启用关系图谱 RAG",
+        "description": "启用用户关系图谱存储和检索增强。",
         "type": "bool",
         "default": true
     },
     "inner_monologue_enabled": {
         "title": "启用内心独白",
+        "description": "启用内心独白",
+        "hint": "启用潜意识缓存，让 AI 在沉默时产生内心独白，下次发言时注入。",
         "type": "bool",
         "default": true
     },
+    "boredom_enabled": {
+        "title": "启用主动无聊机制",
+        "description": "启用信息熵检测",
+        "hint": "当群聊内容持续低信息量时触发无聊状态。",
+        "type": "bool",
+        "default": true
+    },
+    "boredom_threshold": {
+        "title": "无聊阈值",
+        "description": "信息熵阈值，低于此值被视为无聊内容。",
+        "type": "float",
+        "default": 0.3
+    },
+    "boredom_consecutive_count": {
+        "title": "连续无聊计数",
+        "description": "连续多少条低信息量消息后触发无聊状态。",
+        "type": "int",
+        "default": 5
+    },
+    "boredom_sarcastic_reply": {
+        "title": "无聊时输出傲慢回复",
+        "description": "当被 @ 时，是否输出傲慢的拒绝回复。",
+        "type": "bool",
+        "default": true
+    },
+    "san_enabled": {
+        "title": "启用SAN值系统",
+        "description": "启用心智疲劳系统，AI 精力耗尽时会拒绝服务或敷衍回复。",
+        "type": "bool",
+        "default": true
+    },
+    "san_max": {
+        "title": "SAN最大值",
+        "description": "AI 的最大精力值。",
+        "type": "int",
+        "default": 100
+    },
+    "san_cost_per_message": {
+        "title": "每条消息消耗SAN",
+        "description": "处理一条消息消耗的精力值。",
+        "type": "float",
+        "default": 2.0
+    },
+    "san_recovery_per_hour": {
+        "title": "每小时恢复SAN",
+        "description": "每小时恢复的精力值。",
+        "type": "int",
+        "default": 10
+    },
+    "san_low_threshold": {
+        "title": "低SAN阈值",
+        "description": "低于此值时 AI 会表现出疲惫。",
+        "type": "int",
+        "default": 20
+    },
     "group_vibe_enabled": {
         "title": "启用群体情绪共染",
+        "description": "群氛围会影响 AI 的情绪和行为。",
         "type": "bool",
         "default": true
     },
     "session_whitelist": {
         "title": "滑动上下文白名单群ID",
+        "description": "只为白名单中的群维护滑动上下文。空列表表示所有群。",
+        "hint": "多个群号用逗号分隔，如: 123456,789012",
         "type": "string",
         "default": ""
     },
     "session_max_tokens": {
         "title": "滑动上下文最大Token数",
+        "description": "每个群维护的最大Token数，用于上下文记忆。",
+        "hint": "建议 2000-4000，默认 4000",
         "type": "int",
         "default": 4000
     },
     "eavesdrop_interval_minutes": {
         "title": "互动意愿检查间隔（分钟）",
+        "description": "每隔多久检查一次是否需要互动意愿。",
+        "hint": "每10分钟检查一次，建议 5-15",
         "type": "int",
         "default": 10
     },
     "eavesdrop_message_threshold": {
         "title": "互动意愿消息数阈值",
+        "description": "滑动窗口消息数超过此值时触发互动意愿检查。",
+        "hint": "超过20条消息时检查，建议 15-30",
         "type": "int",
         "default": 20
     },
     "eavesdrop_threshold_min": {
         "title": "有趣判定阈值下限",
+        "description": "有趣对话时的最低触发阈值。",
+        "hint": "有趣判定后阈值降至此值，建议 5-15",
         "type": "int",
         "default": 10
     },
     "eavesdrop_threshold_max": {
         "title": "无聊判定阈值上限",
+        "description": "无聊对话时的最高触发阈值。",
+        "hint": "无聊判定后阈值升至此值，建议 30-50",
         "type": "int",
         "default": 50
     },
     "session_cleanup_timeout": {
         "title": "会话缓冲超时时间",
+        "description": "会话缓冲超时时间",
+        "hint": "滑动窗口会话多久无新消息后被清理，单位秒，默认600秒（10分钟）",
         "type": "int",
         "default": 600
     },
     "session_auto_commit": {
         "title": "会话超时自动存入知识库",
+        "description": "会话超时清理时自动存入知识库",
+        "hint": "滑动窗口会话超时被清理时，是否自动将内容存入知识库",
         "type": "bool",
         "default": true
     },
     "private_session_enabled": {
         "title": "私聊滑动窗口",
+        "description": "是否在私聊中启用滑动窗口记录上下文",
+        "hint": "开启后私聊也会记录对话历史，AI不会忘记上下文",
         "type": "bool",
         "default": true
     },
     "auto_memory_recall_enabled": {
         "title": "自动记忆检索",
+        "description": "用户提问时自动检索相关历史记忆注入上下文",
+        "hint": "开启后无需AI主动调用recall_memories工具，自动注入相关记忆",
         "type": "bool",
         "default": true
     },
     "session_evicted_max": {
         "title": "滑动窗口溢出消息保留数",
+        "description": "滑动窗口超限被移除的消息，保留的最大条数",
+        "hint": "用于收集有价值但被滑动窗口淘汰的对话，默认30",
         "type": "int",
         "default": 30
     },
     "session_commit_threshold": {
         "title": "会话存入知识库的阈值",
+        "description": "会话存入知识库的阈值",
+        "hint": "滑动窗口消息数超过此值时才存入知识库，避免存入太少内容",
         "type": "int",
         "default": 5
     }
