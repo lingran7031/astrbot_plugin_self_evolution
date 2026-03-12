@@ -496,6 +496,10 @@ class EavesdroppingEngine:
 
             reply_text = res.completion_text.strip()
 
+            if not reply_text:
+                logger.warning("[CognitionCore] LLM 返回空响应，已离线...")
+                return
+
             # 解析有趣/无聊判定并调整阈值和SAN
             session_buffer = self.plugin.session_manager.session_buffers.get(
                 group_id, {}

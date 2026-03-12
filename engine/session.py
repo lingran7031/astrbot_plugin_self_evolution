@@ -108,8 +108,9 @@ class SessionManager:
             return ""
 
         context = "\n".join(buffer["messages"])
+        token_count = buffer.get("token_count", 0)
         logger.info(
-            f"[Session] 获取上下文成功，群 {group_id}，{len(buffer['messages'])} 条消息，{len(context)} 字符"
+            f"[Session] 获取上下文成功，群 {group_id}，{len(buffer['messages'])} 条消息，{token_count} tokens"
         )
         return context
 
