@@ -375,7 +375,6 @@
 
 - 新增 `on_message` 钩子，实现主动环境监听
 - `active_buffers` 消息池化 + 静默 LLM 判断
-- 防内存溢出：`buffer_threshold`、`max_buffer_size` 暴露到配置面板
 - 新增 `/affinity` 查询命令
 - 实装 CC BY-NC 4.0 协议
 
