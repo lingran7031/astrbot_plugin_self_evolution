@@ -242,7 +242,6 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 |------|------|
 | `commit_to_memory` | 将重要事实存入长期记忆库 |
 | `recall_memories` | 按关键词检索长期记忆 |
-| `auto_recall` | 主动检索当前话题相关记忆并注入上下文 |
 | `learn_from_context` | 从当前对话中提取关键信息存入记忆 |
 | `upsert_cognitive_memory` | 统一认知记忆接口，按 category 自动分发到对应存储系统 |
 | `save_group_knowledge` | 保存群公共知识（群规、约定活动、群共识） |

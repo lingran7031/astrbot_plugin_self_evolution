@@ -305,42 +305,6 @@ class MemoryManager:
             logger.warning(f"[SelfEvolution] 删除记忆失败: {e}")
             return f"删除记忆失败: {e}"
 
-    async def auto_recall(self, event, topic: str = "") -> str:
-        """主动将相关记忆注入上下文"""
-        logger.info(f"[Memory] 主动检索记忆，topic={topic[:30] if topic else '自动'}")
-        query = topic if topic else event.message_str
-
-        kb_manager = self.plugin.context.kb_manager
-        try:
-            results = await asyncio.wait_for(
-                kb_manager.retrieve(
-                    query=query, kb_names=[self.memory_kb_name], top_m_final=3
-                ),
-                timeout=self.timeout_memory_recall,
-            )
-        except asyncio.TimeoutError:
-            return "检索记忆超时，请稍后重试。"
-        except Exception as e:
-            logger.warning(f"[SelfEvolution] auto_recall 失败: {e}")
-            return "检索记忆时发生异常。"
-
-        if not results or not results.get("results"):
-            logger.info(f"[SelfEvolution] AUTO_RECALL: 未找到相关记忆，查询: {query}")
-            return "当前对话未涉及任何历史记忆。"
-
-        context_text = results.get("context_text", "")
-        logger.info(
-            f"[SelfEvolution] AUTO_RECALL: 找到 {len(results.get('results', []))} 条相关记忆，查询: {query}"
-        )
-
-        return (
-            f"【相关记忆触发】\n"
-            f"当前话题: {query}\n"
-            f"--- 历史记忆 ---\n{context_text}\n"
-            f"----------------\n"
-            f"注：以上记忆仅供参考，请根据当前对话的实际情况判断。不确定的信息不要妄下结论。"
-        )
-
     async def auto_recall_for_injection(self, event) -> str:
         """自动检索记忆并返回用于 prompt 注入的内容（不打印给用户）"""
         import asyncio

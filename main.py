@@ -1235,15 +1235,6 @@ class SelfEvolutionPlugin(Star):
         """
         return await self.memory.delete_memory(event, doc_id)
 
-    @filter.llm_tool(name="auto_recall")
-    async def auto_recall(self, event: AstrMessageEvent, topic: str = "") -> str:
-        """当检测到当前对话涉及历史记忆时，主动将相关记忆注入上下文。
-
-        Args:
-            topic(string): 当前对话涉及的话题关键词（如果留空，将使用当前消息内容）
-        """
-        return await self.memory.auto_recall(event, topic)
-
     @filter.llm_tool(name="save_group_knowledge")
     async def save_group_knowledge(
         self,
