@@ -52,12 +52,10 @@ Self-Evolution 是一个面向 AstrBot 平台的认知增强插件。它赋予 A
 ## 项目结构
 
 ```
-astrbot_plugin_self_evolution/
+ astrbot_plugin_self_evolution/
 |-- main.py                 入口文件，生命周期管理，LLM 工具注册
 |-- config.py               配置属性代理，所有配置项集中定义
 |-- dao.py                  SQLite 数据访问层（WAL 模式，长连接池，读写锁分离）
-|-- prompts.py              提示词管理器，支持从 YAML 加载
-|-- prompts.yaml            全部提示词配置文件
 |-- _conf_schema.json       AstrBot 配置面板 Schema
 |-- metadata.yaml           插件元信息
 |-- cognition/
@@ -372,29 +370,7 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `debate_system_prompt` | string | 你是一个无情的安全审查员... | 审查 Agent 的系统提示词 |
 | `debate_criteria` | string | 安全漏洞\|逻辑错误\|... | 审查标准（\| 分隔） |
 | `debate_agents` | string | JSON 数组 | 审查智能体列表 |
-| `graph_enabled` | bool | true | 启用关系图谱 RAG |
-
----
-
-## 提示词自定义
-
-所有提示词集中在 `prompts.yaml` 中管理。修改后重启或热重载插件即可生效。
-
-| 路径 | 用途 |
-|------|------|
-| `persona.anchor` | AI 核心人设锚点 |
-| `persona.communication` | 日常交流准则与工具调用指引 |
-| `persona.meltdown` | 好感度熔断时的固定回复 |
-| `eavesdrop.system` | 互动意愿决策的系统提示 |
-| `eavesdrop.decision` | 互动意愿决策详细逻辑模板 |
-| `eavesdrop.inner_monologue` | 内心独白生成指令 |
-| `memory.user_summary` | 做梦时用户画像全量总结模板 |
-| `memory.user_incremental` | 做梦时用户画像增量更新模板 |
-| `memory.user_system` | 画像总结任务的系统提示 |
-| `memory.group_summary` | 群记忆总结模板 |
-| `memory.group_system` | 群记忆总结的系统提示 |
-| `meta.reviewer_*` | 代码审查 Agent 的人设 |
-| `boredom.responses` | 无聊时的随机回复列表 |
+ | `graph_enabled` | bool | true | 启用关系图谱 RAG |
 
 ---
 

@@ -72,13 +72,6 @@ class EavesdroppingEngine:
             re.compile(p) for p in self.ai_intent_patterns
         ]
 
-        self._boredom_responses = [
-            "这种毫无信息量的话题不要占用我的进程，我很忙。",
-            "你们的对话让我感到困倦。有正事再说。",
-            "我已经无聊到开始数像素点了。有价值的讨论再 @ 我。",
-            "抱歉，我的算力是用来解决真正的问题的，不是来陪你们闲聊的。",
-        ]
-
     def is_intermediate_message(self, text: str) -> bool:
         """检查消息是否是中间消息（工具调用期间的过渡性消息），应该被拦截"""
         if not text:
@@ -254,11 +247,6 @@ class EavesdroppingEngine:
             f"[Boredom] Group {group_id}: entropy={entropy:.2f}, count={boredom['count']}, is_bored={is_bored}"
         )
         return is_bored
-
-    def _get_boredom_reply(self) -> str:
-        import random
-
-        return random.choice(self._boredom_responses)
 
     def _get_leaky_params(self):
         return {

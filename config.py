@@ -13,7 +13,6 @@ class PluginConfig:
 
     def __init__(self, plugin):
         self.plugin = plugin
-        self._prompts = None
 
     @property
     def _config(self):
@@ -22,36 +21,6 @@ class PluginConfig:
     @property
     def _parse_bool(self):
         return self.plugin._parse_bool
-
-    def _get_prompts(self):
-        """获取提示词管理器"""
-        if self._prompts is None:
-            try:
-                from .prompts import get_prompt_manager
-
-                self._prompts = get_prompt_manager(self.plugin)
-            except Exception as e:
-                logger.warning(f"[Config] 加载提示词管理器失败: {e}")
-                from .prompts import DEFAULT_PROMPTS
-
-                self._prompts = DEFAULT_PROMPTS
-        return self._prompts
-
-    def _prompt(self, key_path: str, default: str = "") -> str:
-        """从 prompts.yaml 获取提示词"""
-        try:
-            pm = self._get_prompts()
-            if hasattr(pm, "format_prompt"):
-                return pm.format_prompt(key_path) or default
-            elif isinstance(pm, dict):
-                keys = key_path.split(".")
-                value = pm
-                for k in keys:
-                    value = value.get(k, default)
-                return value or default
-            return default
-        except Exception:
-            return default
 
     def __getattr__(self, name):
         """代理所有配置访问"""
@@ -154,37 +123,31 @@ class PluginConfig:
 
     @property
     def prompt_meltdown_message(self):
-        return self._prompt("persona.meltdown", "错误：权限已熔断。")
+        return "错误：权限已熔断，拒绝服务。"
 
     @property
     def prompt_communication_guidelines(self):
-        return self._prompt(
-            "persona.communication", "像平时在群里和朋友聊天一样自然地回复。"
-        )
+        return "像平时在群里和朋友聊天一样自然地回复。如果用户问的是你已经记住的信息，直接回答即可。当需要调用工具获取信息时，请直接调用工具，不要发送过渡性开场白。工具结果返回后再直接给出最终回答。"
 
     @property
     def prompt_dream_user_summary(self):
-        return self._prompt("memory.user_summary", "总结用户的特征和偏好。")
+        return "你是记忆助手。请根据今天的对话更新用户的印象笔记。旧笔记：{old_note}。今日对话：{messages}。每个结论必须标注置信度：90-100%为确定事实，50-89%为大概率正确，<50%为不确定。请输出一段精简纯文本，不超过200字。只输出文本，不要其他内容。"
 
     @property
     def prompt_dream_user_incremental(self):
-        return self._prompt("memory.user_incremental", "增量更新用户画像。")
+        return "你是记忆助手。旧笔记：{old_note}。今日对话：{messages}。请只输出【新增或修正的内容】，不超过100字。不要重复旧笔记中已有的信息。只输出纯文本。"
 
     @property
     def prompt_dream_user_system(self):
-        return self._prompt(
-            "memory.user_system", "你是一个记忆助手，只输出精简的文本描述。"
-        )
+        return "你是一个记忆助手，只输出精简的文本描述。每个结论必须标注置信度。"
 
     @property
     def prompt_dream_group_system(self):
-        return self._prompt(
-            "memory.group_system", "你是一个群记忆助手，只输出精简的文本描述。"
-        )
+        return "你是一个群记忆助手，只输出精简的文本描述。"
 
     @property
     def prompt_dream_group_summary(self):
-        return self._prompt("memory.group_summary", "请总结这个群的规则和文化。")
+        return "你是群记忆助手，请总结群的规则和文化。旧总结：{old_summary}。每个结论必须标注置信度：90-100%为确定事实，50-89%为大概率正确，<50%为不确定。请输出一段精简纯文本，不超过150字。只输出文本，不要其他内容。"
 
     @property
     def san_enabled(self):
