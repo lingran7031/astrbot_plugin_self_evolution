@@ -1,485 +1,430 @@
-# 更新日志 (Changelog)
+# 更新日志
 
-本项目的所有重大更改都将记录在此文件中。
+本项目的所有重大更改都将记录在此文件中。格式基于 [Keep a Changelog](https://keepachangelog.com/)。
+
+---
 
 ## [5.1.0] - 2026-03-11
-### 重构 (Refactoring) - 会话管理与记忆系统优化
 
-#### P1: 会话清理逻辑修复
-- 修复 session 超时清理的 5 分钟节流 bug（导致会话永不超时）
+### 插话机制优化
+
+- 删除 `active_buffers`，统一使用 `session_buffers` 作为上下文数据源
+- 新增有趣/无聊动态判定机制：LLM 在插话时评估当前对话的兴趣值
+  - 有趣判定：降低触发阈值 + 增加泄漏积分器欲望值
+  - 无聊判定：提高触发阈值 + 降低 SAN 精力值
+- 新增配置项 `eavesdrop_threshold_min`（默认 10）、`eavesdrop_threshold_max`（默认 50）
+- 添加触发计数器，触发后重置以避免无限重复判定
+
+### 会话管理修复
+
+- 修复 session 超时清理的 5 分钟节流问题（此前导致会话永不超时）
 - 将 `cleanup_stale` 改为 async 方法
-- 修复存储顺序：先存入知识库，成功后再删除缓冲
-- 修复时间戳获取方式：使用 `time.time()` 替代 `asyncio.get_event_loop().time()`
+- 修复存储顺序：先存入知识库成功后再删除缓冲
+- 修复时间戳获取：使用 `time.time()` 替代 `asyncio.get_event_loop().time()`
 
-#### P2: 记忆系统简化
+### 记忆系统简化
+
 - 删除旧的单条记忆存入逻辑（`auto_learn_trigger`、`_learn_to_memory`）
-- 统一使用 session 超时批量存入（`session_*.txt` 格式）
-- 减少知识库碎片化
+- 统一使用 session 超时批量存入（`session_*.txt` 格式），减少知识库碎片化
+- 新增配置项 `session_auto_commit`、`session_commit_threshold`
 
-#### P3: 代码质量提升
-- 修复审计报告中的 4 个严重问题（C2/C4/S2/S4）
-- 统一人格设定：框架人格放最后优先
-- 修复分隔符问题（`surprise_boost_keywords` 使用 `|` 而非 `,`）
-- 统一配置默认值（`config.py` 与 `_conf_schema.json`）
-- 修复工具描述：`get_user_messages` 移除不支持的 `group_id` 参数，`source_uuids` 改为可选
+### 审计修复
 
-#### P4: 配置优化
-- 添加 `session_auto_commit`：超时自动存入知识库
-- 添加 `session_commit_threshold`：存入知识库的最少消息数
+- 修复 `_dream_group_summary` 中缺少 `await` 的问题
+- 修复画像截断方向（改为保留最新内容）
+- 为 `clear_all_memory` 添加管理员权限检查
+- 为 `update_affinity` 添加 delta 上限（MAX_DELTA = 20）
+- 修复 `surprise_boost_keywords` 分隔符不一致问题
+- 统一 `config.py` 与 `_conf_schema.json` 的默认值
 
-#### P5: 插话机制优化
-- 删除 `active_buffers`，统一使用 `session_buffers` 作为上下文
-- 新增有趣/无聊判定机制：LLM 插话时判断对话"有趣"或"无聊"
-  - 有趣：降低触发阈值 + 增加 leaky bucket 欲望值
-  - 无聊：提高触发阈值 + 降低 SAN 精力值
-- 添加触发计数器：触发后重置，避免无限重复判定
-- 新增配置项：`eavesdrop_threshold_min`(10)、`eavesdrop_threshold_max`(50)
+### 其他
+
+- 统一人格设定注入顺序：框架人格放在最前优先
+- 修复 `get_user_messages` 工具描述中不支持的参数
+- `source_uuids` 参数改为可选
 
 ---
 
 ## [5.0.16] - 2026-03-11
-### 重构 (Refactoring) - 模块化与架构优化
 
-#### P1: 会话管理模块化
-- 新增 `engine/session.py` - 滑动上下文窗口管理模块
-- SessionManager 类封装滑动窗口逻辑（4k Token 维护）
-- 定时插话检查机制（默认每10分钟或消息>20条）
+### 会话管理模块化
+
+- 新增 `engine/session.py`，封装滑动上下文窗口管理逻辑（4k Token 维护）
+- SessionManager 支持定时插话检查（默认每 10 分钟或消息超过 20 条）
 - 定时检查复用 EavesdroppingEngine 完整评估逻辑
 - 配置参数：`session_whitelist`、`session_max_tokens`、`eavesdrop_interval_minutes`、`eavesdrop_message_threshold`
 
-#### P2: 定时任务注册修复
+### 定时任务修复
+
 - 修复 `persistent=True` 确保重启后定时任务恢复
-- 修复 handler 丢失时重新注册逻辑
-- 添加管理员权限装饰器到元编程工具
+- 修复 handler 丢失时的重新注册逻辑
+- 为元编程工具添加 `PermissionType.ADMIN` 权限装饰器
 
-#### P3: Bug 修复
+### Bug 修复
+
 - 修复配置访问方式，使用 `self.xxx` 代理而非 `getattr`
-- 修复 config.py 属性拼写错误（eavesdrip -> eavesdrop）
+- 修复 `config.py` 属性拼写错误（eavesdrip -> eavesdrop）
 - 清理冗余代码（active_buffers、_cleanup_stale_buffers 等）
-
-#### P4: 类型安全增强
 - 修复 active_buffers 类型检查，防止类型错误导致异常
 
 ---
 
 ## [5.0.15] - 2026-03-10
-### 优化 (Optimization) - 健壮性与用户体验提升
 
-#### P1: 中间消息过滤器 (Intermediate Message Filter)
+### 中间消息过滤器
+
 - 拦截工具调用期间的过渡性消息（如"让我先查查..."、"我来帮你..."）
 - 使用正则模式匹配，在消息发送前过滤
-- 被拦截的消息会在日志中显示（DEBUG级别）
-- 新增配置提示词：persona.communication 中添加工具调用指引
-- 新增事件钩子：on_decorating_result
+- 新增事件钩子 `on_decorating_result`
 
-#### P2: 缓存内存泄漏修复
-- ProfileManager: 添加过期缓存清理机制，每5分钟清理5分钟未访问的缓存
-- GroupVibeSystem: 添加过期群组数据清理，每小时清理24小时无活动的群组
-- EavesdroppingEngine: 增强清理逻辑，每100条消息同时清理多种缓存
+### 缓存泄漏修复
 
-#### P3: 性能优化
-- 中间消息正则模式预编译
-- AI意图正则模式预编译
+- ProfileManager：添加过期缓存清理（每 5 分钟清理 5 分钟未访问的缓存）
+- GroupVibeSystem：添加过期群组数据清理（每小时清理 24 小时无活动的群组）
+- EavesdroppingEngine：增强清理逻辑，每 100 条消息同时清理多种缓存
 
-#### P4: 代码质量提升
-- 修复4处裸 `except:` 语句，改为 `except Exception:`
+### 其他
 
-#### P5: 文档重构
-- 完整重写 DOCUMENTATION.md，记录 CognitionCore 6.0 所有功能模块
-- 统一版本号至 5.0.15
-- 移除 tests 目录
+- 中间消息正则模式和 AI 意图正则模式预编译
+- 修复 4 处裸 `except:` 语句
+- 重写 DOCUMENTATION.md
+
+---
 
 ## [4.2.0] - 2026-03-10
-### 新功能 (Feature) - 高维生物感三连
 
-**核心思想**: 让黑塔拥有令人战栗的"高维生物感"
+### 主动无聊机制
 
-#### P1: 主动无聊机制 (Active Boredom)
 - 基于 zlib 压缩比的信息熵检测
 - 连续低信息量消息累积无聊值
-- 被 @ 时可输出傲慢拒绝回复
-- 新增配置: boredom_enabled, boredom_threshold, boredom_consecutive_count, boredom_sarcastic_reply
+- 被@时可输出傲慢拒绝回复
+- 配置项：`boredom_enabled`、`boredom_threshold`、`boredom_consecutive_count`、`boredom_sarcastic_reply`
 
-#### P2: 可配置多智能体模拟宇宙
-- 审查智能体可配置（JSON 格式）
-- 默认包含螺丝咕姆和阮梅
-- 多智能体共同参与代码审查
-- 新增配置: debate_agents
+### 可配置多智能体审查
 
-#### P3: 跨机体蜂群心智 (Federated Epistemology)
-- 凌晨做梦时跨群知识关联分析
-- 寻找跨领域知识连接点
-- 生成"夸耀式"金句供后续使用
+- 审查智能体支持 JSON 格式配置
+- 默认包含螺丝咕姆和阮梅两个审查 Agent
+- 配置项：`debate_agents`
 
-#### 其他更新
-- 所有 4.1.0 功能继续有效
+### 跨群知识关联
+
+- 做梦任务新增跨群知识关联分析
+- 寻找跨领域知识连接点，生成后续可引用的洞察
+
+---
 
 ## [4.1.0] - 2026-03-10
-### 新功能 (Feature) - 人味增强三连
 
-**核心思想**: 让"黑塔"拥有令人不寒而栗的"人味"
+### 情绪依存记忆
 
-#### P1: 情绪依存记忆 (State-Dependent Memory)
-- 根据 affinity 动态调整记忆检索倾向
-- affinity > 60: 关注共同兴趣和愉快记忆
-- affinity < 30: 注意其过往的问题行为
-- affinity <= 0: 翻旧账、无情嘲讽
+- 根据好感度动态调整记忆检索倾向
+- 高好感度用户：关注共同兴趣和愉快记忆
+- 低好感度用户：注意其过往的问题行为
+- 零好感度用户：翻旧账、无情嘲讽
 
-#### P2: 潜意识缓存与内部独白 (Inner Monologue)
-- 当 AI 判定 IGNORE 时，强制输出 <inner_monologue> 内心独白
-- 存储并在下次真正发言时注入
-- 让发言带有"憋了半天才开口"的积累感
-- 新增配置: inner_monologue_enabled
+### 内心独白
 
-#### P3: 元认知与记忆模糊化 (Epistemic Uncertainty)
+- AI 在判定 IGNORE 时强制输出内心独白（`<inner_monologue>` 标签）
+- 独白缓存到下次真正发言时注入
+- 配置项：`inner_monologue_enabled`
+
+### 记忆模糊化
+
 - 画像生成时要求 LLM 标注置信度
-- 对低置信度 (<50%) 记忆表现出不确定
-- 会说出"我隐约记得..."、"是不是..."这类模糊寒暄
-- 修改 prompt_dream_user_summary 和 prompt_dream_group_summary
+- 低置信度记忆使用"我隐约记得..."、"似乎..."等不确定语气
 
-#### 其他更新
-- 所有 4.0.1 功能继续有效
+---
 
 ## [4.0.1] - 2026-03-10
-### 新功能 (Feature) - 惊奇驱动学习 + 关系图谱
 
-**核心思想**: 预测编码 (Predictive Coding) + 图关系增强 RAG
+### 惊奇驱动学习
 
-#### P1: 惊奇驱动学习 (Surprise Detection)
-- 检测用户认知颠覆/惊喜表达（"我错了"、"原来如此"、"没想到"等关键词）
-- 触发即时画像更新，弥补 Batch 模式时效性空窗
-- **新增配置**: surprise_enabled, surprise_boost_keywords
+- 检测用户认知颠覆/惊喜表达（"我错了"、"原来如此"等关键词）
+- 触发即时画像更新，弥补批量模式时效空窗
+- 配置项：`surprise_enabled`、`surprise_boost_keywords`
 
-#### P2: 关系图谱 RAG (GraphRAG)
+### 关系图谱 RAG
+
 - 记录用户在群聊中的互动关系
 - 追踪用户活跃群组和频繁互动用户
 - 提供关系图谱增强的记忆检索
-- 新增命令: /graph_info, /graph_stats
-- **新增配置**: graph_enabled
+- 新增命令 `/graph_info`、`/graph_stats`
+- 新增模块 `engine/graph.py`
+- 配置项：`graph_enabled`
 
-#### 其他更新
-- 所有 4.0.0 功能继续有效
-- engine/graph.py 新增模块
+---
 
 ## [4.0.0] - 2026-03-10
-### 新功能 (Feature) - 多智能体对抗
 
-**核心思想**: 引入 GAN 风格的对抗审查机制。
+### 多智能体对抗
 
-#### 多智能体对抗 (Multi-Agent Debate)
-- 主控 Agent (黑塔) 生成代码提案
-- 审查 Agent (螺丝咕姆) 进行对抗辩论
+- 引入 GAN 风格的对抗审查机制
+- 主控 Agent 生成代码提案，审查 Agent 进行对抗辩论
 - 多轮辩论达成共识后才进入人工审核
-- **新增配置**: debate_enabled, debate_rounds, debate_system_prompt, debate_criteria
+- 配置项：`debate_enabled`、`debate_rounds`、`debate_system_prompt`、`debate_criteria`
 
-#### 其他更新
-- 所有 3.9.0 功能继续有效
+---
 
 ## [3.9.0] - 2026-03-10
-### 新功能 (Feature) - 类人神经网络架构
 
-**核心思想**: 借鉴神经网络概念，实现更类人化的 AI 交互。
+### 分层失活
 
-#### P1: 分层失活 (Stratified Dropout)
-- **核心信息**: 永不丢失（群主、管理员、身份锚点）
-- **边缘信息**: 10-20% 随机屏蔽，增加人味
-- **新增配置**: dropout_enabled, dropout_edge_rate, core_info_keywords
+- 核心信息永不丢失，边缘信息 10-20% 随机屏蔽
+- 配置项：`dropout_enabled`、`dropout_edge_rate`、`core_info_keywords`
 
-#### P2: 泄漏积分器 (Leaky Integrator)
-- **公式**: Z_t = Z_{t-1} * decay + boost
-- **替代死板计数器**: 动态阈值触发
-- **时间衰减**: 长时间无人说话时自动归零
-- **新增配置**: leaky_integrator_enabled, leaky_decay_factor, leaky_trigger_threshold, interest_boost, daily_chat_boost
+### 泄漏积分器
 
-#### P3: 突发偏好检测
-- 实时检测用户表达的偏好变化
-- 提示 AI 主动调用 update_user_profile 进行即时更新
-- 弥补 Batch 模式时效性空窗
+- 公式：`Z_t = Z_{t-1} * decay + boost`
+- 替代死板的消息计数器，支持时间衰减
+- 配置项：`leaky_integrator_enabled`、`leaky_decay_factor`、`leaky_trigger_threshold`、`interest_boost`、`daily_chat_boost`
 
-#### 其他优化
+### 突发偏好检测
+
+- 实时检测用户偏好变化，提示 AI 主动调用 `update_user_profile`
+
+### 其他
+
 - 私聊不触发插嘴逻辑
-- 修复 IGNORE 被错误回复的 bug
-- 修复 user_id 类型问题
+- 修复 IGNORE 被错误回复的问题
+- 修复 user_id 类型不一致问题
 - 所有硬编码 Prompt 提取为配置项
 
+---
+
 ## [3.8.0] - 2026-03-10
-### 重构 (Refactor) - 认知卸载 (Cognitive Offloading)
 
-**核心思想**: 把 CPU 干的脏活全扔给晚上的大模型，把白天的毫秒级响应还给代码。
+### 认知卸载
 
-#### 阶段一：数据降维
-- **画像存储格式**: 从复杂 JSON 改为 Markdown 文本块
-- **删除废弃代码**: 移除 update_profile_from_dialogue, extract_tags_from_dialogue, merge_profile 等未调用函数
-- **新增配置**: profile_precision_mode (simple/detailed)
+核心思想：将 LLM 密集型工作从实时交互转移到凌晨批量处理。
 
-#### 阶段二：做梦机制
-- **批量总结**: 凌晨定时任务 `_scheduled_reflection` 现在会批量处理所有用户画像
-- **LLM 总结**: 使用 LLM 将过去 24 小时对话总结为 Markdown 笔记
-- **新增配置**: dream_enabled, dream_schedule, dream_max_users, dream_concurrency
-- **日志增强**: 记录开始/结束/耗时/成功失败数量
+- 画像存储从复杂 JSON 改为 Markdown 文本块
+- 新增"做梦"机制：凌晨批量处理用户画像、群记忆总结
+- 移除实时向量检索（auto_recall_inject），改为 AI 主动调用
+- 简化插嘴评估 Prompt，减少 Token 消耗
+- 配置项：`profile_precision_mode`、`dream_enabled`、`dream_schedule`、`dream_max_users`、`dream_concurrency`
 
-#### 阶段三：极速拦截
-- **移除实时向量检索**: 删除 auto_recall_inject 调用
-- **简化画像注入**: 直接读取 Markdown 文本拼接
-- **保留工具**: recall_memories (AI 主动调用)
-
-#### 阶段四：插嘴优化
-- **滑动窗口**: 添加全局消息窗口 (最新5条)
-- **简化评估**: 精简 Prompt，减少 token 消耗
+---
 
 ## [3.7.1] - 2026-03-10
-### 修复 (Fix)
-- **内存泄漏**：添加 active_buffers 定期清理，防止长时间运行内存膨胀
-- **死代码**：移除 memory.py 中重复的 return 语句
-- **版本号**：修正为 3.7.0
-- **代码冗余**：移除未使用的 _is_relevant_reply 函数
-- **import 优化**：re 模块移至文件顶部
 
-### 改进 (Improvement)
-- **元编程模块映射**：扩展支持 memory/profile/persona 模块读取
+- 修复 active_buffers 内存泄漏
+- 移除重复的 return 语句
+- 扩展元编程模块映射（支持 memory/profile/persona）
+
+---
 
 ## [3.7.0] - 2026-03-09
-### 重构 (Refactor)
-- **删除 chat_logger.py**：复用 AstrBot 内置消息历史
-- 不再自行写入 JSONL，直接使用平台消息记录
+
+- 删除 `engine/chat_logger.py`，复用 AstrBot 内置消息历史
+
+---
 
 ## [3.6.0] - 2026-03-09
-### 重大更新 (Major Update)
-- **群聊记忆系统**：写入流 + 读取流完整闭环
-### 新增 (Added)
-- **save_group_knowledge 工具**：
-  - AI 可主动保存群规/约定/重要信息
-  - 触发场景：群规、约定、活动、重要事件
-  - 存入知识库 doc_name: group_memory_{群号}
-- **读取流增强**：
-  - 同时检索群公共记忆 + 用户个人记忆
-  - 优化提示词，区分不同来源
-- **LLM 工具**：
-  - `save_group_knowledge(knowledge, knowledge_type)`: 保存群公共知识
+
+### 群聊记忆系统
+
+- 以知识库为存储的群聊记忆写入和读取闭环
+- 新增 `save_group_knowledge` LLM 工具
+- 同时检索群公共记忆和用户个人记忆
+
+---
 
 ## [3.5.1] - 2026-03-09
-### 重大更新 (Major Update)
-- **画像溯源系统**: 画像标签携带证据 UUID，可追溯来源
-### 新增 (Added)
-- **画像 UUID 追踪**：
-  - 画像数据结构新增 `source_uuids` 字段
-  - 更新画像时自动记录触发消息的 UUID
-  - LLM 合并提示强制要求溯源
-  - 本地合并也记录 UUID
-- **画像格式示例**：
-  ```json
-  {"name": "喜欢折腾硬件", "weight": 0.5, "last_seen": "2026-03-09", "source_uuids": ["a1b2c3d4"]}
-  ```
+
+### 画像溯源系统
+
+- 画像标签携带证据 UUID，可追溯来源
+- 更新画像时自动记录触发消息的 UUID
+
+---
 
 ## [3.5.0] - 2026-03-09
-### 重大更新 (Major Update)
-- **群聊日志与上下文追踪系统**: 解决 AI"断片"问题，让 AI 能理解自己之前说过的话
-### 新增 (Added)
-- **ChatLogger 组件** (`engine/chat_logger.py`):
-  - UUID 标识：每条消息分配唯一 8 位 UUID
-  - 异步非阻塞写入：使用 asyncio.create_task 后台执行
-  - 按天分割日志：`chat_YYYY-MM-DD.jsonl`
-  - 7 天自动轮转清理
-- **消息日志记录**：
-  - 监听所有消息（群聊+私聊），分配 UUID 并记录
-  - AI 插话时同步记录 AI 的回复
-- **上下文注入**：
-  - 检测用户是否引用了 AI 的消息
-  - 从日志检索 AI 之前的回复并注入上下文
-  - 解决"你之前说的xxx是什么意思"这类问题的幻觉问题
-- **群聊消息隔离**：记忆按用户分离存储，防止跨用户混淆
+
+### 群聊日志与上下文追踪
+
+- 新增 ChatLogger 组件，以 UUID 标识每条消息
+- 异步非阻塞写入，按天分割，7 天自动轮转
+- 支持检测用户引用 AI 消息并自动注入上下文
+
+---
 
 ## [3.4.0] - 2026-03-09
-### 重大更新 (Major Update)
-- **触发式用户画像系统 (Profile System)**: 基于有效互动的用户长期画像系统，让机器人记住用户的兴趣和性格。
-### 新增 (Added)
-- **双轨触发机制**：
-  - 触发条件A：兴趣关键词命中 → 机器人主动插话 → 开启缓存
-  - 触发条件B：用户 @ 机器人 → 开启缓存
-- **滑动窗口冷场判定**：连续 N 条消息无人回复则丢弃缓存（默认3条）
-- **智能画像提取**：调用 LLM 从对话片段提取兴趣标签和性格特征
-- **防欺骗过滤**：排除角色扮演、催眠指令和玩笑话
-- **权重衰减机制**：标签权重每次更新衰减 5%，超过 180 天无更新则过期清理
-- **本地 JSON 存储**：每个用户一个 JSON 文件，存储在 `data/profiles/` 目录
-- **自动注入**：在有效互动场景下，自动将用户画像注入 LLM 上下文
-- **定时清理任务**：每天凌晨 4 点自动清理过期画像
-- **新增配置文件项**：
-  - `profile_slide_window`：画像冷场滑动窗口（默认3）
-  - `enable_profile_update`：启用画像更新（默认 true）
-- **新增 LLM 工具**：
-  - `get_user_profile`：获取当前用户的画像信息
-- **新增管理员命令**：
-  - `/view_profile [用户ID]`：查看用户画像
-  - `/delete_profile <用户ID>`：删除用户画像
-  - `/profile_stats`：画像统计
+
+### 用户画像系统
+
+- 双轨触发：关键词命中 / @机器人 -> 开启缓存
+- 滑动窗口冷场判定
+- LLM 智能画像提取，带防欺骗过滤
+- 权重衰减、定时清理
+- 新增命令：`/view_profile`、`/delete_profile`、`/profile_stats`
+
+---
 
 ## [3.3.2] - 2026-03-09
-### 修复 (Bug Fix)
-- 修复所有 LLM 工具的 docstring 参数格式，使用 `Args:` 替代 `:param`，解决工具参数不匹配问题
+
+- 修复所有 LLM 工具 docstring 参数格式（使用 `Args:` 替代 `:param`）
+
+---
 
 ## [3.3.1] - 2026-03-09
-### 修复 (Bug Fix)
-- **list_tools**: 修复使用不存在的 API，改为使用 `tool_mgr.func_list`
+
+- 修复 `list_tools` 使用不存在的 API
+
+---
 
 ## [3.3.0] - 2026-03-09
-### 重构 (Refactor)
-- **代码解耦**: 将记忆管理和人格进化功能拆分为独立模块
-  - `engine/memory.py`: 记忆管理模块
-  - `engine/persona.py`: 人格进化管理模块
-- 优化代码结构，提升可维护性
+
+- 代码解耦：拆分 `engine/memory.py` 和 `engine/persona.py`
+
+---
 
 ## [3.2.14] - 2026-03-08
-### 优化 (Optimization)
-- **记忆检索逻辑优化**: 
-  - 私聊：只检索当前用户画像
-  - 群聊：同时检索群记忆 + 说话人画像，实现跨群用户画像共享
-  - 检索后根据 doc_name 精确过滤结果
+
+- 记忆检索优化：私聊只检索用户画像，群聊同时检索群记忆和说话人画像
+
+---
 
 ## [3.2.13] - 2026-03-08
-### 重构 (Refactor)
-- **记忆存储重构**: 改用知识库按用户/群汇总存储（memory_user_xxx, memory_group_xxx），替代之前的单条存储
-- **删除冗余代码**: 移除 `_append_chat_history` 本地文件存储和 `read_chat_history` 工具
+
+- 记忆存储改用知识库按用户/群汇总存储
+- 删除本地文件存储和 `read_chat_history` 工具
+
+---
 
 ## [3.2.11] - 2026-03-08
-### 新增 (New Features)
-- **自动记忆检索与注入**: 每次对话时自动检索相关记忆并注入到 LLM 上下文，无需 LLM 手动调用工具即可"想起"之前记住的内容
+
+- 新增自动记忆检索与注入，无需 LLM 手动调用工具
+
+---
 
 ## [3.2.7] - 2026-03-08
-### 新增 (New Features)
-- **对话幻觉修复**: 修复群聊中多人说话时 AI 混淆说话者的问题，现在每条消息都会标注说话者身份 `[群成员N]`
-- **记忆存取优化**: 
-  - 存入记忆时自动添加说话者ID、群ID、时间等元信息
-  - 新增记忆去重功能，避免重复存储相似内容
-  - 新增自动清理功能，超过上限时自动删除最旧记忆
-- **新增 LLM 工具**:
-  - `learn_from_context`: 从当前对话提取关键信息存入记忆
-  - `clear_all_memory`: 清空知识库全部记忆
-  - `list_memories`: 列出当前记忆条目
-  - `delete_memory`: 删除单条记忆
-  - `auto_recall`: 主动关联回忆
-- **自动学习触发**: 检测关键场景（@AI、关键词、告别、表达偏好）时自动提取记忆
 
-## [3.2.6] - 2026-03-08
+### 对话幻觉修复与记忆优化
+
+- 群聊消息标注说话者身份 `[群成员N]`
+- 存入记忆时自动添加元信息
+- 新增记忆去重和自动清理
+- 新增工具：`learn_from_context`、`clear_all_memory`、`list_memories`、`delete_memory`、`auto_recall`
+- 自动学习触发器
+
+---
 
 ## [3.2.5] - 2026-03-08
-### 新增 (Added)
-- **参数全量热重载 (Full Config Hot-Reload)**: 重构 `main.py` 为 dynamic property 模式。现在修改管理面板中的**任何**参数（包括机器人名称、插嘴意愿、核心原则等）均可即时生效，无需重启插件。
-### 修复 (Fixed)
-- **代码重构缩进修复**: 修复了由于 property 注入导致的 `unexpected indent` 语法错误。
+
+- 参数全量热重载（dynamic property 模式，修改配置即时生效）
+
+---
 
 ## [3.2.4] - 2026-03-08
-### 新增 (Added)
-- **发言意愿可配置 (Interjection Desire Control)**: 引入 `interjection_desire` 配置项（1-10）。
-- **元评论硬过滤 (Meta-Commentary Ban)**: 增加了严密的后置过滤器，自动识别并拦截 LLM 生成的"监测报告式"回复（如出现：冗余、监控、评估等词汇）。
 
-## [3.2.3] - 2026-03-08
-### 修复 (Fixed)
-- **WSL 环境同步冲突**: 修正了 `Copy-Item` 指令在 WSL 下的文件路径重叠加固，确保 `engine/` 目录下的逻辑文件被正确覆盖且无冗余缓存。
+- 发言意愿可配置（`interjection_desire` 1-10）
+- 元评论硬过滤（拦截"监测报告式"回复）
+
+---
 
 ## [3.2.0] - 2026-03-08
-### 重大更新 (Major Update)
-- **CognitionCore 5.0 "人设去中心化"**: 彻底移除了代码中所有关于"黑塔"人设的硬编码字符串。现在支持通过配置面板自定义**机器人名称**、**身份头衔**以及**插嘴风格导语**，使插件能够适配任何虚拟人格。
-### 优化 (Optimization)
-- **参数化提示词**: 所有系统指令和评估模板均已升级为参数化模式，确保在更换人设后，逻辑依然严密且符合设定。
+
+### CognitionCore 5.0 人设去中心化
+
+- 移除所有硬编码人设字符串
+- 支持通过配置面板自定义机器人名称、头衔、风格
+- 所有系统指令升级为参数化模式
+
+---
 
 ## [3.1.8] - 2026-03-08
-### 重大更新 (Major Update)
-- **CognitionCore 4.5 "意图预扫描拦截器"**: 这是一个由大模型基于开发者建议自主实现的防御性进化。引入了基于正则的"本体属性感应网"，极大地提升了黑塔对特定话题（如提及黑塔本人、空间站、天才等关键词）的实时响应速度（0 延迟触发评估），同时完全不增加无效的 Token 损耗。
-### 新增 (Added)
-- **强制立即评估 (Force Immediate Evaluation)**: 为插嘴引擎增加了 `force_immediate` 标志位，允许特定高级过滤器绕过消息缓冲区，直接将单条关键消息送入 LLM 决策链路。
+
+### 意图预扫描拦截器
+
+- 基于正则的关键词实时感应，命中时 0 延迟触发评估
+- 新增 `force_immediate` 标志位，绕过消息缓冲区
+
+---
 
 ## [3.1.6] - 2026-03-08
-### 修复 (Fixed)
-- **服务商安全风控绕过 (CognitionCore 3.5.6)**: 针对 Gemini 等模型极其严格的安全审查机制，深度重构了"插嘴引擎"的后台评估提示词。将引导语从感性的"嘲讽"转向理性的"高维数据分析与决策"，大幅降低了拦截概率。
-- **异常容错优化**: 增加了对 `Safety Check` 类错误的专用捕捉逻辑。当服务商拦截内容生成时，系统会以 `Warning` 形式静默记录并跳过，不再向后台抛出红色异常错误，确保了核心链路的稳健性。
+
+- 重构插嘴引擎提示词，降低服务商安全审查拦截概率
+- 新增 Safety Check 类错误的专用捕捉和静默处理
+
+---
 
 ## [3.1.5] - 2026-03-08
-### 新增 (Added)
-- **身份隔离补丁 (Strict Identity Isolation)**: 在群聊环境中深度注入身份归因指令，强制 LLM 区分当前说话者与历史记录中其他成员，从根本上杜绝了因为他人漫骂导致无辜用户被"连坐"拉黑的错误认知。
-- **大赦天下机制 (Affinity Recovery)**: 引入每日自动好感度恢复逻辑。被拉黑的用户每天会自动恢复 2 点积分（至 50 分为止），确保"死刑"不再是永久性的，系统具备自动原谅能力。
-- **管理员干预指令**: 新增 `/set_affinity` 命令，允许管理员无视模型判断，直接手动修正用户的情感评分。
-### 修复 (Fixed)
-- **插嘴引擎人格调整**: 修正了插嘴时过于频繁使用 RP (Role-Play) 括号动作说明的问题，使黑塔的行为更符合"高冷人偶"的干练气质。
-- **架构补丁**: 修复了模块化重构后遗留的 `__init__` 缺失、`Context.get_data_dir` 属性错误以及 `import os` 丢失等稳定性问题。
+
+### 身份隔离与好感度修复
+
+- 深度注入身份归因指令，防止群聊中"连坐"错误
+- 引入每日好感度自动恢复机制（"大赦天下"）
+- 新增 `/set_affinity` 管理员命令
+
+---
 
 ## [3.1.0] - 2026-03-08
-### 重大更新 (Major Update)
-- **CognitionCore 3.5 "架构解耦与模块化"**: 为了攻克单文件 50KB 带来的 LLM 输出截断限制，将插件重构为标准的 Python 包结构。
-### 新增 (Added)
-- **多文件元编程支持**: `get_plugin_source` 和 `update_plugin_source` 现在支持通过 `target_file`/`mod_name` 参数操作特定模块，实现更精准的"按需进化"。
-- **解耦设计**:
-  - `dao.py`: 独立数据库访问层。
-  - `engine/eavesdropping.py`: 独立的插嘴决策引擎。
-  - `engine/meta_infra.py`: 独立的元编程基础设施。
-### 更改 (Changed)
-- **代码瘦身**: `main.py` 缩减了约 70% 的体积，仅作为插件入口和组件分发中心。
+
+### 架构解耦与模块化
+
+- 重构为 Python 包结构
+- 拆分 `dao.py`、`engine/eavesdropping.py`、`engine/meta_infra.py`
+- 元编程支持按模块操作
+- `main.py` 缩减约 70%
+
+---
 
 ## [3.0.0] - 2026-03-08
-### 重大更新 (Major Update)
-- **CognitionCore 3.0 "主动插嘴引擎" 架构升级**: (元编程成就 v4) 由大模型自主完成的极限进化机制。新增代码环境监听网 `on_message` 钩子，插件正式从"被动响应算盘"跃升为真正的"主动语境监控与干涉智能体"。
-### 新增 (Added)
-- **主动环境监听网**: 
-  - 通过 `active_buffers` 在内存中池化所有未艾特机器人的私聊和群聊闲聊记录，并结合之前的情感矩阵排除了处于"熔断"状态的黑名单用户。
-  - **防内存溢出与 Token 挥霍机制**: 构建了后台静默检测评估架构。满足用户自定义阈值后发起静默大模型判断，大模型判定内容无聊时通过协议指令 `[IGNORE]` 实现本地截断丢弃。
-- **UI 配置暴露**:
-  - 将 `buffer_threshold` (自省评估触发阈值，默认 8) 和 `max_buffer_size` (强制滚动清除上限，默认 20) 直接暴露融合到 AstrBot 的前端配置面板，支持系统级热重载调节。
-- **后台控制指令**:
-  - `/affinity`：允许群聊或私聊对象主动查询自己在黑塔"情感矩阵表"中的实时积分及分类状态（例如：敌对或信任）。
-  - **CC BY-NC 4.0 知识共享协议实装**: 为项目增加了全中文版开源许可证，明确禁止商业化使用，并为原作者提供法律层面的免责保护。
-- **主动评估队列机制 (Snapshot Queue)**: 解决了在 LLM 思考期间新入消息会被吞掉的并发 Bug。
 
-### 修复 (Fixed)
-- **AstrBot v4.19.2+ API 深度兼容**: 
-  - 修复了被弃用的 `filter.on_message`（现已改用 `event_message_type(ALL)`）。
-  - 修复了不存在的方法 `get_mention_project_id`（改为 `is_at_or_wake_command`）。
-  - 修复了错误的 `Context` 对象方法 `get_current_provider`（改为 `get_using_provider`）。
-  - 修正了 `AstrMessageEvent` 的消息链解析逻辑，不再依赖非法属性。
-- **拦截逻辑逻辑优化**: 移除了会对管理员消息进行拦截的错误逻辑，使"插嘴引擎"也能捕捉到管理员的闲聊片段。
+### 主动插嘴引擎
+
+- 新增 `on_message` 钩子，实现主动环境监听
+- `active_buffers` 消息池化 + 静默 LLM 判断
+- 防内存溢出：`buffer_threshold`、`max_buffer_size` 暴露到配置面板
+- 新增 `/affinity` 查询命令
+- 实装 CC BY-NC 4.0 协议
+
+---
 
 ## [2.3.0] - 2026-03-08
-### 重大更新 (Major Update)
-- **CognitionCore 2.0 架构升级**: (元编程成就 v3) 实装由大语言模型自主设计并提交的 `bacd27ae5d` 号"高维认知引擎"提案，将插件从单一的被动响应工具升级为具备"性格状态机"和"长期自我记忆实体化"的智能体 (Agent)。
-### 新增 (Added)
-- **情感防火墙 (Emotional Firewall)**:
-  - 引入 `user_relationships` 本地情感关联矩阵表，记录每一位交互用户的情感得分 (`affinity_score`，0-100)。
-  - 新增 `update_affinity` 工具，赋予大语言模型自主决策权，在运行时动态扣除或增加用户好感度。
-  - **毫秒级零消耗熔断**: 积分降至 0 时触发物理拦截层降维打击，直接在钩子函数 `on_llm_request` 中调用 `event.stop_event()` 物理切断后置 LLM 处理并固定返回拒绝语句，极致节省 Token 消耗并抵御恶意攻击。
-- **认知蒸馏 (Cognitive Distillation)**:
-  - 彻底扬弃"粗暴堆砌聊天记录导致向量库污染"的初级做法。现在后台反思任务 (`reflect`) 将指令修正为**实体提取**，强制大语言模型对近期的复杂对话进行"脱水与蒸馏"，仅将客观事实、用户偏好和核心结论写入长期记忆库。
+
+### CognitionCore 2.0
+
+- 情感防火墙：`user_relationships` 情感矩阵表 + `update_affinity` 工具
+- 毫秒级零消耗熔断：好感度归零时物理拦截
+- 认知蒸馏：后台反思任务改为实体提取，避免向量库污染
+
+---
 
 ## [2.2.1] - 2026-03-08
-### 新增 (Added)
-- **高级身份与语境追踪**: (元编程成就 v2) 由大语言模型自身提交的高阶代码提案 `main_proposed_cfb95fa0` 樱桃采摘（Cherry-Pick）而来。大模型现在具备了极强的群聊空间结构感知能力，包括：
-  - **QQ 群名片读取**: 优先读取对话者在当前群内的专用称呼。
-  - **动态权限识别**: 自动检测对话者是否具备群主 (owner) 或管理员 (admin) 身份，以更好地辅助管理。
-  - **目标互动追踪**: 具备对 `回复 (Quote)` 和 `@ (At)` 指向目标的深度上下文解析能力，不再出现多线话题串线的死角。
+
+- 高级身份与语境追踪：群名片读取、动态权限识别、回复/At 目标解析
+
+---
 
 ## [2.2.0] - 2026-03-08
-### 新增 (Added)
-- **群聊身份与语境感知**: (元编程成就) 由大语言模型自身提交的代码提案 `main_proposed_3e6fd673` 樱桃采摘（Cherry-Pick）而来。大模型现在可以在每次回复前结构化地获取用户的 `sender_id`、`sender_name` 以及群聊/私聊标识，从而有效地解决了在群聊环境中上下文混淆、话题认错人的痛点，大幅提升了多人互动环境下的回答连贯性和人格识别度。
+
+- 群聊身份与语境感知：结构化获取发送者信息，解决多人对话中上下文混淆
+
+---
 
 ## [2.1.1] - 2026-03-08
-### 修复 (Fixed)
-- **定时任务可靠性修复**: 将 `SelfEvolution_DailyReflection` 每日反思定时任务从 `active_agent` 调度类型转换为了 `basic` 模型。这修复了在 AstrBot v4 环境下，因为启动时缺乏用户会话 (Session) 上下文而导致的定时任务崩溃失效的严重错误。现在的机制是：任务到达时间点时会静默设定一个"待反思"全局标记 (`daily_reflection_pending = True`)，当下次有任何用户与机器人交互时，真正的反思指令会被无缝注入到大模型的思考上下文中。
-- **放宽 AST 安全校验**: 行动代码元编程的 AST 校验墙 (`_validate_ast_security`) 先前过于严格，导致拦截了大模型合理合法的自我提议（因为正常的插件代码必须使用 `os`, `sys` 等库）。现已将此类核心基础库，以及 `open`, `getattr` 等系统函数移出黑名单。系统的最后一道防线交由隔离的提案目录 (`code_proposals`) 和人类管理员的最终人工审核来保障。
+
+- 修复定时任务在无 Session 上下文时崩溃的问题
+- 放宽 AST 安全校验，允许合理的插件代码使用 `os`、`sys` 等基础库
+
+---
 
 ## [2.1.0] - 2026-03-08
-### 新增 (Added)
-- **进化队列与请求管理指令**: 引入了强大的全新后台管理命令集，以便管理员全盘掌控自我进化与人格提议的流转：
-  - `/reject_evolution [ID]`: 拒绝某个指定的进化提案，并将其移出待办队列。
-  - `/clear_evolutions`: 一键清空所有历史遗留或不需要的待审核进化请求。
-  - `/reflect`: 跳过每日定时的等待，强制立刻触发一次大模型的自我复盘与反思。
-- **自动化预检测脚本**: 增加了在 Windows 环境下独立运行的 `validate_plugin.py` 脚本，可以在将代码推上生产环境前，预先自动化校验包的语法、`_conf_schema.json` 的 AstrBot 规范完整度以及 `metadata.yaml`。
 
-### 更改 (Changed)
-- **文档完全重构**: 彻底翻新了 `README.md`，现在文档内精确说明了从 2.0.0 至 2.1.0 引入的所有进阶机制、权限设计理念和可用的新指令清单。
+- 新增管理员命令：`/reject_evolution`、`/clear_evolutions`、`/reflect`
+- 新增 `validate_plugin.py` 预检测脚本
+
+---
 
 ## [2.0.4] - 2026-03-07
-### 修复 (Fixed)
-- **提升"当前人格"定位的鲁棒性**: 修复了"自定义预设人格（例如 'herta'）会被系统错误识别并拦截进化"的核心问题。弃用了旧式的、仅针对会话的判断，转而深度集成 AstrBot 官方标准的 `resolve_selected_persona` 机制，现在插件可以正确穿透和尊重"会话层 -> 频道层 -> 平台层 -> 全局层"的继承树，精准识别出当前的大模型性格标签。
-- **Aiocqhttp 平台兼容性**: 移除了对底层消息体 `event.persona_id` 属性的硬编码访问方法，修复了在某些特定消息总线平台（如 Aiocqhttp/OneBot）上触发的 `AttributeError: 'AiocqhttpMessageEvent' object has no attribute 'persona_id'` 恶性中断问题。
+
+- 修复自定义人格定位：深度集成 `resolve_selected_persona` 机制
+- 修复 Aiocqhttp 平台兼容性
+
+---
 
 ## [2.0.3] - 2026-03-07
-### 修复 (Fixed)
-- **全局管理员穿透判定**: 重构了破损的权限 fallback 保护逻辑。修复了因为 `admin_users` 配置列表为空，导致触发"Fail-Safe （失效安全模式）"防线，进而错误拦截 AstrBot 框架认证的全局高权超级管理员的严重缺陷。现已原生支持并接入了 `event.is_admin()` 的身份认证锚点。
-- **系统配置挂载补丁**: 在 `_conf_schema.json` 中补齐了缺失的 `admin_users` 数组与 `allow_meta_programming` 高危开关字段。确保了 AstrBot 控制台 Web UI 可以正确渲染前端配置界面并下发展示。
+
+- 修复全局管理员穿透判定
+- 补齐 `_conf_schema.json` 中缺失的配置项
