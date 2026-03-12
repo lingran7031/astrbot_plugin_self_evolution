@@ -336,6 +336,10 @@ class PluginConfig:
         return self._parse_bool(self._config.get("session_auto_commit"), True)
 
     @property
+    def session_evicted_max(self):
+        return int(self._config.get("session_evicted_max", 30))
+
+    @property
     def session_commit_threshold(self):
         return int(self._config.get("session_commit_threshold", 5))
 

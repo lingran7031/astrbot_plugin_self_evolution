@@ -369,6 +369,13 @@
         "type": "bool",
         "default": true
     },
+    "session_evicted_max": {
+        "title": "滑动窗口溢出消息保留数",
+        "description": "滑动窗口超限被移除的消息，保留的最大条数",
+        "hint": "用于收集有价值但被滑动窗口淘汰的对话，默认30",
+        "type": "int",
+        "default": 30
+    },
     "session_commit_threshold": {
         "title": "会话存入知识库的阈值",
         "description": "会话存入知识库的阈值",

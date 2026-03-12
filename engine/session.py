@@ -58,6 +58,7 @@ class SessionManager:
                 "last_active": time.time(),
                 "eavesdrop_count": 0,
                 "threshold": self.plugin.eavesdrop_message_threshold,
+                "evicted_messages": [],
             }
             logger.info(f"[Session] 新建会话缓冲: {group_id}")
 
@@ -74,6 +75,15 @@ class SessionManager:
         while buffer["token_count"] > max_tokens and buffer["messages"]:
             old_msg = buffer["messages"].pop(0)
             buffer["token_count"] -= self._estimate_tokens(old_msg)
+            evicted = buffer.get("evicted_messages", [])
+            evicted.append(old_msg)
+            evicted_max = getattr(self.plugin, "session_evicted_max", 30)
+            if len(evicted) > evicted_max:
+                evicted.pop(0)
+            buffer["evicted_messages"] = evicted
+            logger.debug(
+                f"[Session] 滑动窗口溢出，收集被移除消息，当前 evicted 队列: {len(evicted)} 条"
+            )
 
         if buffer["token_count"] < 0:
             buffer["token_count"] = 0
@@ -121,9 +131,12 @@ class SessionManager:
             buffer = self.session_buffers.get(gid)
             if buffer:
                 messages = buffer.get("messages", [])
+                evicted_messages = buffer.get("evicted_messages", [])
                 if messages:
                     try:
-                        await self._commit_session_to_memory(messages, gid)
+                        await self._commit_session_to_memory(
+                            messages, gid, evicted_messages
+                        )
                         self.session_buffers.pop(gid, None)
                     except Exception as e:
                         import traceback
@@ -230,17 +243,23 @@ class SessionManager:
                 self.plugin.eavesdrop_message_threshold
             )
 
-    async def _commit_session_to_memory(self, messages: list, group_id: str):
+    async def _commit_session_to_memory(
+        self, messages: list, group_id: str, evicted_messages: list = None
+    ):
         """将会话内容存入知识库"""
+        if evicted_messages is None:
+            evicted_messages = []
+
         auto_commit = getattr(self.plugin, "session_auto_commit", True)
         threshold = getattr(self.plugin, "session_commit_threshold", 5)
 
         if not auto_commit:
             return
 
-        if len(messages) < threshold:
+        total_messages = len(messages) + len(evicted_messages)
+        if total_messages < threshold:
             logger.info(
-                f"[Session] 消息数 {len(messages)} 少于阈值 {threshold}，跳过存入"
+                f"[Session] 消息数 {total_messages}（滑动窗口 {len(messages)} + 溢出 {len(evicted_messages)}）少于阈值 {threshold}，跳过存入"
             )
             return
 
@@ -258,9 +277,17 @@ class SessionManager:
             content = "\n".join(messages)
             formatted = f"""【群聊会话记录】
 群号: {group_id}
-消息数: {len(messages)}
+消息数: {len(messages)}（滑动窗口）+ {len(evicted_messages)}（溢出）
 ---
 {content}
+"""
+
+            if evicted_messages:
+                evicted_text = "\n".join(evicted_messages)
+                formatted += f"""
+---
+【滑动窗口溢出时被移除的对话】
+{evicted_text}
 """
 
             await kb_helper.upload_document(
@@ -270,7 +297,7 @@ class SessionManager:
                 pre_chunked_text=[formatted],
             )
             logger.info(
-                f"[Session] 已将会话存入知识库，群 {group_id}，{len(messages)} 条消息"
+                f"[Session] 已将会话（含 {len(evicted_messages)} 条溢出消息）存入知识库，群 {group_id}，共 {total_messages} 条"
             )
         except Exception as e:
             logger.warning(f"[Session] 存入知识库失败: {e}")
