@@ -124,7 +124,7 @@ class SessionManager:
                 if messages:
                     try:
                         await self._commit_session_to_memory(messages, gid)
-                        del self.session_buffers[gid]
+                        self.session_buffers.pop(gid, None)
                     except Exception as e:
                         import traceback
 
@@ -132,7 +132,7 @@ class SessionManager:
                             f"[Session] 存入失败，保留缓冲: {gid}, 异常: {e}, 堆栈: {traceback.format_exc()}"
                         )
             else:
-                del self.session_buffers[gid]
+                self.session_buffers.pop(gid, None)
 
         if stale:
             logger.info(f"[Session] 已清理 {len(stale)} 个过期会话: {stale}")
