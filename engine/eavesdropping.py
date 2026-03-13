@@ -415,10 +415,31 @@ class EavesdroppingEngine:
                 f"[CognitionCore] 消息过短跳过: {msg_text[:10] if msg_text else '(空)'} ({label})"
             )
             return
-        elif entropy < 0.3:
+
+        # 信息质量多维度检查
+        char_diversity = len(set(msg_text)) / len(msg_text) if msg_text else 0
+
+        # 1. 熵值过低 = 重复字符（如"哈哈哈"）
+        if entropy < 0.3:
             if not is_at:
                 logger.info(
                     f"[CognitionCore] 信息熵过低跳过: {msg_text[:10] if msg_text else '(空)'} ({label})"
+                )
+                return
+
+        # 2. 字符多样性过低 = 大量重复字符
+        if char_diversity < 0.15 and len(msg_text) > 10:
+            if not is_at:
+                logger.info(
+                    f"[CognitionCore] 字符多样性过低跳过: {msg_text[:10] if msg_text else '(空)'} ({label})"
+                )
+                return
+
+        # 3. 熵值过高 + 字符多样性异常 = 可能是乱码
+        if entropy > 0.95 and char_diversity > 0.9 and len(msg_text) > 50:
+            if not is_at:
+                logger.info(
+                    f"[CognitionCore] 疑似乱码跳过: {msg_text[:10] if msg_text else '(空)'} ({label})"
                 )
                 return
 
