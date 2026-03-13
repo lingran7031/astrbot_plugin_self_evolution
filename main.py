@@ -1909,11 +1909,20 @@ class SelfEvolutionPlugin(Star):
 
         action = action.lower()
 
-        if action == "reset":
+        if action == "show":
+            # 显示数据库统计信息
+            stats = await self.dao.get_db_stats()
+            msg = ["【数据库统计】\n"]
+            for table, count in stats.items():
+                msg.append(f"- {table}: {count}")
+            yield event.plain_result("\n".join(msg))
+            return
+
+        elif action == "reset":
             # 设置待确认状态，有效期 30 秒
             self._pending_db_reset[user_id] = time.time() + 30
             yield event.plain_result(
-                "⚠️ 确认清空所有数据？\n"
+                "[!] 确认清空所有数据？\n"
                 "此操作不可恢复！\n"
                 "请在 30 秒内输入 /db confirm 确认执行。"
             )
@@ -1934,7 +1943,7 @@ class SelfEvolutionPlugin(Star):
             self._pending_db_reset.pop(user_id, None)
 
             # 生成结果消息
-            msg = ["✅ 数据库已清空：\n"]
+            msg = ["[OK] 数据库已清空：\n"]
             for table, count in results.items():
                 msg.append(f"- {table}: {count} 条")
 
@@ -1944,6 +1953,7 @@ class SelfEvolutionPlugin(Star):
         else:
             yield event.plain_result(
                 "【数据库管理】\n"
-                "/db reset    # 清空所有数据（需确认）\n"
+                "/db show      # 查看数据库统计\n"
+                "/db reset     # 清空所有数据（需确认）\n"
                 "/db confirm   # 确认执行清空"
             )

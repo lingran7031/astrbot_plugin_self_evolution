@@ -785,6 +785,32 @@ class SelfEvolutionDAO:
             return len(rows)
 
     @with_db_retry()
+    async def get_db_stats(self) -> dict:
+        """获取数据库统计信息"""
+        db = await self.get_conn()
+        stats = {}
+
+        tables = [
+            "pending_evolutions",
+            "pending_reflections",
+            "user_relationships",
+            "user_interactions",
+            "stickers",
+            "inner_monologues",
+        ]
+
+        async with self._db_lock:
+            for table in tables:
+                try:
+                    cursor = await db.execute(f"SELECT COUNT(*) as cnt FROM {table}")
+                    row = await cursor.fetchone()
+                    stats[table] = row["cnt"] if row else 0
+                except Exception as e:
+                    stats[table] = 0
+
+        return stats
+
+    @with_db_retry()
     async def reset_all_data(self) -> dict:
         """清空所有数据表，返回每个表清空的数量"""
         db = await self.get_conn()
