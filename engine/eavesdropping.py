@@ -748,13 +748,14 @@ class EavesdroppingEngine:
                     )
                     if critical_pattern_check.search(msg_for_check):
                         session_buffer["consecutive_replies"] = 0
+                        consecutive_replies = 0
                         logger.info(
                             f"[CognitionCore] 本条消息包含兴趣关键词，重置观察计数器，继续回复"
                         )
-                    else:
-                        logger.info(
-                            f"[CognitionCore] AI 回复第 {consecutive_replies}/{cooldown_messages} 条"
-                        )
+
+                    logger.info(
+                        f"[CognitionCore] AI 回复第 {consecutive_replies}/{cooldown_messages} 条"
+                    )
 
                     if consecutive_replies >= cooldown_messages:
                         import time
