@@ -456,13 +456,16 @@ class SelfEvolutionPlugin(Star):
             session_buffer = self.session_manager.session_buffers.get(buffer_key, {})
             image_summaries = session_buffer.get("image_summaries", [])
             if image_summaries:
+                req.system_prompt += (
+                    "\n\n【图片识别】以下图片我已识别内容，不需要调用任何图像理解工具："
+                )
                 for summary in image_summaries:
                     if summary.startswith("[") and " | " in summary:
                         content = summary.strip("[]")
-                        req.system_prompt += f"\n\n【当前消息中的图片】: {content}"
+                        req.system_prompt += f"\n- {content}"
                         logger.info(f"[ImageCache] 已注入图片: {content}")
                     else:
-                        req.system_prompt += f"\n\n【当前消息中的图片内容】: {summary}"
+                        req.system_prompt += f"\n- {summary}"
                         logger.info(f"[ImageCache] 已注入图片内容: {summary}")
                 session_buffer.pop("image_summaries", None)
         except Exception as e:
