@@ -130,7 +130,7 @@ class ImageCacheEngine:
         return image_summaries
 
     async def generate_summary(self, caption: str) -> str | None:
-        """从完整描述中提取关键词标签"""
+        """从完整描述中提取简述和关键词标签"""
         try:
             config = self.context.get_config()
 
@@ -157,7 +157,15 @@ class ImageCacheEngine:
                 logger.warning(f"[ImageCache] provider 获取失败: {provider_id}")
                 return None
 
-            prompt = f"从以下图片描述中提取最多10个关键词标签，只返回标签列表，每行一个标签，不要其他内容：\n{caption}"
+            prompt = f"""根据以下图片描述，请完成两个任务：
+1. 用一句话简述图片内容（100字以内）
+2. 提取最多10个关键词标签（用 | 分隔）
+
+图片描述：{caption}
+
+输出格式：
+简述：<一句话描述>
+标签：<tag1 | tag2 | tag3>"""
 
             logger.debug("[ImageCache] 调用 LLM 生成标签...")
 
@@ -169,13 +177,23 @@ class ImageCacheEngine:
             logger.debug(f"[ImageCache] summary 原始值: {summary}")
 
             if summary:
-                labels = [
-                    l.strip()
-                    for l in summary.replace("\n", ",").split(",")
-                    if l.strip()
-                ]
-                result = " | ".join(labels[:10]) if labels else None
-                final_result = f"[{result}]" if result else None
+                lines = summary.strip().split("\n")
+                description = ""
+                tags = []
+
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("简述：") or line.startswith("描述："):
+                        description = line.split("：", 1)[1].strip()
+                    elif line.startswith("标签："):
+                        tag_part = line.split("：", 1)[1].strip()
+                        tags = [t.strip() for t in tag_part.split("|") if t.strip()]
+
+                if not description:
+                    description = caption[:100]
+
+                result_parts = [description] + tags[:10] if tags else [description]
+                final_result = f"[{' | '.join(result_parts)}]"
                 logger.debug(f"[ImageCache] summary 处理后: {final_result}")
                 return final_result
             return None
@@ -233,7 +251,7 @@ class ImageCacheEngine:
                 return False
 
             summary = await self.generate_summary(caption)
-            summary = summary if summary else caption[:20]
+            summary = summary if summary else f"[{caption[:100]}]"
             await self.dao.add_image_cache(img_hash, caption, summary)
 
             group_id = event.get_group_id()

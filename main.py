@@ -438,15 +438,20 @@ class SelfEvolutionPlugin(Star):
             else:
                 logger.warning(f"[Session] 私聊滑动窗口为空，用户 {user_id}")
 
-        # 6.5 图片内容注入（从 session_buffer 中获取图片标签）
+        # 6.5 图片内容注入（从 session_buffer 中获取图片标签和简述）
         try:
             buffer_key = str(group_id) if group_id else f"private_{user_id}"
             session_buffer = self.session_manager.session_buffers.get(buffer_key, {})
             image_summaries = session_buffer.get("image_summaries", [])
             if image_summaries:
-                summary_text = " | ".join(image_summaries)
-                req.system_prompt += f"\n\n【当前消息中的图片内容】: {summary_text}"
-                logger.info(f"[ImageCache] 已注入图片标签: {summary_text}")
+                for summary in image_summaries:
+                    if summary.startswith("[") and " | " in summary:
+                        content = summary.strip("[]")
+                        req.system_prompt += f"\n\n【当前消息中的图片】: {content}"
+                        logger.info(f"[ImageCache] 已注入图片: {content}")
+                    else:
+                        req.system_prompt += f"\n\n【当前消息中的图片内容】: {summary}"
+                        logger.info(f"[ImageCache] 已注入图片内容: {summary}")
                 session_buffer.pop("image_summaries", None)
         except Exception as e:
             logger.warning(f"[ImageCache] 注入图片标签失败: {e}")
