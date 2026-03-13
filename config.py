@@ -209,7 +209,7 @@ class PluginConfig:
     def core_info_keywords(self):
         return self._config.get(
             "core_info_keywords",
-            "我是谁|我的名字|我的身份|我的职责",
+            "我是谁,我的名字,我的身份,我的职责",
         )
 
     @property
@@ -313,10 +313,6 @@ class PluginConfig:
     @property
     def session_whitelist(self):
         return self._config.get("session_whitelist", [])
-
-    @property
-    def desire_cooldown_messages(self):
-        return int(self._config.get("desire_cooldown_messages", 5))
 
     @property
     def profile_precision_mode(self):

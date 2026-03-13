@@ -61,10 +61,6 @@ class SessionManager:
             logger.debug(f"[Session] 群ID和用户ID都为空，跳过记录")
             return
 
-            logger.debug(
-                f"[Session] 记录消息，{label}: {msg_text[:30] if msg_text else '(空)'}"
-            )
-
         max_tokens = self.max_tokens
         msg = f"[{sender_name}]({user_id}): {msg_text}"
         tokens = self._estimate_tokens(msg)

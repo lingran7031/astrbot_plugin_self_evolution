@@ -223,16 +223,16 @@ class EntertainmentEngine:
         """列出表情包"""
         return await self.dao.get_stickers_by_tags(tags, group_id, limit)
 
-    def get_sticker_stats(self, group_id: str = None) -> dict:
+    async def get_sticker_stats(self, group_id: str = None) -> dict:
         """获取表情包统计"""
-        return asyncio.run(self.dao.get_sticker_stats(group_id))
+        return await self.dao.get_sticker_stats(group_id)
 
-    def get_prompt_injection(self, group_id: str) -> str:
+    async def get_prompt_injection(self, group_id: str) -> str:
         """获取表情包相关的 prompt 注入"""
         if not self.cfg.sticker_learning_enabled:
             return ""
 
-        stats = self.get_sticker_stats(group_id)
+        stats = await self.get_sticker_stats(group_id)
         if stats["total"] == 0:
             return ""
 

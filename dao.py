@@ -591,7 +591,7 @@ class SelfEvolutionDAO:
                 )
             else:
                 cursor = await db.execute(
-                    "SELECT COUNT(*) as cnt WHERE date(created_at) = date('now')"
+                    "SELECT COUNT(*) as cnt FROM stickers WHERE date(created_at) = date('now')"
                 )
             row = await cursor.fetchone()
             return row["cnt"] if row else 0
