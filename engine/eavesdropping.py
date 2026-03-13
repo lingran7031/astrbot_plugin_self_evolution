@@ -415,10 +415,10 @@ class EavesdroppingEngine:
                 f"[CognitionCore] 消息过短跳过: {msg_text[:10] if msg_text else '(空)'} ({label})"
             )
             return
-        elif entropy > 0.95:
+        elif entropy < 0.3:
             if not is_at:
                 logger.info(
-                    f"[CognitionCore] 信息熵过高跳过: {msg_text[:10] if msg_text else '(空)'} ({label})"
+                    f"[CognitionCore] 信息熵过低跳过: {msg_text[:10] if msg_text else '(空)'} ({label})"
                 )
                 return
 
