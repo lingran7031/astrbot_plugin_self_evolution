@@ -549,6 +549,7 @@ class SelfEvolutionPlugin(Star):
         """
         插件加载完成后，注册定时自省任务。
         """
+        logger.info("[SelfEvolution] on_loaded 开始执行")
         try:
             cron_mgr = self.context.cron_manager
 
@@ -606,7 +607,7 @@ class SelfEvolutionPlugin(Star):
             )
 
         except Exception as e:
-            logger.warning(f"[SelfEvolution] 注册定时任务失败: {e}")
+            logger.error(f"[SelfEvolution] 注册定时任务失败: {e}", exc_info=True)
 
     async def _scheduled_reflection(self):
         """定时任务回调函数 - 做梦机制"""
