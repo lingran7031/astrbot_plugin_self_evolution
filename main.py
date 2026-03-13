@@ -1063,6 +1063,37 @@ class SelfEvolutionPlugin(Star):
         await self.eavesdropping.periodic_eavesdrop_check()
         logger.info("[Session] 定时互动意愿检查完成。")
 
+    @filter.command("sehelp")
+    async def show_help(self, event: AstrMessageEvent):
+        """显示 Self-Evolution 插件指令帮助"""
+        user_id = event.get_sender_id()
+        is_admin = event.is_admin()
+
+        help_text = """【Self-Evolution 指令帮助】
+
+【用户指令】
+/reflect              - 手动触发一次自我反省
+/affinity             - 查看 AI 对你的好感度评分
+/view_profile [用户ID] - 查看指定用户的画像信息（不填则查看自己）
+/graph_info [用户ID]  - 查看指定用户的关系图谱信息
+/graph_stats [群ID]   - 查看群聊的关系图谱统计"""
+
+        if is_admin:
+            help_text += """
+
+【管理员指令】（仅管理员可用）
+/set_affinity <用户ID> <分数> - 强制重置指定用户的好感度（0-100）
+/delete_profile <用户ID>      - 删除指定用户的画像
+/profile_stats               - 查看画像系统统计信息
+/review_evolutions [页码]    - 列出待审核的人格进化请求
+/approve_evolution <ID>       - 批准指定的进化请求
+/reject_evolution <ID>       - 拒绝指定的进化请求
+/clear_evolutions            - 清空所有待审核的进化请求
+/session                     - 会话管理
+/image_cache [操作]          - 图片缓存管理（list|clear|flush）"""
+
+        yield event.plain_result(help_text)
+
     @filter.command("reflect")
     async def manual_reflect(self, event: AstrMessageEvent):
         """
