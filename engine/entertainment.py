@@ -168,8 +168,7 @@ class EntertainmentEngine:
 
             req = ProviderRequest(
                 prompt=prompt,
-                image_urls=[],
-                image_base64s=[img_base64],
+                image_urls=[f"base64://{img_base64}"],
             )
 
             resp = await provider.chat(req)
