@@ -240,7 +240,8 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `/approve_evolution <ID>` | 批准指定的进化请求 |
 | `/reject_evolution <ID>` | 拒绝指定的进化请求 |
 | `/clear_evolutions` | 清空所有待审核的进化请求 |
-| `/sticker [操作]` | 表情包管理（list: 列出 / untagged: 未打标签 / delete <ID>: 删除 / clear: 清空 / stats: 统计） |
+| `/sticker [操作]` | 表情包管理（list: 列出 / untagged: 未打标签 / delete <ID>: 删除 / clear: 清空 / stats: 统计 / reindex: 重新编号） |
+| `/db reset` | 重置插件数据库（30秒确认，需管理员） |
 
 ---
 
@@ -371,6 +372,8 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `group_vibe_enabled` | bool | true | 启用群体情绪共染 |
 | `inner_monologue_enabled` | bool | true | 启用内心独白 |
 
+**内心独白**：当 AI 判定"忽略"或"无聊"不直接回复时，会生成内心独白缓存。在下一轮对话中，这些内心独白会注入 prompt，让 AI 的回复更具内在动机感。
+
 ### 滑动窗口与会话
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -398,6 +401,8 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `graph_enabled` | bool | true | 启用关系图谱 RAG |
 
 ### 表情包学习
+
+> **注意**：表情包库是**全局共享**的，所有群使用同一个表情包库。
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
@@ -430,6 +435,7 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `user_relationships` | 用户好感度评分 |
 | `user_interactions` | 用户互动关系图谱 |
 | `stickers` | 表情包存储（Base64编码） |
+| `inner_monologues` | 内心独白缓存 |
 
 ---
 
