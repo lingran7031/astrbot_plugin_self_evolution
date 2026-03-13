@@ -553,17 +553,6 @@ class SelfEvolutionDAO:
             ]
 
     @with_db_retry()
-    async def update_sticker_tags(self, sticker_id: int, tags: str) -> bool:
-        """更新表情包标签（内部使用）"""
-        db = await self.get_conn()
-        async with self._write_lock:
-            cursor = await db.execute(
-                "UPDATE stickers SET tags = ? WHERE id = ?", (tags, sticker_id)
-            )
-            await db.commit()
-            return cursor.rowcount > 0
-
-    @with_db_retry()
     async def update_sticker_tags_by_uuid(self, sticker_uuid: str, tags: str) -> bool:
         """根据UUID更新表情包标签"""
         db = await self.get_conn()
@@ -647,40 +636,6 @@ class SelfEvolutionDAO:
                 }
 
     @with_db_retry()
-    async def get_sticker_by_uuid(self, sticker_uuid: str) -> dict | None:
-        """根据UUID获取表情包"""
-        db = await self.get_conn()
-        async with self._db_lock:
-            cursor = await db.execute(
-                "SELECT id, uuid, group_id, user_id, base64_data, tags, created_at FROM stickers WHERE uuid = ?",
-                (sticker_uuid,),
-            )
-            row = await cursor.fetchone()
-            if row:
-                return {
-                    "id": row["id"],
-                    "uuid": row["uuid"],
-                    "group_id": row["group_id"],
-                    "user_id": row["user_id"],
-                    "base64_data": row["base64_data"],
-                    "tags": row["tags"],
-                    "created_at": row["created_at"],
-                }
-            return None
-
-    @with_db_retry()
-    async def delete_sticker_by_id(self, sticker_id: int) -> bool:
-        """根据ID删除表情包（内部使用）"""
-        db = await self.get_conn()
-        async with self._write_lock:
-            cursor = await db.execute(
-                "DELETE FROM stickers WHERE id = ?",
-                (sticker_id,),
-            )
-            await db.commit()
-            return cursor.rowcount > 0
-
-    @with_db_retry()
     async def delete_sticker_by_uuid(self, sticker_uuid: str) -> bool:
         """根据UUID删除表情包"""
         db = await self.get_conn()
@@ -755,45 +710,6 @@ class SelfEvolutionDAO:
             )
             await db.commit()
             return cursor.rowcount > 0
-
-    @with_db_retry()
-    async def delete_stickers_by_ids(self, ids: list) -> int:
-        """批量删除表情包，返回删除数量"""
-        if not ids:
-            return 0
-        db = await self.get_conn()
-        async with self._write_lock:
-            placeholders = ",".join("?" * len(ids))
-            cursor = await db.execute(
-                f"DELETE FROM stickers WHERE id IN ({placeholders})",
-                ids,
-            )
-            await db.commit()
-            return cursor.rowcount
-
-    @with_db_retry()
-    async def reindex_stickers(self) -> int:
-        """重新编号表情包ID，返回剩余数量"""
-        db = await self.get_conn()
-        async with self._write_lock:
-            # 获取所有表情包按ID排序
-            cursor = await db.execute(
-                "SELECT id, group_id, user_id, base64_data, tags, created_at FROM stickers ORDER BY id"
-            )
-            rows = await cursor.fetchall()
-
-            if not rows:
-                return 0
-
-            # 重新插入并更新ID
-            for idx, row in enumerate(rows, start=1):
-                await db.execute(
-                    "UPDATE stickers SET id = ? WHERE id = ?",
-                    (idx, row["id"]),
-                )
-
-            await db.commit()
-            return len(rows)
 
     @with_db_retry()
     async def get_db_stats(self) -> dict:
