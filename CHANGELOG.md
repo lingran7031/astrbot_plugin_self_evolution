@@ -4,6 +4,44 @@
 
 ---
 
+## [5.2.1] - 2026-03-13
+
+### 与框架解耦
+
+- 移除滑动窗口 prompt 注入（与框架 LongTermMemory 冲突）
+- 移除自动记忆检索注入（与框架 KB 冲突）
+- 移除 SessionManager 的 KB 存储逻辑
+- 移除定时任务 periodic_check（合并到 SessionManager）
+
+### 线程安全优化
+
+- EavesdroppingEngine 添加 asyncio 锁（_bucket_lock, _boredom_lock, _active_users_lock, _intercepted_lock）
+- SessionManager 添加 asyncio 锁（_buffer_lock）
+
+### 信息熵修复
+
+- 修复熵值判断逻辑反转问题（之前是高熵跳过，应为低熵跳过）
+- 完善信息质量多维度检查：熵值、字符多样性、疑似乱码
+
+### 图片处理优化
+
+- 区分已知图片（有缓存）和未知图片（无缓存），注入不同引导语
+- 添加 prompt 引导，告诉 LLM 不需要重复调用图像理解工具
+- 优化性能：漏斗中只记录图片标记（boost=0.1），不调用图片处理
+
+### 配置优化
+
+- 删除多余配置项（boredom_threshold, session_auto_commit, session_commit_threshold 等）
+- 硬编码信息熵阈值（0.3）到代码中
+- 添加 debug_log_enabled 配置项
+- 添加 max_prompt_injection_length 配置项
+
+### Bug 修复
+
+- 修复 prompt 注入长度控制报错（添加 None 检查）
+
+---
+
 ## [5.2.0] - 2026-03-13
 
 ### 代码结构优化
