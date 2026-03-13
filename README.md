@@ -30,6 +30,7 @@ Self-Evolution 是一个面向 AstrBot 平台的认知增强插件。它赋予 A
 | 元编程 | AI 读取/修改自身源码，多智能体对抗审查 | 关闭 |
 | 图片处理优化 | 区分已知/未知图片，优化 MCP 工具调用 | 启用 |
 | 表情包学习 | 自动学习指定群友表情包，AI 主动发送活跃气氛 | 关闭 |
+| 今日老婆 | 随机抽取群友作为今日老婆 | 启用 |
 
 ---
 
@@ -244,6 +245,7 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `/graph_info [用户ID]` | 查看指定用户的关系图谱信息 |
 | `/graph_stats [群ID]` | 查看群聊的关系图谱统计 |
 | `/session` | 查看当前群的滑动窗口缓存内容 |
+| `/今日老婆` | 随机抽取一名群友作为今日老婆 |
 
 ### 管理员指令
 
@@ -328,6 +330,8 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `persona_name` | string | 黑塔 | 机器人名称 |
 | `persona_title` | string | 人偶负责人 | 机器人头衔/身份 |
 | `persona_style` | string | 理性、犀利且专业 | 互动意愿时的语气风格描述 |
+| `core_principles` | string | (见配置) | 核心价值观/安全锚点 |
+| `admin_users` | list | [] | 管理员 ID 列表 |
 | `debug_log_enabled` | bool | false | Debug 日志模式 |
 | `max_prompt_injection_length` | int | 2000 | Prompt 注入最大长度 |
 
@@ -346,18 +350,6 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `boredom_enabled` | bool | true | 启用信息熵无聊检测 |
 | `boredom_consecutive_count` | int | 5 | 连续低信息量消息达到此数量后触发无聊状态 |
 | `boredom_sarcastic_reply` | bool | true | 无聊时被@是否输出傲慢回复 |
-
-### 滑动窗口与会话
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `session_max_tokens` | int | 4000 | 每群滑动窗口最大 Token 数 |
-| `session_whitelist` | string | "" | 白名单群号（逗号分隔，空表示所有群） |
-| `eavesdrop_interval_minutes` | int | 10 | 定时互动意愿检查间隔（分钟） |
-| `eavesdrop_message_threshold` | int | 20 | 定时互动意愿触发的消息数阈值（基础值） |
-| `eavesdrop_threshold_min` | int | 10 | 有趣判定时的最低阈值 |
-| `eavesdrop_threshold_max` | int | 50 | 无聊判定时的最高阈值 |
-| `session_cleanup_timeout` | int | 600 | 会话缓冲超时时间（秒） |
 
 ### 记忆系统
 
@@ -395,6 +387,20 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `san_recovery_per_hour` | int | 10 | 每小时恢复精力 |
 | `san_low_threshold` | int | 20 | 低精力阈值（低于此值表现疲态） |
 | `group_vibe_enabled` | bool | true | 启用群体情绪共染 |
+| `inner_monologue_enabled` | bool | true | 启用内心独白 |
+
+### 滑动窗口与会话
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `session_max_tokens` | int | 4000 | 每群滑动窗口最大 Token 数 |
+| `session_whitelist` | string | "" | 白名单群号（逗号分隔，空表示所有群） |
+| `private_session_enabled` | bool | true | 私聊滑动窗口 |
+| `eavesdrop_interval_minutes` | int | 10 | 定时互动意愿检查间隔（分钟） |
+| `eavesdrop_message_threshold` | int | 20 | 定时互动意愿触发的消息数阈值（基础值） |
+| `eavesdrop_threshold_min` | int | 10 | 有趣判定时的最低阈值 |
+| `eavesdrop_threshold_max` | int | 50 | 无聊判定时的最高阈值 |
+| `session_cleanup_timeout` | int | 600 | 会话缓冲超时时间（秒） |
 
 ### 元编程与对抗
 
