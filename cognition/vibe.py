@@ -90,28 +90,38 @@ class GroupVibeSystem:
             if w in msg_text:
                 score += 1
 
-        current = self._group_vibe.get(group_id, 0)
-        self._group_vibe[group_id] = max(-10, min(10, current + score))
-        self._vibe_access_time[group_id] = time.time()
+        if score != 0:
+            old_vibe = self._group_vibe.get(group_id, 0)
+            self._group_vibe[group_id] = max(-10, min(10, old_vibe + score))
+            self._vibe_access_time[group_id] = time.time()
+            logger.info(
+                f"[Vibe] 群 {group_id} 氛围变化: {old_vibe} -> {self._group_vibe[group_id]} (score: {score})"
+            )
+        else:
+            self._vibe_access_time[group_id] = time.time()
 
     def get_vibe(self, group_id: str) -> str:
         if not self.enabled:
             return ""
-        vibe = self._group_vibe.get(group_id, 0)
-        logger.debug(f"[Vibe] 获取群氛围，群 {group_id}: {vibe}")
-        if vibe < -5:
-            return "群氛围紧张"
-        elif vibe < 0:
-            return "群氛围略低沉"
-        elif vibe > 5:
-            return "群氛围热烈"
-        elif vibe > 0:
-            return "群氛围轻松"
-        return "群氛围平静"
+        vibe_value = self._group_vibe.get(group_id, 0)
+        logger.debug(f"[Vibe] 获取群氛围，群 {group_id}: value={vibe_value}")
+        if vibe_value < -5:
+            vibe_text = "群氛围紧张"
+        elif vibe_value < 0:
+            vibe_text = "群氛围略低沉"
+        elif vibe_value > 5:
+            vibe_text = "群氛围热烈"
+        elif vibe_value > 0:
+            vibe_text = "群氛围轻松"
+        else:
+            vibe_text = "群氛围平静"
+        logger.info(f"[Vibe] 群 {group_id} 氛围: {vibe_text} (value={vibe_value})")
+        return vibe_text
 
     def get_prompt_injection(self, group_id: str) -> str:
         if not self.enabled:
             return ""
         vibe = self.get_vibe(group_id)
+        injection = f"\n\n【群氛围感知】{vibe}"
         logger.debug(f"[Vibe] 生成群氛围提示注入，群 {group_id}: {vibe}")
-        return f"\n\n【群氛围感知】{vibe}"
+        return injection

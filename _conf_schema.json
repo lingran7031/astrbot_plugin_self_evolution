@@ -410,5 +410,12 @@
         "hint": "滑动窗口消息数超过此值时才存入知识库，避免存入太少内容",
         "type": "int",
         "default": 5
+    },
+    "debug_log_enabled": {
+        "title": "Debug 日志模式",
+        "description": "开启后输出详细调试日志，方便排查问题",
+        "hint": "生产环境建议关闭，否则日志量较大",
+        "type": "bool",
+        "default": false
     }
 }

@@ -51,6 +51,7 @@ class SANSystem:
         if self._san_value is None:
             self._san_value = self.max_value
             self._san_last_recovery = time.time()
+            logger.info(f"[SAN] 精力值已初始化: {self._san_value}/{self.max_value}")
 
         current_time = time.time()
         elapsed = current_time - (self._san_last_recovery or current_time)
@@ -59,25 +60,35 @@ class SANSystem:
             recovered = int(elapsed / 3600) * self.recovery_per_hour
             self._san_value = min(self.max_value, self._san_value + recovered)
             self._san_last_recovery = current_time
-            logger.debug(f"[SAN] 精力恢复: {self._san_value}/{self.max_value}")
+            logger.info(
+                f"[SAN] 精力恢复 +{recovered}: {self._san_value}/{self.max_value}"
+            )
 
         if self._san_value <= 0:
+            logger.warning(f"[SAN] 精力耗尽，拒绝服务")
             return False
 
-        self._san_value = max(0, self._san_value - self.cost_per_message)
+        consumed = self.cost_per_message
+        self._san_value = max(0, self._san_value - consumed)
+        logger.debug(f"[SAN] 精力消耗 -{consumed}: {self._san_value}/{self.max_value}")
         return True
 
     def get_status(self):
         if not self.enabled:
             return ""
         if self._san_value is None:
-            return "精力充沛"
+            status = "精力充沛"
+            logger.debug(f"[SAN] 获取状态: {status}")
+            return status
         ratio = self._san_value / self.max_value
         if ratio < 0.2:
-            return "疲惫不堪"
+            status = "疲惫不堪"
         elif ratio < 0.5:
-            return "略有疲态"
-        return "精力充沛"
+            status = "略有疲态"
+        else:
+            status = "精力充沛"
+        logger.debug(f"[SAN] 获取状态: {status} ({self._san_value}/{self.max_value})")
+        return status
 
     def get_prompt_injection(self):
         if not self.enabled:

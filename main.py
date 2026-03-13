@@ -13,6 +13,7 @@ import time
 import re
 import json
 import aiosqlite
+import logging
 from datetime import datetime
 from mcp.types import CallToolResult, TextContent
 
@@ -68,6 +69,12 @@ class SelfEvolutionPlugin(Star):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         db_path = os.path.join(self.data_dir, "self_evolution.db")
 
+        # 配置系统（提前初始化，以便后续使用）
+        self.cfg = PluginConfig(self)
+
+        # 设置 Debug 日志模式
+        self._setup_debug_logging()
+
         # 初始化模块化组件
         try:
             self.dao = SelfEvolutionDAO(db_path)
@@ -82,8 +89,6 @@ class SelfEvolutionPlugin(Star):
             # 认知系统模块
             self.san_system = SANSystem(self)
             self.vibe_system = GroupVibeSystem(self)
-            # 配置系统
-            self.cfg = PluginConfig(self)
             logger.info(
                 "[SelfEvolution] 核心组件 (DAO, Eavesdropping, ImageCache, MetaInfra, Memory, Persona, Profile, GraphRAG, SAN, Vibe, Config) 初始化完成。"
             )
@@ -94,6 +99,35 @@ class SelfEvolutionPlugin(Star):
         # CognitionCore 6.0: 状态容器
         self._lock = None  # 用于元编程写锁
         self.daily_reflection_pending = False
+
+    def _setup_debug_logging(self):
+        """根据配置设置 debug 日志模式"""
+        debug_enabled = getattr(self.cfg, "debug_log_enabled", False)
+        if debug_enabled:
+            # 创建一个带时间戳的详细格式
+            detailed_format = "[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
+            date_format = "%Y-%m-%d %H:%M:%S"
+
+            # 设置所有相关模块的日志级别为 DEBUG
+            loggers_to_setup = [
+                "astrbot.astrbot_plugin_self_evolution",
+                "astrbot",
+            ]
+
+            for logger_name in loggers_to_setup:
+                log = logging.getLogger(logger_name)
+                log.setLevel(logging.DEBUG)
+                # 如果没有处理器，添加一个
+                if not log.handlers:
+                    handler = logging.StreamHandler()
+                    handler.setFormatter(
+                        logging.Formatter(detailed_format, date_format)
+                    )
+                    log.addHandler(handler)
+
+            logger.info("[SelfEvolution] Debug 日志模式已开启，详细日志将输出到控制台")
+        else:
+            logger.info("[SelfEvolution] Debug 日志模式关闭")
 
     def __getattr__(self, name):
         """代理配置访问到 cfg"""

@@ -345,3 +345,7 @@ class PluginConfig:
     def get(self, key, default=None):
         """通用获取配置"""
         return self._config.get(key, default)
+
+    @property
+    def debug_log_enabled(self):
+        return self._parse_bool(self._config.get("debug_log_enabled"), False)

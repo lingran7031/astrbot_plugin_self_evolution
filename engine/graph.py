@@ -32,7 +32,7 @@ class GraphRAG:
                 await self.dao.record_interaction(
                     str(user_id), str(other_user_id), str(group_id)
                 )
-            logger.debug(f"[GraphRAG] 已记录用户 {user_id} 在群 {group_id} 的互动")
+            logger.info(f"[GraphRAG] 记录互动: 用户 {user_id} 在群 {group_id}")
         except Exception as e:
             logger.warning(f"[GraphRAG] 记录互动失败: {e}")
 
@@ -98,6 +98,7 @@ class GraphRAG:
         frequent_users = await self.get_frequent_interactors(user_id)
 
         if not groups and not frequent_users:
+            logger.debug(f"[GraphRAG] 用户无关系数据: {user_id}")
             return ""
 
         enhancement = ["\n【关系图谱增强信息】"]
@@ -110,7 +111,9 @@ class GraphRAG:
 
         enhancement.append("（此信息来自关系图谱，仅供参考）")
         result = "\n".join(enhancement)
-        logger.debug(f"[GraphRAG] 检索增强完成，返回 {len(result)} 字符")
+        logger.info(
+            f"[GraphRAG] 关系增强完成: 用户 {user_id}, 群数={len(groups)}, 频繁互动={len(frequent_users)}"
+        )
         return result
 
     async def get_group_members(self, group_id: str) -> List[str]:

@@ -82,6 +82,7 @@ class ProfileManager:
         # 先从缓存读取
         if user_id in self._profile_cache:
             self._cache_access_time[user_id] = time.time()
+            logger.debug(f"[Profile] 从缓存加载画像: {user_id}")
             return self._profile_cache[user_id]
 
         path = self._get_profile_path(user_id)
@@ -91,9 +92,13 @@ class ProfileManager:
                 # 存入缓存
                 self._profile_cache[user_id] = content
                 self._cache_access_time[user_id] = time.time()
+                logger.info(
+                    f"[Profile] 从磁盘加载画像: {user_id} ({len(content)} 字符)"
+                )
                 return content
             except IOError as e:
                 logger.warning(f"[Profile] 读取画像失败 {user_id}: {e}")
+        logger.debug(f"[Profile] 用户无画像: {user_id}")
         return ""
 
     async def save_profile(self, user_id: str, content: str):
@@ -106,13 +111,14 @@ class ProfileManager:
         # 更新缓存
         self._profile_cache[user_id] = content
         self._cache_access_time[user_id] = time.time()
-        logger.info(f"[Profile] 已保存用户画像: {user_id}")
+        logger.info(f"[Profile] 已保存用户画像: {user_id} ({len(content)} 字符)")
 
     async def get_profile_summary(self, user_id: str) -> str:
         """获取画像摘要（用于注入 LLM）- 支持分层失活"""
         logger.debug(f"[Profile] 获取画像摘要: {user_id}")
         content = await self.load_profile(user_id)
         if not content:
+            logger.debug(f"[Profile] 用户无画像，返回空: {user_id}")
             return ""
 
         lines = content.split("\n")
@@ -121,6 +127,7 @@ class ProfileManager:
             preview = "\n".join(lines[:10])
             if len(content) > 500:
                 preview += "\n..."
+            logger.debug(f"[Profile] 画像摘要(不分层): {user_id} ({len(preview)} 字符)")
             return preview
 
         core_lines = []
@@ -146,6 +153,9 @@ class ProfileManager:
         if len(all_kept) > 10:
             result += f"\n... (共 {len(all_kept)} 条，已随机保留)"
 
+        logger.info(
+            f"[Profile] 画像摘要(分层): {user_id}, core={len(core_lines)}, edge={len(kept_edge)}/{len(edge_lines)}"
+        )
         return result
 
     async def cleanup_expired_profiles(self, days: int = 90):
