@@ -545,7 +545,7 @@ class SelfEvolutionPlugin(Star):
                     logger.warning(f"[Session] 存入AI回复失败: {e}")
 
     @filter.on_plugin_loaded()
-    async def on_loaded(self):
+    async def on_loaded(self, metadata):
         """
         插件加载完成后，注册定时自省任务。
         """
