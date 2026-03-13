@@ -288,7 +288,7 @@ class EavesdroppingEngine:
         return params["daily_boost"]
 
     async def handle_message(self, event: AstrMessageEvent):
-        msg_text = event.message_str
+        msg_text = event.message_str or ""
         session_id = str(event.session_id)
         user_id = str(event.get_sender_id())
         sender_name = event.get_sender_name() or "Unknown"
@@ -309,8 +309,35 @@ class EavesdroppingEngine:
             is_private = True
 
         group_id = str(group_id)
+
+        # === 图片检测：作为发言意愿加分项 ===
+        image_boost = 0.0
+        has_image = False
+        try:
+            if event.message_obj and hasattr(event.message_obj, "message"):
+                for comp in event.message_obj.message:
+                    comp_type = type(comp).__name__
+                    if comp_type == "Image":
+                        has_image = True
+                        break
+        except Exception:
+            pass
+
+        if has_image:
+            logger.info(f"[漏斗] 检测到图片，尝试获取标签...")
+            try:
+                image_summaries = await self.plugin.image_cache.process_image_captions(
+                    event
+                )
+                if image_summaries:
+                    image_boost = self.plugin.cfg.interest_boost
+                    logger.info(f"[漏斗] 检测到图片，增加欲望值: +{image_boost}")
+            except Exception as e:
+                logger.warning(f"[漏斗] 图片处理失败: {e}")
+        # =========================================
+
         logger.info(
-            f"[CognitionCore] 收到待评估消息，{label}: {msg_text[:30] if msg_text else '(空)'}"
+            f"[CognitionCore] 收到待评估消息，{label}: {msg_text[:30] if msg_text else '(无文字)'}"
         )
 
         # 漏斗机制：检测用户是否活跃
@@ -367,7 +394,7 @@ class EavesdroppingEngine:
 
         # 计算 boost 值（统一入口，根据触发条件不同）
         critical_pattern = re.compile(
-            f"({self.plugin.critical_keywords})", re.IGNORECASE
+            f"({self.plugin.cfg.critical_keywords})", re.IGNORECASE
         )
         level2_triggered = self._check_funnel_level2(event)
 
@@ -383,7 +410,16 @@ class EavesdroppingEngine:
         elif level2_triggered:
             boost = params["interest_boost"] * 0.8  # L2 稍低
             trigger_reason = "L2意图"
-        elif len(msg_text) < 6 and not is_at:
+        elif has_image and image_boost > 0:
+            boost = image_boost
+            trigger_reason = "图片"
+
+        # 图片加分：在其他条件基础上额外加分
+        if has_image and image_boost > 0 and trigger_reason != "图片":
+            boost += image_boost
+            trigger_reason += "+图片"
+
+        if len(msg_text) < 6 and not is_at and not has_image:
             logger.info(
                 f"[CognitionCore] 消息过短跳过: {msg_text[:10] if msg_text else '(空)'} ({label})"
             )
