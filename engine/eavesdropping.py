@@ -744,6 +744,9 @@ class EavesdroppingEngine:
                         consecutive_replies = (
                             session_buffer.get("consecutive_replies", 0) + 1
                         )
+                    else:  # value == 0
+                        logger.info(f"[CognitionCore] 判定为0，静默")
+                        return
                         session_buffer["consecutive_replies"] = consecutive_replies
                         cooldown_messages = getattr(
                             self.plugin, "desire_cooldown_messages", 5

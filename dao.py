@@ -133,6 +133,12 @@ class SelfEvolutionDAO:
                 UNIQUE(group_id, user_id, base64_data)
             )
         """)
+        # 迁移旧表：添加 uuid 列（如果不存在）
+        try:
+            await db.execute("ALTER TABLE stickers ADD COLUMN uuid TEXT")
+        except:
+            pass  # 列已存在忽略错误
+
         # 迁移旧数据：给已有记录生成 uuid
         cursor = await db.execute(
             "SELECT COUNT(*) as cnt FROM stickers WHERE uuid IS NULL"
