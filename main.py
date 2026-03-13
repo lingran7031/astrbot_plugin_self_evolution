@@ -100,6 +100,7 @@ class SelfEvolutionPlugin(Star):
         # CognitionCore 6.0: 状态容器
         self._lock = None  # 用于元编程写锁
         self.daily_reflection_pending = False
+        self._pending_db_reset = {}  # 待确认的数据库重置操作 {user_id: timestamp}
 
     def _setup_debug_logging(self):
         """根据配置设置 debug 日志模式"""
@@ -1916,4 +1917,58 @@ class SelfEvolutionPlugin(Star):
                 "/sticker clear        # 清空所有表情包\n"
                 "/sticker reindex      # 重新编号\n"
                 "/sticker stats        # 查看统计"
+            )
+
+    @filter.command("db")
+    async def db_cmd(self, event: AstrMessageEvent, action: str = "", param: str = ""):
+        """数据库管理命令"""
+        import time
+
+        user_id = str(event.get_sender_id())
+
+        if not event.is_admin() and (
+            not self.admin_users or user_id not in self.admin_users
+        ):
+            yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
+            return
+
+        action = action.lower()
+
+        if action == "reset":
+            # 设置待确认状态，有效期 30 秒
+            self._pending_db_reset[user_id] = time.time() + 30
+            yield event.plain_result(
+                "⚠️ 确认清空所有数据？\n"
+                "此操作不可恢复！\n"
+                "请在 30 秒内输入 /db confirm 确认执行。"
+            )
+            return
+
+        elif action == "confirm":
+            pending_time = self._pending_db_reset.get(user_id, 0)
+
+            if time.time() > pending_time:
+                yield event.plain_result("操作已超时，请重新输入 /db reset")
+                self._pending_db_reset.pop(user_id, None)
+                return
+
+            # 执行清空
+            results = await self.dao.reset_all_data()
+
+            # 清理待确认状态
+            self._pending_db_reset.pop(user_id, None)
+
+            # 生成结果消息
+            msg = ["✅ 数据库已清空：\n"]
+            for table, count in results.items():
+                msg.append(f"- {table}: {count} 条")
+
+            yield event.plain_result("\n".join(msg))
+            return
+
+        else:
+            yield event.plain_result(
+                "【数据库管理】\n"
+                "/db reset    # 清空所有数据（需确认）\n"
+                "/db confirm   # 确认执行清空"
             )

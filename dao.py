@@ -725,3 +725,33 @@ class SelfEvolutionDAO:
 
             await db.commit()
             return len(rows)
+
+    @with_db_retry()
+    async def reset_all_data(self) -> dict:
+        """清空所有数据表，返回每个表清空的数量"""
+        db = await self.get_conn()
+        results = {}
+
+        tables = [
+            "pending_evolutions",
+            "pending_reflections",
+            "user_relationships",
+            "user_interactions",
+            "stickers",
+            "inner_monologues",
+        ]
+
+        async with self._write_lock:
+            for table in tables:
+                try:
+                    cursor = await db.execute(f"SELECT COUNT(*) as cnt FROM {table}")
+                    row = await cursor.fetchone()
+                    count = row["cnt"] if row else 0
+
+                    await db.execute(f"DELETE FROM {table}")
+                    results[table] = count
+                except Exception as e:
+                    results[table] = f"错误: {e}"
+
+            await db.commit()
+            return results
