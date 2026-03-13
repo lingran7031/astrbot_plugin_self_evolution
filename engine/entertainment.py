@@ -251,45 +251,43 @@ class EntertainmentEngine:
                 except Exception:
                     pass
 
-    async def should_send_sticker(self, group_id: str) -> bool:
-        """判断当前是否应该发表情包"""
+    async def should_send_sticker(self) -> bool:
+        """判断当前是否应该发表情包（全局）"""
         if not self.cfg.sticker_learning_enabled:
             return False
 
         cooldown_seconds = self.cfg.sticker_send_cooldown * 60
-        last_time = self._last_send_time.get(group_id, 0)
+        last_time = self._last_send_time.get("global", 0)
         if time.time() - last_time < cooldown_seconds:
             logger.debug(
                 f"[Sticker] 发表情包冷却中，剩余 {int(cooldown_seconds - (time.time() - last_time))} 秒"
             )
             return False
 
-        sticker = await self.dao.get_random_sticker(group_id)
+        sticker = await self.dao.get_random_sticker()
         return sticker is not None
 
-    async def get_sticker_for_sending(self, group_id: str) -> dict | None:
-        """获取要发送的表情包"""
-        sticker = await self.dao.get_random_sticker(group_id)
+    async def get_sticker_for_sending(self) -> dict | None:
+        """获取要发送的表情包（全局）"""
+        sticker = await self.dao.get_random_sticker()
         if sticker:
-            self._last_send_time[group_id] = time.time()
+            self._last_send_time["global"] = time.time()
         return sticker
 
-    async def list_stickers(
-        self, group_id: str, tags: str = None, limit: int = 10
-    ) -> list:
-        """列出表情包"""
-        return await self.dao.get_stickers_by_tags(tags, group_id, limit)
+    async def list_stickers(self, tags: str = None, limit: int = 10) -> list:
+        """列出表情包（全局）"""
+        return await self.dao.get_stickers_by_tags(tags, limit)
 
-    async def get_sticker_stats(self, group_id: str = None) -> dict:
-        """获取表情包统计"""
-        return await self.dao.get_sticker_stats(group_id)
+    async def get_sticker_stats(self) -> dict:
+        """获取表情包统计（全局）"""
+        return await self.dao.get_sticker_stats()
 
-    async def get_prompt_injection(self, group_id: str) -> str:
+    async def get_prompt_injection(self) -> str:
         """获取表情包相关的 prompt 注入"""
         if not self.cfg.sticker_learning_enabled:
             return ""
 
-        stats = await self.get_sticker_stats(group_id)
+        stats = await self.get_sticker_stats()
         if stats["total"] == 0:
             return ""
 

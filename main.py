@@ -437,10 +437,8 @@ class SelfEvolutionPlugin(Star):
             req.system_prompt += self.vibe_system.get_prompt_injection(str(group_id))
 
         # 4.10 表情包库注入
-        if self.cfg.sticker_learning_enabled and group_id:
-            req.system_prompt += await self.entertainment.get_prompt_injection(
-                str(group_id)
-            )
+        if self.cfg.sticker_learning_enabled:
+            req.system_prompt += await self.entertainment.get_prompt_injection()
 
         # 4.11 社交偏见注入
         if social_bias_hint:
@@ -1732,22 +1730,16 @@ class SelfEvolutionPlugin(Star):
     async def list_stickers_tool(
         self, event: AstrMessageEvent, tags: str = "", limit: int = 10
     ) -> str:
-        """列出可用的表情包。
+        """列出可用的表情包（全局）。
 
         Args:
             tags(string): 可选，按标签筛选（模糊匹配）
             limit(int): 返回数量，默认10，最大50
         """
-        group_id = event.get_group_id()
-        if not group_id:
-            return "此功能仅限群聊使用"
-
         if limit > 50:
             limit = 50
 
-        stickers = await self.entertainment.list_stickers(
-            group_id, tags if tags else "", limit
-        )
+        stickers = await self.entertainment.list_stickers(tags if tags else "", limit)
 
         if not stickers:
             return "表情包库为空或未找到匹配的表情包"
@@ -1774,7 +1766,7 @@ class SelfEvolutionPlugin(Star):
             yield event.plain_result("此功能仅限群聊使用")
             return
 
-        if not await self.entertainment.should_send_sticker(group_id):
+        if not await self.entertainment.should_send_sticker():
             cooldown = self.cfg.sticker_send_cooldown
             yield event.plain_result(f"冷却中，请 {cooldown} 分钟后再试")
             return
@@ -1783,10 +1775,10 @@ class SelfEvolutionPlugin(Star):
         if sticker_id:
             sticker = await self.dao.get_sticker_by_id(sticker_id)
         elif tags:
-            stickers = await self.entertainment.list_stickers(group_id, tags, 1)
+            stickers = await self.entertainment.list_stickers(tags, 1)
             sticker = stickers[0] if stickers else None
         else:
-            sticker = await self.entertainment.get_sticker_for_sending(group_id)
+            sticker = await self.entertainment.get_sticker_for_sending()
 
         if not sticker:
             yield event.plain_result("未找到合适的表情包")
@@ -1805,24 +1797,23 @@ class SelfEvolutionPlugin(Star):
     async def sticker_cmd(
         self, event: AstrMessageEvent, action: str = "list", param: str = ""
     ):
-        """表情包管理命令"""
+        """表情包管理命令（全局）"""
         if not event.is_admin() and (
             not self.admin_users or str(event.get_sender_id()) not in self.admin_users
         ):
             yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
             return
 
-        group_id = event.get_group_id()
         action = action.lower()
 
         if action == "list":
-            page = int(param) if param else 1
+            page = int(param) if param and param.isdigit() else 1
             page_size = 10
             offset = (page - 1) * page_size
 
-            stickers = await self.dao.get_stickers_by_tags("", group_id, page_size)
-            total = await self.dao.get_sticker_count(group_id)
-            today = await self.dao.get_today_sticker_count(group_id)
+            stickers = await self.dao.get_stickers_by_tags("", page_size, offset)
+            total = await self.dao.get_sticker_count()
+            today = await self.dao.get_today_sticker_count()
 
             if not stickers:
                 yield event.plain_result("暂无表情包。")
@@ -1834,9 +1825,12 @@ class SelfEvolutionPlugin(Star):
             for s in stickers:
                 tags = s["tags"][:30] if s["tags"] else "无标签"
                 result.append(f"ID:{s['id']} | 用户:{s['user_id']} | 标签:{tags}")
-            result.append(f"\n【删除指令】")
-            result.append("/sticker delete <ID>    # 删除指定ID")
-            result.append("/sticker clear          # 清空所有表情包")
+            result.append(f"\n【管理指令】")
+            result.append(
+                "/sticker delete <ID>     # 删除指定ID，如 delete 1 或 delete 1-3"
+            )
+            result.append("/sticker clear           # 清空所有表情包")
+            result.append("/sticker reindex       # 重新编号")
             yield event.plain_result("\n".join(result))
 
         elif action == "untagged":
@@ -1855,21 +1849,42 @@ class SelfEvolutionPlugin(Star):
 
         elif action == "delete":
             if not param:
-                yield event.plain_result("请提供要删除的表情包ID。")
+                yield event.plain_result("请提供要删除的表情包ID，支持如 1、1-3、1,3,5")
                 return
 
-            try:
-                sticker_id = int(param)
-                deleted = await self.dao.delete_sticker_by_id(sticker_id)
-                if deleted:
-                    yield event.plain_result(f"已删除表情包 ID:{sticker_id}")
+            # 解析批量删除参数
+            ids_to_delete = []
+            param = param.replace(" ", "")
+
+            # 支持格式: 1,3,5 或 1-3 或 1-3,5,7-9
+            parts = param.replace(",", "-").split("-")
+            i = 0
+            while i < len(parts):
+                if parts[i].isdigit():
+                    ids_to_delete.append(int(parts[i]))
+                    i += 1
+                elif parts[i] == "" and i + 1 < len(parts) and parts[i + 1].isdigit():
+                    # 这是一个范围
+                    start = ids_to_delete.pop() if ids_to_delete else 0
+                    end = int(parts[i + 1])
+                    for idx in range(start, end + 1):
+                        ids_to_delete.append(idx)
+                    i += 2
                 else:
-                    yield event.plain_result(f"未找到 ID:{sticker_id} 的表情包")
-            except ValueError:
-                yield event.plain_result("ID 必须是数字")
+                    i += 1
+
+            if not ids_to_delete:
+                yield event.plain_result("无法解析ID，请检查格式")
+                return
+
+            # 去重
+            ids_to_delete = list(set(ids_to_delete))
+
+            deleted_count = await self.dao.delete_stickers_by_ids(ids_to_delete)
+            yield event.plain_result(f"已删除 {deleted_count} 张表情包")
 
         elif action == "clear":
-            count = await self.dao.get_sticker_count(group_id)
+            count = await self.dao.get_sticker_count()
             if count == 0:
                 yield event.plain_result("表情包库已经是空的")
                 return
@@ -1882,18 +1897,23 @@ class SelfEvolutionPlugin(Star):
 
             yield event.plain_result(f"已清空 {deleted} 张表情包")
 
+        elif action == "reindex":
+            remaining = await self.dao.reindex_stickers()
+            yield event.plain_result(f"ID 已重新编号，剩余 {remaining} 张表情包")
+
         elif action == "stats":
-            stats = await self.dao.get_sticker_stats(group_id)
+            stats = await self.dao.get_sticker_stats()
             yield event.plain_result(
                 f"【表情包统计】\n总计: {stats['total']} 张\n今日新增: {stats['today']} 张"
             )
 
         else:
             yield event.plain_result(
-                "【表情包管理】\n"
+                "【表情包管理】（全局）\n"
                 "/sticker list          # 列出表情包\n"
                 "/sticker untagged     # 查看未打标签的表情包\n"
-                "/sticker delete <ID>  # 删除指定表情包\n"
+                "/sticker delete <ID>  # 删除指定表情包，支持批量如 1-3 或 1,3,5\n"
                 "/sticker clear        # 清空所有表情包\n"
+                "/sticker reindex      # 重新编号\n"
                 "/sticker stats        # 查看统计"
             )

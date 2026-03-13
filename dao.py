@@ -490,34 +490,22 @@ class SelfEvolutionDAO:
                 return False
 
     @with_db_retry()
-    async def get_sticker_count(self, group_id: str = None) -> int:
-        """获取表情包数量"""
+    async def get_sticker_count(self) -> int:
+        """获取表情包总数"""
         db = await self.get_conn()
         async with self._db_lock:
-            if group_id:
-                cursor = await db.execute(
-                    "SELECT COUNT(*) as cnt FROM stickers WHERE group_id = ?",
-                    (group_id,),
-                )
-            else:
-                cursor = await db.execute("SELECT COUNT(*) as cnt FROM stickers")
+            cursor = await db.execute("SELECT COUNT(*) as cnt FROM stickers")
             row = await cursor.fetchone()
             return row["cnt"] if row else 0
 
     @with_db_retry()
-    async def get_today_sticker_count(self, group_id: str = None) -> int:
+    async def get_today_sticker_count(self) -> int:
         """获取今日新增表情包数量"""
         db = await self.get_conn()
         async with self._db_lock:
-            if group_id:
-                cursor = await db.execute(
-                    "SELECT COUNT(*) as cnt FROM stickers WHERE group_id = ? AND date(created_at) = date('now')",
-                    (group_id,),
-                )
-            else:
-                cursor = await db.execute(
-                    "SELECT COUNT(*) as cnt FROM stickers WHERE date(created_at) = date('now')"
-                )
+            cursor = await db.execute(
+                "SELECT COUNT(*) as cnt FROM stickers WHERE date(created_at) = date('now')"
+            )
             row = await cursor.fetchone()
             return row["cnt"] if row else 0
 
@@ -554,20 +542,20 @@ class SelfEvolutionDAO:
 
     @with_db_retry()
     async def get_stickers_by_tags(
-        self, tags: str = None, group_id: str = None, limit: int = 10
+        self, tags: str = None, limit: int = 10, offset: int = 0
     ) -> list:
-        """根据标签搜索表情包"""
+        """根据标签搜索表情包（全局）"""
         db = await self.get_conn()
         async with self._db_lock:
             if tags:
                 cursor = await db.execute(
-                    "SELECT id, group_id, user_id, base64_data, tags, created_at FROM stickers WHERE tags LIKE ? AND group_id = ? ORDER BY RANDOM() LIMIT ?",
-                    (f"%{tags}%", group_id, limit),
+                    "SELECT id, group_id, user_id, base64_data, tags, created_at FROM stickers WHERE tags LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                    (f"%{tags}%", limit, offset),
                 )
             else:
                 cursor = await db.execute(
-                    "SELECT id, group_id, user_id, base64_data, tags, created_at FROM stickers WHERE group_id = ? ORDER BY RANDOM() LIMIT ?",
-                    (group_id, limit),
+                    "SELECT id, group_id, user_id, base64_data, tags, created_at FROM stickers ORDER BY id DESC LIMIT ? OFFSET ?",
+                    (limit, offset),
                 )
             rows = await cursor.fetchall()
             return [
@@ -583,19 +571,13 @@ class SelfEvolutionDAO:
             ]
 
     @with_db_retry()
-    async def get_random_sticker(self, group_id: str = None) -> dict | None:
-        """随机获取一张表情包"""
+    async def get_random_sticker(self) -> dict | None:
+        """随机获取一张表情包（全局）"""
         db = await self.get_conn()
         async with self._db_lock:
-            if group_id:
-                cursor = await db.execute(
-                    "SELECT id, group_id, user_id, base64_data, tags, created_at FROM stickers WHERE group_id = ? AND tags != '' ORDER BY RANDOM() LIMIT 1",
-                    (group_id,),
-                )
-            else:
-                cursor = await db.execute(
-                    "SELECT id, group_id, user_id, base64_data, tags, created_at FROM stickers WHERE tags != '' ORDER BY RANDOM() LIMIT 1"
-                )
+            cursor = await db.execute(
+                "SELECT id, group_id, user_id, base64_data, tags, created_at FROM stickers WHERE tags != '' ORDER BY RANDOM() LIMIT 1"
+            )
             row = await cursor.fetchone()
             if row:
                 return {
@@ -653,24 +635,14 @@ class SelfEvolutionDAO:
             return cursor.rowcount > 0
 
     @with_db_retry()
-    async def get_sticker_stats(self, group_id: str = None) -> dict:
-        """获取表情包统计"""
+    async def get_sticker_stats(self) -> dict:
+        """获取表情包统计（全局）"""
         db = await self.get_conn()
         async with self._db_lock:
-            if group_id:
-                total = await db.execute(
-                    "SELECT COUNT(*) as cnt FROM stickers WHERE group_id = ?",
-                    (group_id,),
-                )
-                today = await db.execute(
-                    "SELECT COUNT(*) as cnt FROM stickers WHERE group_id = ? AND date(created_at) = date('now')",
-                    (group_id,),
-                )
-            else:
-                total = await db.execute("SELECT COUNT(*) as cnt FROM stickers")
-                today = await db.execute(
-                    "SELECT COUNT(*) as cnt FROM stickers WHERE date(created_at) = date('now')"
-                )
+            total = await db.execute("SELECT COUNT(*) as cnt FROM stickers")
+            today = await db.execute(
+                "SELECT COUNT(*) as cnt FROM stickers WHERE date(created_at) = date('now')"
+            )
             total_row = await total.fetchone()
             today_row = await today.fetchone()
             return {
@@ -714,3 +686,42 @@ class SelfEvolutionDAO:
             )
             await db.commit()
             return cursor.rowcount > 0
+
+    @with_db_retry()
+    async def delete_stickers_by_ids(self, ids: list) -> int:
+        """批量删除表情包，返回删除数量"""
+        if not ids:
+            return 0
+        db = await self.get_conn()
+        async with self._write_lock:
+            placeholders = ",".join("?" * len(ids))
+            cursor = await db.execute(
+                f"DELETE FROM stickers WHERE id IN ({placeholders})",
+                ids,
+            )
+            await db.commit()
+            return cursor.rowcount
+
+    @with_db_retry()
+    async def reindex_stickers(self) -> int:
+        """重新编号表情包ID，返回剩余数量"""
+        db = await self.get_conn()
+        async with self._write_lock:
+            # 获取所有表情包按ID排序
+            cursor = await db.execute(
+                "SELECT id, group_id, user_id, base64_data, tags, created_at FROM stickers ORDER BY id"
+            )
+            rows = await cursor.fetchall()
+
+            if not rows:
+                return 0
+
+            # 重新插入并更新ID
+            for idx, row in enumerate(rows, start=1):
+                await db.execute(
+                    "UPDATE stickers SET id = ? WHERE id = ?",
+                    (idx, row["id"]),
+                )
+
+            await db.commit()
+            return len(rows)
