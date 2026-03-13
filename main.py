@@ -533,8 +533,6 @@ class SelfEvolutionPlugin(Star):
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
         """CognitionCore 6.0: 被动监听 - 滑动上下文窗口"""
-        import time
-
         logger.debug(
             f"[SelfEvolution] 收到消息: {event.message_str[:30] if event.message_str else '(空)'}"
         )
@@ -831,8 +829,6 @@ class SelfEvolutionPlugin(Star):
                         new_note = res.completion_text.strip()
 
                         if new_note:
-                            import time
-
                             timestamp = time.strftime("%Y-%m-%d %H:%M")
                             if existing_note:
                                 new_note = (
@@ -909,8 +905,6 @@ class SelfEvolutionPlugin(Star):
                             )
                             incremental_note = res.completion_text.strip()
                             if incremental_note:
-                                import time
-
                                 timestamp = time.strftime("%Y-%m-%d %H:%M")
                                 new_note = (
                                     existing_note
@@ -1604,8 +1598,6 @@ class SelfEvolutionPlugin(Star):
             entity(string): 关联实体，必填。如：用户ID、群号、或"通用"
             content(string): 要记忆的内容，必填。用精简的纯文本描述。
         """
-        import time
-
         if not category or not content:
             return "请提供 category 和 content 参数。"
 
@@ -1907,8 +1899,6 @@ class SelfEvolutionPlugin(Star):
     @filter.command("shut")
     async def shut_cmd(self, event: AstrMessageEvent, minutes: str = ""):
         """闭嘴命令：让AI暂停响应"""
-        import time
-
         user_id = str(event.get_sender_id())
 
         if not event.is_admin() and (
@@ -1946,8 +1936,6 @@ class SelfEvolutionPlugin(Star):
     @filter.command("db")
     async def db_cmd(self, event: AstrMessageEvent, action: str = "", param: str = ""):
         """数据库管理命令"""
-        import time
-
         user_id = str(event.get_sender_id())
 
         if not event.is_admin() and (

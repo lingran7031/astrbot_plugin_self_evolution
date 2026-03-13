@@ -55,8 +55,6 @@ class ProfileManager:
 
     def _cleanup_expired_cache(self):
         """清理过期的缓存"""
-        import time
-
         now = time.time()
         if now - self._last_cache_cleanup < 300:  # 每5分钟最多清理一次
             return

@@ -375,8 +375,6 @@ class EavesdroppingEngine:
         # 将无聊状态传递给评估函数
         self._current_boredom_state = is_bored
 
-        import time
-
         params = self._get_leaky_params()
 
         if not params["enabled"]:
@@ -689,8 +687,6 @@ class EavesdroppingEngine:
                             )
 
                     if consecutive_replies >= cooldown_messages:
-                        import time
-
                         bucket_data = self.leaky_bucket.get(session_id, {})
                         current_time = time.time()
                         new_urge = bucket_data.get("value", 2.0) * 0.1
@@ -769,8 +765,6 @@ class EavesdroppingEngine:
 
                         bucket_data = self.leaky_bucket.get(session_id, {})
                         if consecutive_replies >= cooldown_messages:
-                            import time
-
                             current_time = time.time()
                             cooldown_seconds = getattr(
                                 self.plugin.cfg, "desire_cooldown_seconds", 60
@@ -853,8 +847,6 @@ class EavesdroppingEngine:
             response_text = res.completion_text.strip()
 
             # 解析内心独白
-            import re
-
             match = re.search(
                 r"<inner_monologue>(.*?)</inner_monologue>", response_text, re.DOTALL
             )

@@ -2,6 +2,7 @@ import logging
 import asyncio
 import aiosqlite
 import time
+import uuid
 from datetime import datetime
 from functools import wraps
 
@@ -145,11 +146,9 @@ class SelfEvolutionDAO:
         )
         row = await cursor.fetchone()
         if row and row["cnt"] > 0:
-            import uuid as uuid_module
-
             await db.execute(
                 "UPDATE stickers SET uuid = ? WHERE uuid IS NULL",
-                (uuid_module.uuid4().hex,),
+                (uuid.uuid4().hex,),
             )
             await db.commit()
         # 内心独白表
@@ -500,8 +499,6 @@ class SelfEvolutionDAO:
         db = await self.get_conn()
         async with self._write_lock:
             try:
-                import uuid
-
                 sticker_uuid = uuid.uuid4().hex
                 await db.execute(
                     "INSERT INTO stickers (uuid, group_id, user_id, base64_data, tags, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))",
@@ -613,27 +610,6 @@ class SelfEvolutionDAO:
                     "created_at": row["created_at"],
                 }
             return None
-
-    @with_db_retry()
-    async def get_sticker_by_id(self, sticker_id: int) -> dict | None:
-        """根据ID获取表情包"""
-        db = await self.get_conn()
-        async with self._db_lock:
-            cursor = await db.execute(
-                "SELECT id, uuid, group_id, user_id, base64_data, tags, created_at FROM stickers WHERE id = ?",
-                (sticker_id,),
-            )
-            row = await cursor.fetchone()
-            if row:
-                return {
-                    "id": row["id"],
-                    "uuid": row["uuid"],
-                    "group_id": row["group_id"],
-                    "user_id": row["user_id"],
-                    "base64_data": row["base64_data"],
-                    "tags": row["tags"],
-                    "created_at": row["created_at"],
-                }
 
     @with_db_retry()
     async def delete_sticker_by_uuid(self, sticker_uuid: str) -> bool:
