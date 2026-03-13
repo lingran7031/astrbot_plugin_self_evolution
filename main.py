@@ -1143,6 +1143,25 @@ class SelfEvolutionPlugin(Star):
         await self.session_manager.periodic_check()
         logger.info("[Session] 定时互动意愿检查完成。")
 
+    @filter.command("version")
+    async def show_version(self, event: AstrMessageEvent):
+        """显示插件版本"""
+        version = getattr(self, "_cached_version", None)
+        if version is None:
+            import os
+
+            metadata_path = os.path.join(os.path.dirname(__file__), "metadata.yaml")
+            if os.path.exists(metadata_path):
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("version:"):
+                            version = line.split(":", 1)[1].strip()
+                            break
+            if not version:
+                version = "未知"
+            self._cached_version = version
+        yield event.plain_result(f"【Self-Evolution】版本: {version}")
+
     @filter.command("sehelp")
     async def show_help(self, event: AstrMessageEvent):
         """显示 Self-Evolution 插件指令帮助"""
