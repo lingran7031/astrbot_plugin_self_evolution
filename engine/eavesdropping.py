@@ -686,24 +686,26 @@ class EavesdroppingEngine:
                                 f"[CognitionCore] AI 回复第 {consecutive_replies}/{cooldown_messages} 条"
                             )
 
-                        if consecutive_replies >= cooldown_messages:
-                            # 达到冷却消息数，进入贤者时间
-                            import time
+                    if consecutive_replies >= cooldown_messages:
+                        import time
 
-                            current_time = time.time()
-                            new_urge = bucket_data.get("value", 2.0) * 0.1
-                            bucket_data["value"] = new_urge
-                            bucket_data["is_cooling_down"] = True
-                            bucket_data["cooling_end_time"] = current_time + 60
-                            bucket_data["triggered"] = False
-                            bucket_data["consecutive_replies"] = 0
-                            self.leaky_bucket[session_id] = bucket_data
-                            logger.info(
-                                f"[CognitionCore] 连续回复 {consecutive_replies} 条，进入贤者时间，欲望降至 {new_urge:.2f}"
-                            )
-                        else:
-                            self.leaky_bucket[session_id] = bucket_data
-                return
+                        bucket_data = self.leaky_bucket.get(session_id, {})
+                        current_time = time.time()
+                        new_urge = bucket_data.get("value", 2.0) * 0.1
+                        bucket_data["value"] = new_urge
+                        bucket_data["is_cooling_down"] = True
+                        bucket_data["cooling_end_time"] = current_time + 60
+                        bucket_data["triggered"] = False
+                        bucket_data["consecutive_replies"] = 0
+                        session_buffer["consecutive_replies"] = 0
+                        self.leaky_bucket[session_id] = bucket_data
+                        logger.info(
+                            f"[CognitionCore] 连续回复 {consecutive_replies} 条，进入贤者时间，欲望降至 {new_urge:.2f}"
+                        )
+                    else:
+                        bucket_data = self.leaky_bucket.get(session_id, {})
+                        self.leaky_bucket[session_id] = bucket_data
+                    return
             elif boring_match:
                 value = int(boring_match.group(2))
                 current_threshold = session_buffer.get("threshold", 20)
@@ -757,6 +759,7 @@ class EavesdroppingEngine:
                     if consecutive_replies >= cooldown_messages:
                         import time
 
+                        bucket_data = self.leaky_bucket.get(session_id, {})
                         current_time = time.time()
                         new_urge = bucket_data.get("value", 2.0) * 0.1
                         bucket_data["value"] = new_urge
