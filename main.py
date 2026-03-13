@@ -1832,7 +1832,7 @@ class SelfEvolutionPlugin(Star):
             ]
             for s in stickers:
                 tags = s["tags"][:30] if s["tags"] else "无标签"
-                result.append(f"ID:{s['id']} | 用户:{s['user_id']} | 标签:{tags}")
+                result.append(f"UUID:{s['uuid']} | 用户:{s['user_id']} | 标签:{tags}")
             result.append(f"\n【管理指令】")
             result.append("/sticker delete <UUID>  # 删除指定UUID")
             result.append("/sticker clear           # 清空所有表情包")
