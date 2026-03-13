@@ -18,7 +18,6 @@ Self-Evolution 是一个面向 AstrBot 平台的认知增强插件。它赋予 A
 
 | 模块 | 说明 | 默认 |
 |------|------|------|
-| 滑动上下文窗口 | 按 Token 预算维护群聊消息，注入 LLM 上下文 | 启用 |
 | 主动互动意愿引擎 | 基于泄漏积分器的自然互动节奏，支持有趣/无聊动态调节 | 启用 |
 | 用户画像系统 | Markdown 文本存储，支持分层失活、记忆模糊化、情绪依存记忆 | 启用 |
 | 长期记忆 | 基于知识库的向量存储/检索，支持去重和自动清理 | 启用 |
@@ -29,6 +28,7 @@ Self-Evolution 是一个面向 AstrBot 平台的认知增强插件。它赋予 A
 | 关系图谱 | 记录用户互动关系 | 启用 |
 | 人格进化 | LLM 自主修改系统提示词，支持管理员审核 | 启用 |
 | 元编程 | AI 读取/修改自身源码，多智能体对抗审查 | 关闭 |
+| 图片处理优化 | 区分已知/未知图片，优化 MCP 工具调用 | 启用 |
 
 ---
 
@@ -64,7 +64,7 @@ Self-Evolution 是一个面向 AstrBot 平台的认知增强插件。它赋予 A
  |   +-- vibe.py             群体情绪共染系统
  +-- engine/
      |-- __init__.py          模块导出
-     |-- session.py           滑动上下文窗口管理
+     |-- session.py           滑动上下文窗口管理（漏斗机制依赖）
      |-- eavesdropping.py     主动互动意愿引擎（漏斗机制 + 泄漏积分器）
      |-- image_cache.py       图像描述缓存引擎（哈希计算、标签提取、拦截处理）
      |-- memory.py            长期记忆管理（存储 / 检索 / 去重 / 清理）
@@ -82,7 +82,7 @@ Self-Evolution 是一个面向 AstrBot 平台的认知增强插件。它赋予 A
 
 每条群聊消息到达时依次执行：
 
-1. 写入滑动窗口 -- SessionManager 按 Token 预算维护消息队列
+1. 写入滑动窗口 -- SessionManager 按 Token 预算维护消息队列（仅用于漏斗判断，不注入 prompt）
 2. 记录关系图谱 -- GraphRAG 记录用户在群中的互动
 3. 互动意愿评估 -- EavesdroppingEngine 进行多级过滤和决策
 
@@ -93,7 +93,8 @@ Self-Evolution 是一个面向 AstrBot 平台的认知增强插件。它赋予 A
 1. SAN 精力值检查 -- 精力耗尽则拒绝服务
 2. 好感度检查 -- 好感度为零则物理熔断，拒绝处理
 3. 动态上下文路由 -- 根据消息内容按需加载画像、图谱、偏好检测等模块
-4. System Prompt 注入 -- 依次注入人格设定、身份信息、画像、关系图谱、SAN 状态、群氛围、核心准则、滑动窗口上下文
+4. System Prompt 注入 -- 依次注入人格设定、身份信息、画像、关系图谱、SAN 状态、群氛围、核心准则
+5. 图片处理 -- 区分已知图片（已缓存描述）和未知图片，注入不同引导语
 
 ### 中间消息过滤 (on_decorating_result)
 
@@ -111,30 +112,37 @@ Self-Evolution 是一个面向 AstrBot 平台的认知增强插件。它赋予 A
 S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 ```
 
-其中 `lambda` 为衰减系数（默认 0.9），`w` 为当前消息权重（关键词命中为 2.0，日常闲聊为 1.0）。当积分值超过触发阈值（默认 4.0）时，引擎调用 LLM 进行"是否值得回应"的二次决策。
+其中 `lambda` 为衰减系数（默认 0.9），`w` 为当前消息权重（关键词命中为 2.0，日常闲聊为 1.0，图片为 0.1）。当积分值超过触发阈值（默认 4.0）时，引擎调用 LLM 进行"是否值得回应"的二次决策。
 
-**三级漏斗机制**用于判定用户活跃状态：
+**漏斗机制**用于判定用户活跃状态：
 
 | 级别 | 触发条件 | 效果 |
 |------|----------|------|
 | L1 | @机器人、命令前缀、引用回复 Bot 消息 | 标记为活跃，触发互动意愿评估 |
-| L2 | 唤醒词命中、强 AI 意图句式（"帮我"、"翻译"等） | 标记为活跃，触发互动意愿评估 |
-| L3 | 用户在 30 秒内有过 L1/L2 触发 | 加载画像信息 |
+| L2 | 唤醒词命中，强 AI 意图句式（"帮我"、"翻译"等） | 标记为活跃，触发互动意愿评估 |
+| 活跃窗口 | 用户在 30 秒内有过 L1/L2 触发 | 加载画像信息 |
 
-**有趣/无聊动态阈值**（5.1.0 新增）：LLM 在评估互动意愿时会判断当前对话"有趣"还是"无聊":
+**有趣/无聊动态阈值**：LLM 在评估互动意愿时会判断当前对话"有趣"还是"无聊"
 
 - 有趣判定：降低触发阈值至 `eavesdrop_threshold_min`，增加积分器欲望值
 - 无聊判定：提高触发阈值至 `eavesdrop_threshold_max`，降低 SAN 精力值
 
-**信息熵检测**：基于 zlib 压缩比检测消息的信息量。当群聊持续出现低信息量内容时，AI 进入"无聊状态"，拒绝回复或以傲慢语气应对。
+**信息熵检测**：基于香农熵检测消息的信息量。当群聊持续出现低信息量内容时，AI 进入"无聊状态"，拒绝回复或以傲慢语气应对。
 
-**内心独白**：LLM 在判定为 IGNORE（不值得回应）时仍会输出一段简短的内心独白并缓存。下次真正发言时将独白注入回复内容，营造"憋了半天才开口"的自然感。
+检测维度：
+1. 熵值过低（< 0.3）-- 重复字符（如"哈哈哈"）
+2. 字符多样性过低（< 0.15）-- 大量重复字符
+3. 熵值过高（> 0.95）且多样性异常（> 0.9）-- 疑似乱码
 
 ### 滑动上下文窗口
 
-按 Token 预算（默认 4000）为每个群维护消息滑动窗口。Token 超限时自动淘汰最旧消息。窗口内容在每次 LLM 请求时注入 system prompt。
+按 Token 预算（默认 4000）为每个群维护消息滑动窗口。Token 超限时自动淘汰最旧消息。
 
-会话缓冲超时后（默认 10 分钟无新消息）自动清理。清理前可选择将内容批量存入知识库，避免碎片化。
+**重要说明**：由于 AstrBot 框架本身已内置 LongTermMemory（LTM）功能，包含滑动窗口和知识库存储，为了避免功能冲突，本插件的滑动窗口**不再注入 prompt**，仅用于：
+- 漏斗机制判断消息数量阈值
+- 图片缓存（存储 `image_summaries`）
+
+会话缓冲超时后（默认 10 分钟无新消息）自动清理。
 
 ### 用户画像系统
 
@@ -190,6 +198,22 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | 0 | 平静 |
 | 0 到 5 | 轻松 |
 | > 5 | 热烈 |
+
+### 图片处理优化
+
+插件对群聊中的图片进行智能处理，优化 MCP 工具调用：
+
+**流程**：
+1. 用户发送图片时，计算图片 hash 并检查本地缓存
+2. 区分已知图片（有缓存）和未知图片（无缓存）
+3. 在 prompt 注入时：
+   - 已知图片：注入图片描述，告诉 LLM 不需要调用图像理解工具
+   - 未知图片：注入引导语，让 LLM 自行理解
+
+**性能优化**：
+- 漏斗机制中只记录图片存在标记（boost = 0.1），不调用图片处理
+- 图片描述处理只在 on_llm_request 注入时进行
+- 避免重复调用 MCP understand_image 工具
 
 ### 元编程与多智能体对抗
 
@@ -292,6 +316,8 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `persona_name` | string | 黑塔 | 机器人名称 |
 | `persona_title` | string | 人偶负责人 | 机器人头衔/身份 |
 | `persona_style` | string | 理性、犀利且专业 | 互动意愿时的语气风格描述 |
+| `debug_log_enabled` | bool | false | Debug 日志模式 |
+| `max_prompt_injection_length` | int | 2000 | Prompt 注入最大长度 |
 
 ### 互动意愿引擎
 
@@ -303,10 +329,9 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `leaky_decay_factor` | float | 0.9 | 衰减系数（0-1，越小衰减越快） |
 | `leaky_trigger_threshold` | float | 4.0 | 积分器触发阈值 |
 | `interest_boost` | float | 2.0 | 关键词命中时的权重增益 |
-| `daily_chat_boost` | float | 1 | 日常消息的权重增益 |
-| `inner_monologue_enabled` | bool | true | 启用内心独白缓存 |
+| `daily_chat_boost` | float | 1.0 | 日常消息的权重增益 |
+| `desire_cooldown_messages` | int | 5 | 欲望冷却消息数 |
 | `boredom_enabled` | bool | true | 启用信息熵无聊检测 |
-| `boredom_threshold` | float | 0.3 | 信息熵阈值（低于此值视为无聊内容） |
 | `boredom_consecutive_count` | int | 5 | 连续低信息量消息达到此数量后触发无聊状态 |
 | `boredom_sarcastic_reply` | bool | true | 无聊时被@是否输出傲慢回复 |
 
@@ -321,10 +346,6 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `eavesdrop_threshold_min` | int | 10 | 有趣判定时的最低阈值 |
 | `eavesdrop_threshold_max` | int | 50 | 无聊判定时的最高阈值 |
 | `session_cleanup_timeout` | int | 600 | 会话缓冲超时时间（秒） |
-| `session_auto_commit` | bool | true | 超时清理时自动存入知识库 |
-| `session_evicted_max` | int | 30 | 滑动窗口溢出消息保留数 |
-| `session_evicted_commit_threshold` | int | 30 | 溢出队列达到此条数时自动存入知识库 |
-| `session_commit_threshold` | int | 5 | 存入知识库的最少消息条数 |
 
 ### 记忆系统
 
@@ -335,7 +356,6 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | `timeout_memory_commit` | float | 10.0 | 写入知识库超时时间（秒） |
 | `timeout_memory_recall` | float | 12.0 | 检索知识库超时时间（秒） |
 | `enable_context_recall` | bool | true | 启用上下文追踪（用户引用 AI 发言时自动注入） |
-| `auto_memory_recall_enabled` | bool | true | 用户提问时自动检索相关记忆注入上下文 |
 
 ### 画像与做梦
 
@@ -369,12 +389,13 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `allow_meta_programming` | bool | false | 启用元编程（危险功能） |
+| `review_mode` | bool | true | 管理员审核模式 |
 | `debate_enabled` | bool | true | 启用多智能体对抗审查 |
 | `debate_rounds` | int | 3 | 对抗辩论轮数 |
 | `debate_system_prompt` | string | 你是一个无情的安全审查员... | 审查 Agent 的系统提示词 |
 | `debate_criteria` | string | 安全漏洞\|逻辑错误\|... | 审查标准（\| 分隔） |
 | `debate_agents` | string | JSON 数组 | 审查智能体列表 |
- | `graph_enabled` | bool | true | 启用关系图谱 RAG |
+| `graph_enabled` | bool | true | 启用关系图谱 RAG |
 
 ---
 
@@ -411,13 +432,35 @@ S(t) = S(t-1) * exp(-lambda * delta_t / 60) + w
 
 ---
 
+## 与 AstrBot 框架的关系
+
+本插件与 AstrBot 框架功能的关系说明：
+
+| 框架功能 | 插件处理方式 |
+|----------|-------------|
+| LongTermMemory (滑动窗口) | 插件不使用框架的滑动窗口注入，仅用于漏斗判断 |
+| 知识库 (KB) | 插件使用框架的 kb_manager 存储长期记忆 |
+| 图片理解 MCP | 插件优化：区分已知/未知图片，减少重复调用 |
+| Persona 人格管理 | 插件通过框架的 persona_manager 进行人格进化 |
+
+---
+
+## 线程安全
+
+插件采用 asyncio 锁保护关键数据结构：
+
+- `SessionManager`: 使用 `_buffer_lock` 保护 `session_buffers`
+- `EavesdroppingEngine`: 使用多个锁保护 `leaky_bucket`、`boredom_cache`、`active_users`、`intercepted_messages`
+- `DAO`: 使用 `_db_lock` 和 `_write_lock` 保护数据库操作
+
+---
+
 ## 已知限制
 
 - SAN 精力值仅存储在内存中，插件重启后重置为满值
 - 关系图谱的 `get_group_stats` 和 `get_group_members` 尚未完整实现，目前返回空数据
 - 元编程的 AST 安全校验无法防御所有攻击手段（如 `importlib`、`getattr` 反射等）
-- 信息熵检测基于 zlib 压缩比，对中文内容的检测精度有限
-- 每条消息都会查询数据库获取好感度，高频场景下可能存在性能瓶颈
+- 图片 MCP 工具调用受框架限制，无法完全阻止，但可通过 prompt 引导减少调用
 
 ---
 
