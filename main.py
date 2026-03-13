@@ -1756,12 +1756,19 @@ class SelfEvolutionPlugin(Star):
     async def send_sticker_tool(
         self, event: AstrMessageEvent, sticker_id: int = None, tags: str = ""
     ):
-        """发送表情包。
+        """发送表情包给用户。不传参数时随机发送一张。
 
         Args:
-            sticker_id(int): 可选，指定表情包ID，不指定则随机
-            tags(string): 可选，按标签筛选后随机发送
+            sticker_id(int): 可选，指定表情包ID，不指定则随机发送
+            tags(string): 可选，按标签筛选后随机发送，如 "搞笑" 或 "表情包"
         """
+        # 日志记录
+        if sticker_id:
+            logger.info(f"[Sticker] 发送表情包: 指定ID={sticker_id}")
+        elif tags:
+            logger.info(f"[Sticker] 发送表情包: 标签筛选={tags}")
+        else:
+            logger.info(f"[Sticker] 发送表情包: 随机")
         group_id = event.get_group_id()
         if not group_id:
             yield event.plain_result("此功能仅限群聊使用")
