@@ -18,6 +18,18 @@ class SessionManager:
         self.processing_sessions = set()
         self._token_cache = {}  # Token 估算缓存
 
+    @property
+    def max_tokens(self):
+        return self.plugin.cfg.session_max_tokens
+
+    @property
+    def whitelist(self):
+        return self.plugin.cfg.session_whitelist
+
+    @property
+    def message_threshold(self):
+        return self.plugin.cfg.eavesdrop_message_threshold
+
     def _estimate_tokens(self, text: str) -> int:
         """估算 token 数量（中英文混合）- 带缓存"""
         if not text:
@@ -62,7 +74,7 @@ class SessionManager:
                 "token_count": 0,
                 "last_active": time.time(),
                 "eavesdrop_count": 0,
-                "threshold": self.plugin.eavesdrop_message_threshold,
+                "threshold": self.plugin.cfg.eavesdrop_message_threshold,
                 "evicted_messages": [],
                 "is_private": is_private,
             }
@@ -267,7 +279,7 @@ class SessionManager:
         """重置触发阈值为默认值"""
         if group_id in self.session_buffers:
             self.session_buffers[group_id]["threshold"] = (
-                self.plugin.eavesdrop_message_threshold
+                self.plugin.cfg.eavesdrop_message_threshold
             )
 
     async def _commit_session_to_memory(

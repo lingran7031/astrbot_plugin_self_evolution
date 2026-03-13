@@ -506,7 +506,7 @@ class EavesdroppingEngine:
                 )
                 msg_count = len(session_buffer.get("messages", []))
                 dynamic_threshold = session_buffer.get(
-                    "threshold", self.plugin.eavesdrop_message_threshold
+                    "threshold", self.plugin.cfg.eavesdrop_message_threshold
                 )
 
                 if msg_count >= dynamic_threshold:
