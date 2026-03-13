@@ -734,4 +734,9 @@ class SelfEvolutionDAO:
                 today = await db.execute(
                     "SELECT COUNT(*) as cnt FROM stickers WHERE date(created_at) = date('now')"
                 )
-            return {"total": total.fetchone()["cnt"], "today": today.fetchone()["cnt"]}
+            total_row = await total.fetchone()
+            today_row = await today.fetchone()
+            return {
+                "total": total_row["cnt"] if total_row else 0,
+                "today": today_row["cnt"] if today_row else 0,
+            }
