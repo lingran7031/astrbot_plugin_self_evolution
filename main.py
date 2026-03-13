@@ -1815,6 +1815,20 @@ class SelfEvolutionPlugin(Star):
             result.append("/sticker clear          # 清空所有表情包")
             yield event.plain_result("\n".join(result))
 
+        elif action == "untagged":
+            untagged = await self.dao.get_untagged_stickers(20)
+            if not untagged:
+                yield event.plain_result("没有未打标签的表情包")
+                return
+
+            result = [f"【未打标签表情包】（共 {len(untagged)} 张）\n"]
+            for s in untagged:
+                result.append(
+                    f"ID:{s['id']} | 用户:{s['user_id']} | 时间:{s['created_at'][:19]}"
+                )
+            result.append(f"\n删除指令：/sticker delete <ID>")
+            yield event.plain_result("\n".join(result))
+
         elif action == "delete":
             if not param:
                 yield event.plain_result("请提供要删除的表情包ID。")
@@ -1854,6 +1868,7 @@ class SelfEvolutionPlugin(Star):
             yield event.plain_result(
                 "【表情包管理】\n"
                 "/sticker list          # 列出表情包\n"
+                "/sticker untagged     # 查看未打标签的表情包\n"
                 "/sticker delete <ID>  # 删除指定表情包\n"
                 "/sticker clear        # 清空所有表情包\n"
                 "/sticker stats        # 查看统计"
