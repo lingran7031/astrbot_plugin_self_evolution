@@ -108,14 +108,31 @@ class EavesdroppingEngine:
             del self.intercepted_messages[session_id]
 
     def _calculate_entropy(self, text: str) -> float:
-        if not text or len(text) < 10:
+        """基于香农熵计算文本信息量"""
+        if not text or len(text) < 2:
             return 1.0
-        try:
-            compressed = zlib.compress(text.encode("utf-8"))
-            ratio = len(compressed) / len(text)
-            return min(ratio, 1.0)
-        except Exception:
-            return 0.5
+
+        import math
+
+        # 统计字符频率
+        freq = {}
+        for char in text:
+            freq[char] = freq.get(char, 0) + 1
+
+        # 计算香农熵
+        entropy = 0
+        length = len(text)
+        for count in freq.values():
+            p = count / length
+            entropy -= p * math.log2(p)
+
+        # 归一化（最大熵为 log2(字符集大小)）
+        max_entropy = math.log2(len(freq)) if len(freq) > 1 else 1
+        if max_entropy > 0:
+            normalized = entropy / max_entropy
+            return min(normalized, 1.0)
+
+        return 0.0
 
     # ==================== 漏斗机制：用户活跃判定 ====================
 
