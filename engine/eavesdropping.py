@@ -14,6 +14,12 @@ class EavesdroppingEngine:
         self.leaky_bucket = defaultdict(dict)  # {"value": float, "last_time": float}
         self.boredom_cache = defaultdict(lambda: {"count": 0, "last_message_time": 0.0})
 
+        # 线程安全锁
+        self._bucket_lock = asyncio.Lock()
+        self._boredom_lock = asyncio.Lock()
+        self._active_users_lock = asyncio.Lock()
+        self._intercepted_lock = asyncio.Lock()
+
         # 中间消息拦截缓存：{session_id: {"messages": [], "last_update": timestamp}}
         self.intercepted_messages = defaultdict(
             lambda: {"messages": [], "last_update": 0.0}

@@ -524,9 +524,7 @@ class SelfEvolutionPlugin(Star):
             self.session_manager.add_message(group_id, sender_name, user_id, msg_text)
         else:
             # 私聊也记录到滑动窗口
-            private_session_enabled = getattr(self, "private_session_enabled", True)
-            if private_session_enabled:
-                self.session_manager.add_message(None, sender_name, user_id, msg_text)
+            self.session_manager.add_message(None, sender_name, user_id, msg_text)
 
         # 被动插嘴：关键词/@触发
         async for result in self.eavesdropping.handle_message(event):

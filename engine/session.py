@@ -17,6 +17,7 @@ class SessionManager:
         self.session_buffers = {}  # {group_id: {"messages": [msg_list], "token_count": int}}
         self.processing_sessions = set()
         self._token_cache = {}  # Token 估算缓存
+        self._buffer_lock = asyncio.Lock()  # 线程安全锁
 
     @property
     def max_tokens(self):
