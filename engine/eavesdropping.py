@@ -716,9 +716,15 @@ class EavesdroppingEngine:
                     f"[CognitionCore] 无聊判定！SAN-{value}，阈值升至 {new_threshold}"
                 )
                 logger.info(f"[CognitionCore] 无聊判定，不回应。")
+                # 尝试生成内心独白
+                if self.plugin.cfg.inner_monologue_enabled:
+                    await self._generate_inner_monologue(event, session_id, "无聊")
                 return
             elif ignore_match:
                 logger.info(f"[CognitionCore] 判定为忽略，不回应。")
+                # 尝试生成内心独白
+                if self.plugin.cfg.inner_monologue_enabled:
+                    await self._generate_inner_monologue(event, session_id, "忽略")
                 return
             else:
                 # 无法解析时，检查是否包含负数判断
@@ -797,6 +803,74 @@ class EavesdroppingEngine:
                 logger.info(f"[CognitionCore] 无聊判定，降低SAN: -{value}")
         except Exception as e:
             logger.warning(f"[CognitionCore] 降低SAN失败: {e}")
+
+    async def _generate_inner_monologue(
+        self, event: AstrMessageEvent, session_id: str, reason: str
+    ):
+        """生成内心独白并缓存"""
+        try:
+            from astrbot.core.provider.entities import ProviderRequest
+
+            user_id = event.get_sender_id()
+            group_id = event.get_group_id()
+            buffer_key = str(group_id) if group_id else f"private_{user_id}"
+
+            # 检查是否已有缓存的内心独白
+            session_buffer = self.plugin.session_manager.session_buffers.get(
+                buffer_key, {}
+            )
+            if session_buffer.get("inner_monologue"):
+                logger.debug(f"[CognitionCore] 已有缓存的内心独白，跳过生成")
+                return
+
+            provider = self.plugin.context.get_using_provider()
+            if not provider:
+                logger.warning(f"[CognitionCore] 获取 provider 失败，无法生成内心独白")
+                return
+
+            prompt = f"""你正在群聊/私聊中听到一段对话，但你选择不直接回复。
+原因：{reason}
+请用简短的几句话表达你内心的想法或反应（可以是腹诽、思考、吐槽等）。
+请直接输出，不要有任何格式前缀。
+输出格式：<inner_monologue>你的内心独白</inner_monologue>"""
+
+            req = ProviderRequest(prompt=prompt)
+            resp = await provider.chat(req)
+
+            if not resp or not resp.completion_text:
+                logger.warning(f"[CognitionCore] 生成内心独白失败：LLM 响应为空")
+                return
+
+            response_text = resp.completion_text.strip()
+
+            # 解析内心独白
+            import re
+
+            match = re.search(
+                r"<inner_monologue>(.*?)</inner_monologue>", response_text, re.DOTALL
+            )
+            if match:
+                monologue = match.group(1).strip()
+            else:
+                monologue = response_text
+
+            if monologue:
+                # 存入 session_buffer
+                if buffer_key not in self.plugin.session_manager.session_buffers:
+                    self.plugin.session_manager.session_buffers[buffer_key] = {}
+                self.plugin.session_manager.session_buffers[buffer_key][
+                    "inner_monologue"
+                ] = monologue
+
+                # 同时存入数据库作为持久化
+                await self.plugin.dao.save_inner_monologue(buffer_key, monologue)
+
+                logger.info(f"[CognitionCore] 内心独白已缓存: {monologue[:50]}...")
+            else:
+                logger.warning(f"[CognitionCore] 无法解析内心独白内容")
+
+        except Exception as e:
+            logger.warning(f"[CognitionCore] 生成内心独白异常: {e}")
 
     async def _generate_formal_reply(
         self,

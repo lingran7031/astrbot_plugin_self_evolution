@@ -132,6 +132,15 @@ class SelfEvolutionDAO:
                 UNIQUE(group_id, user_id, base64_data)
             )
         """)
+        # 内心独白表
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS inner_monologues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_key TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
         await db.commit()
 
     async def get_conn(self):
@@ -668,3 +677,40 @@ class SelfEvolutionDAO:
                 "total": total_row["cnt"] if total_row else 0,
                 "today": today_row["cnt"] if today_row else 0,
             }
+
+    # ========== 内心独白相关方法 ==========
+
+    @with_db_retry()
+    async def save_inner_monologue(self, session_key: str, content: str) -> bool:
+        """保存内心独白"""
+        db = await self.get_conn()
+        async with self._write_lock:
+            await db.execute(
+                "INSERT INTO inner_monologues (session_key, content, created_at) VALUES (?, ?, ?)",
+                (session_key, content, datetime.now().isoformat()),
+            )
+            await db.commit()
+            return True
+
+    @with_db_retry()
+    async def get_latest_inner_monologue(self, session_key: str) -> str | None:
+        """获取最新的内心独白"""
+        db = await self.get_conn()
+        async with db.execute(
+            "SELECT content FROM inner_monologues WHERE session_key = ? ORDER BY created_at DESC LIMIT 1",
+            (session_key,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row["content"] if row else None
+
+    @with_db_retry()
+    async def clear_inner_monologue(self, session_key: str) -> bool:
+        """清除内心独白"""
+        db = await self.get_conn()
+        async with self._write_lock:
+            cursor = await db.execute(
+                "DELETE FROM inner_monologues WHERE session_key = ?",
+                (session_key,),
+            )
+            await db.commit()
+            return cursor.rowcount > 0

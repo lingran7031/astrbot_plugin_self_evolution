@@ -478,6 +478,30 @@ class SelfEvolutionPlugin(Star):
         except Exception as e:
             logger.warning(f"[ImageCache] 注入图片标签失败: {e}")
 
+        # 6. 内心独白注入
+        if self.cfg.inner_monologue_enabled:
+            try:
+                # 确保 buffer_key 和 session_buffer 有值
+                if not buffer_key:
+                    buffer_key = str(group_id) if group_id else f"private_{user_id}"
+                if not session_buffer:
+                    session_buffer = self.session_manager.session_buffers.get(
+                        buffer_key, {}
+                    )
+                inner_monologue = session_buffer.get("inner_monologue")
+                if inner_monologue:
+                    req.system_prompt += f"\n\n【内心独白】{inner_monologue}"
+                    logger.info(
+                        f"[InnerMonologue] 注入内心独白: {inner_monologue[:50]}..."
+                    )
+                    # 注入后清除
+                    session_buffer.pop("inner_monologue", None)
+                    # 清除数据库中的记录
+                    await self.dao.clear_inner_monologue(buffer_key)
+                    logger.debug(f"[InnerMonologue] 内心独白已清除")
+            except Exception as e:
+                logger.warning(f"[InnerMonologue] 注入内心独白失败: {e}")
+
         # 7. 自动记忆检索注入已移除，与框架 KB 冲突
         # 如需使用长期记忆，请调用 LLM 工具 recall_memories
 
