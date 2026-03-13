@@ -53,23 +53,25 @@ Self-Evolution 是一个面向 AstrBot 平台的认知增强插件。它赋予 A
 
 ```
  astrbot_plugin_self_evolution/
-|-- main.py                 入口文件，生命周期管理，LLM 工具注册
-|-- config.py               配置属性代理，所有配置项集中定义
-|-- dao.py                  SQLite 数据访问层（WAL 模式，长连接池，读写锁分离）
-|-- _conf_schema.json       AstrBot 配置面板 Schema
-|-- metadata.yaml           插件元信息
-|-- cognition/
-|   |-- __init__.py
-|   |-- san.py              SAN 精力值系统
-|   +-- vibe.py             群体情绪共染系统
-+-- engine/
-    |-- session.py           滑动上下文窗口管理
-    |-- eavesdropping.py     主动互动意愿引擎（漏斗机制 + 泄漏积分器）
-    |-- memory.py            长期记忆管理（存储 / 检索 / 去重 / 清理）
-    |-- profile.py           用户画像管理（Markdown 格式，支持缓存）
-    |-- persona.py           人格进化管理（审核队列）
-    |-- meta_infra.py        元编程基础设施（AST 校验 + 多智能体对抗辩论）
-    +-- graph.py             关系图谱 RAG
+ |-- main.py                 入口文件，生命周期管理，LLM 工具注册
+ |-- config.py               配置属性代理，所有配置项集中定义
+ |-- dao.py                  SQLite 数据访问层（WAL 模式，长连接池，读写锁分离）
+ |-- _conf_schema.json       AstrBot 配置面板 Schema
+ |-- metadata.yaml           插件元信息
+ |-- cognition/
+ |   |-- __init__.py
+ |   |-- san.py              SAN 精力值系统
+ |   +-- vibe.py             群体情绪共染系统
+ +-- engine/
+     |-- __init__.py          模块导出
+     |-- session.py           滑动上下文窗口管理
+     |-- eavesdropping.py     主动互动意愿引擎（漏斗机制 + 泄漏积分器）
+     |-- image_cache.py       图像描述缓存引擎（哈希计算、标签提取、拦截处理）
+     |-- memory.py            长期记忆管理（存储 / 检索 / 去重 / 清理）
+     |-- profile.py           用户画像管理（Markdown 格式，支持缓存）
+     |-- persona.py           人格进化管理（审核队列）
+     |-- meta_infra.py        元编程基础设施（AST 校验 + 多智能体对抗辩论）
+     +-- graph.py             关系图谱 RAG
 ```
 
 ---
