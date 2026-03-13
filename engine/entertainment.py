@@ -174,24 +174,26 @@ class EntertainmentEngine:
                 logger.warning(f"[Sticker] 获取 tool_manager 失败")
                 return False
 
-            mcp_clients = tool_manager.mcp_client_dict
-            if not mcp_clients:
-                logger.warning(f"[Sticker] 没有可用的 MCP 客户端")
+            mcp_runtime = tool_manager._mcp_server_runtime
+            if not mcp_runtime:
+                logger.warning(f"[Sticker] 没有可用的 MCP 服务")
                 return False
 
-            # 尝试调用第一个 MCP 客户端的 understand_image 工具
-            for mcp_name, mcp_client in mcp_clients.items():
-                try:
-                    from datetime import timedelta
+            # 遍历所有 MCP 服务器，找到 understand_image 工具并调用
+            for server_name, runtime in mcp_runtime.items():
+                if runtime and runtime.client:
+                    mcp_client = runtime.client
+                    try:
+                        from datetime import timedelta
 
-                    tool_result = await mcp_client.call_tool_with_reconnect(
-                        "understand_image",
-                        {
-                            "prompt": "请用一句话描述这张图片的内容，然后提取3-5个关键词标签（用|分隔）。输出格式：描述：<一句话描述> 标签：<tag1|tag2|tag3>",
-                            "image_url": temp_file_path,
-                        },
-                        timedelta(seconds=60),
-                    )
+                        tool_result = await mcp_client.call_tool_with_reconnect(
+                            "understand_image",
+                            {
+                                "prompt": "请用一句话描述这张图片的内容，然后提取3-5个关键词标签（用|分隔）。输出格式：描述：<一句话描述> 标签：<tag1|tag2|tag3>",
+                                "image_url": temp_file_path,
+                            },
+                            timedelta(seconds=60),
+                        )
 
                     if tool_result and tool_result.content:
                         # 提取文本内容
