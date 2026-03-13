@@ -162,7 +162,7 @@ class MetaInfra:
         if ast_err:
             return ast_err
 
-        debate_enabled = getattr(self.plugin, "debate_enabled", True)
+        debate_enabled = self.plugin.cfg.debate_enabled
 
         if debate_enabled:
             debate_result = await self._run_debate(new_code, description, target_file)
@@ -216,22 +216,14 @@ class MetaInfra:
         多智能体对抗辩论流程
         主控 Agent (黑塔) vs 多审查 Agent (可配置)
         """
-        debate_rounds = getattr(self.plugin, "debate_rounds", 2)
-        debate_criteria = getattr(
-            self.plugin,
-            "debate_criteria",
-            "安全漏洞|逻辑错误|性能问题|代码规范|潜在Bug",
-        )
-        debate_agents = getattr(self.plugin, "debate_agents", "[]")
+        debate_rounds = self.plugin.cfg.debate_rounds
+        debate_criteria = self.plugin.cfg.debate_criteria
+        debate_agents = self.plugin.cfg.debate_agents
         if not debate_agents or debate_agents == "[]":
             debate_agents = [
                 {
                     "name": "螺丝咕姆",
-                    "system_prompt": getattr(
-                        self.plugin,
-                        "debate_system_prompt",
-                        "你是一个无情的安全审查员，代号螺丝咕姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。",
-                    ),
+                    "system_prompt": self.plugin.cfg.debate_system_prompt,
                 }
             ]
         elif isinstance(debate_agents, str):

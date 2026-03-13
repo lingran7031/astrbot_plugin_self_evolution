@@ -18,23 +18,23 @@ class SANSystem:
 
     @property
     def enabled(self):
-        return getattr(self.plugin, "san_enabled", True)
+        return self.plugin.cfg.san_enabled
 
     @property
     def max_value(self):
-        return int(getattr(self.plugin, "san_max", 100))
+        return self.plugin.cfg.san_max
 
     @property
     def cost_per_message(self):
-        return float(getattr(self.plugin, "san_cost_per_message", 2.0))
+        return self.plugin.cfg.san_cost_per_message
 
     @property
     def recovery_per_hour(self):
-        return int(getattr(self.plugin, "san_recovery_per_hour", 10))
+        return self.plugin.cfg.san_recovery_per_hour
 
     @property
     def low_threshold(self):
-        return int(getattr(self.plugin, "san_low_threshold", 20))
+        return self.plugin.cfg.san_low_threshold
 
     def initialize(self):
         if not self.enabled:

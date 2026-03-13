@@ -4,23 +4,22 @@ from astrbot.api.event.filter import PermissionType
 from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import StarTools
 from astrbot.api import logger
-from astrbot.core.message.components import Plain, Image
+from astrbot.core.message.components import Plain
 from astrbot.core.star.register.star_handler import register_on_llm_tool_respond
 from astrbot.core.agent.tool import FunctionTool
 import asyncio
-import aiohttp
 import os
 import time
 import re
 import json
 import aiosqlite
-import hashlib
 from datetime import datetime
 from mcp.types import CallToolResult, TextContent
 
 # 导入模块化组件
 from .dao import SelfEvolutionDAO
 from .engine.eavesdropping import EavesdroppingEngine
+from .engine.image_cache import ImageCacheEngine
 from .engine.meta_infra import MetaInfra
 from .engine.memory import MemoryManager
 from .engine.persona import PersonaManager
@@ -73,6 +72,7 @@ class SelfEvolutionPlugin(Star):
         try:
             self.dao = SelfEvolutionDAO(db_path)
             self.eavesdropping = EavesdroppingEngine(self)
+            self.image_cache = ImageCacheEngine(self)
             self.session_manager = SessionManager(self)
             self.meta_infra = MetaInfra(self)
             self.memory = MemoryManager(self)
@@ -85,7 +85,7 @@ class SelfEvolutionPlugin(Star):
             # 配置系统
             self.cfg = PluginConfig(self)
             logger.info(
-                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, MetaInfra, Memory, Persona, Profile, GraphRAG, SAN, Vibe, Config) 初始化完成。"
+                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, ImageCache, MetaInfra, Memory, Persona, Profile, GraphRAG, SAN, Vibe, Config) 初始化完成。"
             )
         except Exception as e:
             logger.error(f"[SelfEvolution] 核心组件初始化失败: {e}")
@@ -121,121 +121,6 @@ class SelfEvolutionPlugin(Star):
         except Exception:
             pass
         return ""
-
-    async def _get_image_hash(self, image_path: str) -> str | None:
-        """计算图片的 MD5 hash"""
-        try:
-            if image_path.startswith("http://") or image_path.startswith("https://"):
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        image_path, timeout=aiohttp.ClientTimeout(total=10)
-                    ) as resp:
-                        if resp.status != 200:
-                            return None
-                        content = await resp.read()
-            elif image_path.startswith("file://"):
-                path = image_path[7:]
-                with open(path, "rb") as f:
-                    content = f.read()
-            elif image_path.startswith("base64://"):
-                import base64
-
-                content = base64.b64decode(image_path[9:])
-            else:
-                with open(image_path, "rb") as f:
-                    content = f.read()
-            return hashlib.md5(content).hexdigest()
-        except Exception as e:
-            logger.warning(f"[ImageCache] 计算图片 hash 失败: {e}")
-            return None
-
-    async def _process_image_captions(self, event: AstrMessageEvent) -> list:
-        """处理消息中的图片，获取描述和标签（优先使用缓存）"""
-        image_summaries = []
-        group_id = event.get_group_id()
-        user_id = event.get_sender_id()
-        buffer_key = str(group_id) if group_id else f"private_{user_id}"
-
-        try:
-            message_obj = getattr(event, "message_obj", None)
-            if not message_obj or not hasattr(message_obj, "message"):
-                return image_summaries
-
-            for comp in message_obj.message:
-                if isinstance(comp, Image):
-                    if hasattr(comp, "url") and comp.url:
-                        image_url = comp.url
-                    elif hasattr(comp, "path") and comp.path:
-                        image_url = comp.path
-                    else:
-                        try:
-                            image_url = await comp.convert_to_file_path()
-                        except:
-                            image_url = comp.file if comp.file else ""
-
-                    if not image_url:
-                        continue
-
-                    img_hash = await self._get_image_hash(image_url)
-                    if not img_hash:
-                        continue
-
-                    cached_summary = await self.dao.get_image_summary(img_hash)
-                    if cached_summary:
-                        image_summaries.append(cached_summary)
-                        logger.info(
-                            f"[ImageCache] 使用缓存: {img_hash[:8]}... -> {cached_summary}"
-                        )
-                        continue
-
-            if image_summaries:
-                session_buffer = self.session_manager.session_buffers.get(
-                    buffer_key, {}
-                )
-                session_buffer["image_summaries"] = image_summaries
-                self.session_manager.session_buffers[buffer_key] = session_buffer
-        except Exception as e:
-            logger.warning(f"[ImageCache] 处理图片描述失败: {e}")
-        return image_summaries
-
-    async def _fetch_image_caption(
-        self, image_url: str, event: AstrMessageEvent = None
-    ) -> tuple[str, str] | None:
-        """获取图片描述和标签（通过拦截器获取，框架调用 MCP 工具后会自动捕获）"""
-        # 现在通过拦截器 on_tool_result_handler 来捕获框架调用 MCP 工具的结果
-        # 这里只做简单的处理，不重复调用
-        return None
-
-    async def _generate_summary(self, caption: str) -> str | None:
-        """从完整描述中提取关键词标签"""
-        try:
-            config = self.context.get_config()
-            provider_id = config.get("default_image_caption_provider_id", "")
-            if not provider_id:
-                return None
-
-            provider = self.context.get_provider_by_id(provider_id)
-            if not provider:
-                return None
-
-            prompt = f"从以下图片描述中提取最多10个关键词标签，只返回标签列表，每行一个标签，不要其他内容：\n{caption}"
-
-            req = ProviderRequest(prompt=prompt)
-            resp = await provider.chat(req)
-            summary = resp.completion_text.strip()
-
-            if summary:
-                labels = [
-                    l.strip()
-                    for l in summary.replace("\n", ",").split(",")
-                    if l.strip()
-                ]
-                result = " | ".join(labels[:10]) if labels else None
-                return f"[{result}]" if result else None
-            return None
-        except Exception as e:
-            logger.warning(f"[ImageCache] 生成标签失败: {e}")
-            return None
 
     def _clean_messages(self, messages: list) -> list:
         """清洗消息：去重+长度过滤"""
@@ -305,7 +190,7 @@ class SelfEvolutionPlugin(Star):
 
         # 0.5 图片处理：获取图片标签
         try:
-            image_summaries = await self._process_image_captions(event)
+            image_summaries = await self.image_cache.process_image_captions(event)
             if image_summaries:
                 logger.info(
                     f"[ImageCache] 获取到 {len(image_summaries)} 个图片标签: {image_summaries}"
@@ -1735,7 +1620,7 @@ class SelfEvolutionPlugin(Star):
 
         if action == "list":
             offset = int(param) * page_size if param else 0
-            caches = await self.dao.list_image_caches(page_size, offset)
+            caches = await self.image_cache.list_caches(page_size, offset)
             if not caches:
                 yield event.plain_result("暂无图片缓存记录。")
                 return
@@ -1751,22 +1636,22 @@ class SelfEvolutionPlugin(Star):
 
         elif action == "clear":
             days = int(param) if param else 30
-            count = await self.dao.cleanup_image_cache(days)
+            count = await self.image_cache.cleanup_old_caches(days)
             yield event.plain_result(f"已清理 {days} 天前的图片缓存，共 {count} 条。")
 
         elif action == "flush":
-            count = await self.dao.flush_image_cache()
+            count = await self.image_cache.flush_all_caches()
             yield event.plain_result(f"已删除全部图片缓存，共 {count} 条。")
 
         elif action == "delete":
             if not param:
                 yield event.plain_result("请提供要删除的图片 hash（前8位）。")
                 return
-            success = await self.dao.delete_image_cache(param)
-            if success:
-                yield event.plain_result(f"已删除图片缓存: {param}...")
+            result = await self.image_cache.delete_cache(param)
+            if "已删除" in result:
+                yield event.plain_result(result)
             else:
-                yield event.plain_result(f"未找到图片缓存: {param}")
+                yield event.plain_result(result)
         else:
             yield event.plain_result(
                 "用法：/image_cache list|clear|flush|delete [参数]"
@@ -1781,18 +1666,12 @@ class SelfEvolutionPlugin(Star):
         Args:
             image_hash(string): 图片的 MD5 hash 值（完整或前8位）
         """
-        # 支持前8位匹配
         if len(image_hash) == 8:
-            caches = await self.dao.list_image_caches(1000, 0)
+            caches = await self.image_cache.list_caches(1000, 0)
             for full_hash, summary, _ in caches:
                 if full_hash.startswith(image_hash):
-                    await self.dao.delete_image_cache(full_hash)
-                    return f"已删除图片缓存: {image_hash}..."
-        else:
-            success = await self.dao.delete_image_cache(image_hash)
-            if success:
-                return f"已删除图片缓存: {image_hash}"
-        return f"未找到图片缓存: {image_hash}"
+                    return await self.image_cache.delete_cache(full_hash)
+        return await self.image_cache.delete_cache(image_hash)
 
     @register_on_llm_tool_respond()
     async def on_tool_result_handler(
@@ -1802,62 +1681,5 @@ class SelfEvolutionPlugin(Star):
         tool_args: dict | None,
         tool_result: CallToolResult | None,
     ):
-        """拦截工具调用结果，用于图片描述缓存"""
-        if tool.name != "understand_image" or not tool_result:
-            return
-
-        try:
-            if tool_result.content and isinstance(tool_result.content, list):
-                first_item = tool_result.content[0]
-                if isinstance(first_item, TextContent):
-                    caption = first_item.text.strip()
-                elif hasattr(first_item, "text"):
-                    caption = first_item.text.strip()
-                else:
-                    return
-            else:
-                return
-
-            if not caption:
-                return
-
-            message_obj = getattr(event, "message_obj", None)
-            if not message_obj or not hasattr(message_obj, "message"):
-                return
-
-            img_hash = None
-            for comp in message_obj.message:
-                if isinstance(comp, Image):
-                    if hasattr(comp, "url") and comp.url:
-                        img_hash = await self._get_image_hash(comp.url)
-                    elif hasattr(comp, "path") and comp.path:
-                        img_hash = await self._get_image_hash(comp.path)
-                    if not img_hash:
-                        try:
-                            local_path = await comp.convert_to_file_path()
-                            img_hash = await self._get_image_hash(local_path)
-                        except:
-                            pass
-                    break
-
-            if not img_hash:
-                return
-
-            existing = await self.dao.get_image_summary(img_hash)
-            if existing:
-                return
-
-            summary = await self._generate_summary(caption)
-            summary = summary if summary else caption[:20]
-            await self.dao.add_image_cache(img_hash, caption, summary)
-
-            group_id = event.get_group_id()
-            user_id = event.get_sender_id()
-            buffer_key = str(group_id) if group_id else f"private_{user_id}"
-            session_buffer = self.session_manager.session_buffers.get(buffer_key, {})
-            session_buffer["image_summaries"] = [summary]
-            self.session_manager.session_buffers[buffer_key] = session_buffer
-
-            logger.info(f"[ImageCache] 拦截并缓存: {img_hash[:8]}... -> {summary}")
-        except Exception as e:
-            logger.warning(f"[ImageCache] 拦截工具结果失败: {e}")
+        """拦截工具调用结果，委托给 ImageCacheEngine 处理"""
+        await self.image_cache.handle_tool_result(event, tool, tool_args, tool_result)

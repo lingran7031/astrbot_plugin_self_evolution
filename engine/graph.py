@@ -16,7 +16,7 @@ class GraphRAG:
 
     @property
     def graph_enabled(self):
-        return getattr(self.plugin, "graph_enabled", True)
+        return self.plugin.cfg.graph_enabled
 
     async def record_interaction(
         self, user_id: str, group_id: str, other_user_id: str = None

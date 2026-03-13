@@ -15,20 +15,11 @@ class PersonaManager:
 
     @property
     def review_mode(self):
-        if isinstance(self.plugin.config.get("review_mode"), bool):
-            return self.plugin.config.get("review_mode")
-        if isinstance(self.plugin.config.get("review_mode"), str):
-            return self.plugin.config.get("review_mode").lower() in (
-                "true",
-                "1",
-                "yes",
-                "on",
-            )
-        return True
+        return self.plugin.cfg.review_mode
 
     @property
     def admin_users(self):
-        return self.plugin.config.get("admin_users", [])
+        return self.plugin.cfg.admin_users
 
     async def evolve_persona(self, event, new_system_prompt: str, reason: str) -> str:
         """提出进化建议"""

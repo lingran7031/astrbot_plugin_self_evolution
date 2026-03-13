@@ -2,12 +2,8 @@ from astrbot.api import logger
 import re
 import time
 import asyncio
-import zlib
-import hashlib
-import aiohttp
 from collections import defaultdict
 from astrbot.api.all import AstrMessageEvent
-from astrbot.core.message.components import Image
 
 
 class EavesdroppingEngine:
@@ -242,10 +238,10 @@ class EavesdroppingEngine:
 
     def _get_boredom_params(self):
         return {
-            "enabled": getattr(self.plugin, "boredom_enabled", True),
-            "threshold": getattr(self.plugin, "boredom_threshold", 0.6),
-            "consecutive_count": getattr(self.plugin, "boredom_consecutive_count", 5),
-            "sarcastic_reply": getattr(self.plugin, "boredom_sarcastic_reply", True),
+            "enabled": self.plugin.cfg.boredom_enabled,
+            "threshold": self.plugin.cfg.boredom_threshold,
+            "consecutive_count": self.plugin.cfg.boredom_consecutive_count,
+            "sarcastic_reply": self.plugin.cfg.boredom_sarcastic_reply,
         }
 
     def _update_boredom(self, group_id: str, entropy: float):
@@ -270,17 +266,17 @@ class EavesdroppingEngine:
 
     def _get_leaky_params(self):
         return {
-            "enabled": getattr(self.plugin, "leaky_integrator_enabled", True),
-            "decay": getattr(self.plugin, "leaky_decay_factor", 0.9),
-            "threshold": getattr(self.plugin, "leaky_trigger_threshold", 4.0),
-            "interest_boost": getattr(self.plugin, "interest_boost", 2.0),
-            "daily_boost": getattr(self.plugin, "daily_chat_boost", 0.2),
+            "enabled": self.plugin.cfg.leaky_integrator_enabled,
+            "decay": self.plugin.cfg.leaky_decay_factor,
+            "threshold": self.plugin.cfg.leaky_trigger_threshold,
+            "interest_boost": self.plugin.cfg.interest_boost,
+            "daily_boost": self.plugin.cfg.daily_chat_boost,
         }
 
     def _calculate_boost(self, msg_text: str) -> float:
         params = self._get_leaky_params()
 
-        critical_keywords = getattr(self.plugin, "critical_keywords", "")
+        critical_keywords = self.plugin.cfg.critical_keywords
         if critical_keywords:
             try:
                 pattern = re.compile(f"({critical_keywords})", re.IGNORECASE)
@@ -291,110 +287,12 @@ class EavesdroppingEngine:
 
         return params["daily_boost"]
 
-    async def _get_image_hash(self, image_url: str) -> str | None:
-        """计算图片的 MD5 hash"""
-        try:
-            if image_url.startswith("http://") or image_url.startswith("https://"):
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        image_url, timeout=aiohttp.ClientTimeout(total=10)
-                    ) as resp:
-                        if resp.status != 200:
-                            return None
-                        content = await resp.read()
-            elif image_url.startswith("file://"):
-                path = image_url[7:]
-                with open(path, "rb") as f:
-                    content = f.read()
-            elif image_url.startswith("base64://"):
-                import base64
-
-                content = base64.b64decode(image_url[9:])
-            else:
-                with open(image_url, "rb") as f:
-                    content = f.read()
-            return hashlib.md5(content).hexdigest()
-        except Exception as e:
-            logger.warning(f"[ImageCache] 计算图片 hash 失败: {e}")
-            return None
-
-    async def _process_image_captions(self, event: AstrMessageEvent) -> list:
-        """处理消息中的图片，获取描述和标签（优先使用缓存）"""
-        self._current_image_summaries = []
-        group_id = event.get_group_id()
-        user_id = event.get_sender_id()
-        buffer_key = str(group_id) if group_id else f"private_{user_id}"
-
-        try:
-            message_obj = getattr(event, "message_obj", None)
-            if not message_obj or not hasattr(message_obj, "message"):
-                return self._current_image_summaries
-
-            for comp in message_obj.message:
-                if isinstance(comp, Image):
-                    if hasattr(comp, "url") and comp.url:
-                        image_url = comp.url
-                    elif hasattr(comp, "path") and comp.path:
-                        image_url = comp.path
-                    else:
-                        try:
-                            image_url = await comp.convert_to_file_path()
-                        except Exception:
-                            image_url = comp.file if comp.file else ""
-
-                    if not image_url:
-                        continue
-
-                    img_hash = await self._get_image_hash(image_url)
-                    if not img_hash:
-                        continue
-
-                    cached_summary = await self.plugin.dao.get_image_summary(img_hash)
-                    if cached_summary:
-                        self._current_image_summaries.append(cached_summary)
-                        logger.info(
-                            f"[ImageCache] 使用缓存: {img_hash[:8]}... -> {cached_summary}"
-                        )
-                        continue
-
-                    result = await self._fetch_image_caption(image_url)
-                    if result:
-                        caption, summary = result
-                        self._current_image_summaries.append(summary)
-                        logger.info(
-                            f"[ImageCache] 主动插话模式-不存储缓存: {img_hash[:8]}... -> {summary}"
-                        )
-
-            if self._current_image_summaries:
-                session_buffer = self.plugin.session_manager.session_buffers.get(
-                    buffer_key, {}
-                )
-                session_buffer["image_summaries"] = self._current_image_summaries
-                self.plugin.session_manager.session_buffers[buffer_key] = session_buffer
-        except Exception as e:
-            logger.warning(f"[ImageCache] 处理图片描述失败: {e}")
-        return self._current_image_summaries
-
-    async def _fetch_image_caption(self, image_url: str) -> tuple[str, str] | None:
-        """已废弃 - 图片描述由 main.py 拦截器统一处理"""
-        return None
-
-    async def _generate_summary(self, caption: str) -> str | None:
-        """已废弃 - 标签提取由 main.py 统一处理"""
-        return None
-
     async def handle_message(self, event: AstrMessageEvent):
         msg_text = event.message_str
         session_id = str(event.session_id)
         user_id = str(event.get_sender_id())
         sender_name = event.get_sender_name() or "Unknown"
         is_at = event.is_at_or_wake_command
-
-        image_summaries = await self._process_image_captions(event)
-        if image_summaries:
-            logger.info(
-                f"[ImageCache] 获取到 {len(image_summaries)} 个图片标签: {image_summaries}"
-            )
 
         group_id = event.get_group_id()
 
@@ -548,7 +446,7 @@ class EavesdroppingEngine:
         current_z = new_value
         triggered = bucket_data.get("triggered", False)
         consecutive_replies = bucket_data.get("consecutive_replies", 0)
-        cooldown_messages = getattr(self.plugin, "desire_cooldown_messages", 5)
+        cooldown_messages = self.plugin.cfg.desire_cooldown_messages
 
         if current_z >= params["threshold"] and not triggered:
             logger.info(
@@ -680,8 +578,8 @@ class EavesdroppingEngine:
             session_buffer = self.plugin.session_manager.session_buffers.get(
                 lookup_key, {}
             )
-            threshold_min = getattr(self.plugin, "eavesdrop_threshold_min", 10)
-            threshold_max = getattr(self.plugin, "eavesdrop_threshold_max", 50)
+            threshold_min = self.plugin.cfg.eavesdrop_threshold_min
+            threshold_max = self.plugin.cfg.eavesdrop_threshold_max
 
             # 简化解析：支持多种格式
             interesting_match = re.search(
@@ -841,8 +739,8 @@ class EavesdroppingEngine:
             if not session_buffers:
                 return
 
-            threshold = getattr(self.plugin, "eavesdrop_message_threshold", 20)
-            whitelist = getattr(self.plugin, "session_whitelist", [])
+            threshold = self.plugin.cfg.eavesdrop_message_threshold
+            whitelist = self.plugin.cfg.session_whitelist
             processing = getattr(
                 self.plugin.session_manager, "processing_sessions", set()
             )

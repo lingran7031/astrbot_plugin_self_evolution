@@ -17,19 +17,19 @@ class MemoryManager:
 
     @property
     def memory_kb_name(self):
-        return self.plugin.config.get("memory_kb_name", "self_evolution_memory")
+        return self.plugin.cfg.memory_kb_name
 
     @property
     def timeout_memory_commit(self):
-        return float(self.plugin.config.get("timeout_memory_commit", 10.0))
+        return self.plugin.cfg.timeout_memory_commit
 
     @property
     def timeout_memory_recall(self):
-        return float(self.plugin.config.get("timeout_memory_recall", 12.0))
+        return self.plugin.cfg.timeout_memory_recall
 
     @property
     def max_memory_entries(self):
-        return int(self.plugin.config.get("max_memory_entries", 100))
+        return self.plugin.cfg.max_memory_entries
 
     async def commit_to_memory(self, event, fact: str) -> str:
         """手动存入记忆"""

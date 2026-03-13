@@ -326,6 +326,22 @@ class PluginConfig:
     def session_commit_threshold(self):
         return int(self._config.get("session_commit_threshold", 5))
 
+    @property
+    def session_max_tokens(self):
+        return int(self._config.get("session_max_tokens", 4000))
+
+    @property
+    def session_whitelist(self):
+        return self._config.get("session_whitelist", [])
+
+    @property
+    def desire_cooldown_messages(self):
+        return int(self._config.get("desire_cooldown_messages", 5))
+
+    @property
+    def profile_precision_mode(self):
+        return self._config.get("profile_precision_mode", "simple")
+
     def get(self, key, default=None):
         """通用获取配置"""
         return self._config.get(key, default)

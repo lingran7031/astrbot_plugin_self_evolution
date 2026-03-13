@@ -27,23 +27,19 @@ class ProfileManager:
 
     @property
     def precision_mode(self):
-        return self.plugin.config.get("profile_precision_mode", "simple")
+        return self.plugin.cfg.profile_precision_mode
 
     @property
     def dropout_enabled(self):
-        return getattr(self.plugin, "dropout_enabled", True)
+        return self.plugin.cfg.dropout_enabled
 
     @property
     def dropout_edge_rate(self):
-        return getattr(self.plugin, "dropout_edge_rate", 0.15)
+        return self.plugin.cfg.dropout_edge_rate
 
     @property
     def core_info_keywords(self):
-        keywords = getattr(
-            self.plugin,
-            "core_info_keywords",
-            "群主,管理员,OP,owner,admin,好感度,身份,职业,生日",
-        )
+        keywords = self.plugin.cfg.core_info_keywords
         return [k.strip() for k in keywords.split(",")]
 
     def _get_profile_path(self, user_id: str) -> Path:

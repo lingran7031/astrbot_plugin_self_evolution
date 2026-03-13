@@ -18,15 +18,15 @@ class SessionManager:
 
     @property
     def max_tokens(self):
-        return getattr(self.plugin, "session_max_tokens", 4000)
+        return self.plugin.cfg.session_max_tokens
 
     @property
     def whitelist(self):
-        return getattr(self.plugin, "session_whitelist", [])
+        return self.plugin.cfg.session_whitelist
 
     @property
     def message_threshold(self):
-        return getattr(self.plugin, "eavesdrop_message_threshold", 20)
+        return self.plugin.cfg.eavesdrop_message_threshold
 
     def _estimate_tokens(self, text: str) -> int:
         """估算 token 数量（中英文混合）"""
@@ -85,7 +85,7 @@ class SessionManager:
             buffer["token_count"] -= self._estimate_tokens(old_msg)
             evicted = buffer.get("evicted_messages", [])
             evicted.append(old_msg)
-            evicted_max = getattr(self.plugin, "session_evicted_max", 30)
+            evicted_max = self.plugin.cfg.session_evicted_max
             if len(evicted) > evicted_max:
                 evicted.pop(0)
             buffer["evicted_messages"] = evicted
@@ -93,9 +93,7 @@ class SessionManager:
                 f"[Session] 滑动窗口溢出，收集被移除消息，当前 evicted 队列: {len(evicted)} 条"
             )
 
-            evicted_commit_threshold = getattr(
-                self.plugin, "session_evicted_commit_threshold", 30
-            )
+            evicted_commit_threshold = self.plugin.cfg.session_evicted_commit_threshold
             if len(evicted) >= evicted_commit_threshold:
                 asyncio.create_task(
                     self._commit_evicted_to_memory(group_id, evicted.copy())
@@ -147,7 +145,7 @@ class SessionManager:
     async def cleanup_stale(self):
         """清理过期缓冲"""
         now = time.time()
-        timeout = getattr(self.plugin, "session_cleanup_timeout", 600)
+        timeout = self.plugin.cfg.session_cleanup_timeout
         logger.info(
             f"[Session] cleanup_stale 检查，当前缓冲: {list(self.session_buffers.keys())}，超时时间: {timeout}秒"
         )
@@ -281,8 +279,8 @@ class SessionManager:
         if evicted_messages is None:
             evicted_messages = []
 
-        auto_commit = getattr(self.plugin, "session_auto_commit", True)
-        threshold = getattr(self.plugin, "session_commit_threshold", 5)
+        auto_commit = self.plugin.cfg.session_auto_commit
+        threshold = self.plugin.cfg.session_commit_threshold
 
         if not auto_commit:
             return
@@ -295,9 +293,7 @@ class SessionManager:
             return
 
         try:
-            memory_kb_name = getattr(
-                self.plugin, "memory_kb_name", "self_evolution_memory"
-            )
+            memory_kb_name = self.plugin.cfg.memory_kb_name
             kb_manager = self.plugin.context.kb_manager
             kb_helper = await kb_manager.get_kb_by_name(memory_kb_name)
 

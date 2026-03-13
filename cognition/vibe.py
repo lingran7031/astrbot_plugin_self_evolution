@@ -20,7 +20,7 @@ class GroupVibeSystem:
 
     @property
     def enabled(self):
-        return getattr(self.plugin, "group_vibe_enabled", True)
+        return self.plugin.cfg.group_vibe_enabled
 
     def initialize(self):
         if not self.enabled:
