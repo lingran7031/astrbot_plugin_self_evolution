@@ -13,6 +13,7 @@ import time
 import re
 import json
 import logging
+import yaml
 from datetime import datetime
 from mcp.types import CallToolResult, TextContent
 
@@ -166,9 +167,45 @@ class SelfEvolutionPlugin(Star):
 
     def _post_init(self):
         self.san_system.initialize()
+        self._load_prompts_injection()
         logger.info(
             f"[SelfEvolution] === 插件初始化完成 | 模式: {'审核' if self.review_mode else '自动'} | 元编程: {self.allow_meta_programming} | SAN: {self.san_system.value}/{self.san_system.max_value} ==="
         )
+
+    def _load_prompts_injection(self):
+        """加载提示词注入配置文件"""
+        try:
+            prompts_path = os.path.join(
+                os.path.dirname(__file__), "prompts_injection.yaml"
+            )
+            if os.path.exists(prompts_path):
+                with open(prompts_path, "r", encoding="utf-8") as f:
+                    self._prompts_injection = yaml.safe_load(f) or {}
+                logger.debug("[SelfEvolution] 已加载 prompts_injection.yaml")
+            else:
+                self._prompts_injection = {}
+                logger.warning("[SelfEvolution] prompts_injection.yaml 不存在")
+        except Exception as e:
+            logger.warning(f"[SelfEvolution] 加载 prompts_injection.yaml 失败: {e}")
+            self._prompts_injection = {}
+
+    def _get_interject_prompt(self) -> str:
+        """获取插嘴判断的 system prompt"""
+        default_prompt = (
+            f"你是 {self.persona_name}。根据群聊消息判断是否应该主动插嘴，只输出JSON。"
+        )
+
+        try:
+            if self._prompts_injection:
+                prompt_template = self._prompts_injection.get("interject", {}).get(
+                    "judge_prompt", ""
+                )
+                if prompt_template:
+                    return prompt_template.replace("{persona_name}", self.persona_name)
+        except Exception as e:
+            logger.warning(f"[SelfEvolution] 获取插嘴提示词失败，使用默认: {e}")
+
+        return default_prompt
 
     async def initialize(self) -> None:
         await self.dao.init_db()
@@ -802,7 +839,7 @@ class SelfEvolutionPlugin(Star):
             res = await llm_provider.text_chat(
                 prompt=prompt,
                 contexts=[],
-                system_prompt=f"你是 {self.persona_name}。根据群聊消息判断是否应该主动插嘴，只输出JSON。",
+                system_prompt=self._get_interject_prompt(),
             )
 
             if not res.completion_text:
