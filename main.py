@@ -853,14 +853,16 @@ class SelfEvolutionPlugin(Star):
             if not bot:
                 return
 
-            persona_prefix = f"【{self.persona_name}】"
-            full_message = f"{persona_prefix}{message}"
+            full_message = message
 
             await bot.call_action(
                 "send_group_msg", group_id=int(group_id), message=full_message
             )
             logger.info(
-                f"[Interject] 已向群 {group_id} 发送插嘴消息: {persona_prefix}{message[:30]}..."
+                f"[Interject] 已向群 {group_id} 发送插嘴消息: {message[:30]}..."
+            )
+            logger.info(
+                f"[Interject] 已向群 {group_id} 发送插嘴消息: {message[:30]}..."
             )
 
         except Exception as e:
