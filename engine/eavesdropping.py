@@ -740,9 +740,6 @@ class EavesdroppingEngine:
                         consecutive_replies = (
                             session_buffer.get("consecutive_replies", 0) + 1
                         )
-                    else:  # value == 0
-                        logger.info(f"[CognitionCore] 判定为0，静默")
-                        return
                         session_buffer["consecutive_replies"] = consecutive_replies
                         cooldown_messages = getattr(
                             self.plugin, "desire_cooldown_messages", 5
@@ -785,6 +782,9 @@ class EavesdroppingEngine:
                         else:
                             bucket_data["consecutive_replies"] = consecutive_replies
                             self.leaky_bucket[session_id] = bucket_data
+                        return
+                    else:  # value == 0
+                        logger.info(f"[CognitionCore] 判定为0，静默")
                         return
                 else:
                     logger.info(f"[CognitionCore] 无法解析 LLM 判定，发送原始回复")

@@ -525,13 +525,14 @@ class SelfEvolutionDAO:
         db = await self.get_conn()
         async with self._db_lock:
             cursor = await db.execute(
-                "SELECT id, group_id, user_id, base64_data FROM stickers WHERE tags = '' OR tags IS NULL LIMIT ?",
+                "SELECT id, uuid, group_id, user_id, base64_data FROM stickers WHERE tags = '' OR tags IS NULL LIMIT ?",
                 (limit,),
             )
             rows = await cursor.fetchall()
             return [
                 {
                     "id": row["id"],
+                    "uuid": row["uuid"],
                     "group_id": row["group_id"],
                     "user_id": row["user_id"],
                     "base64_data": row["base64_data"],
