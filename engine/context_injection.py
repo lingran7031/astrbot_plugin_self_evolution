@@ -1,0 +1,72 @@
+"""
+上下文注入模块 - 共享的身份隔离与认知指令
+"""
+
+from astrbot.api import logger
+
+
+def build_identity_context(
+    user_id: str,
+    user_name: str = "Unknown User",
+    affinity: int = 50,
+    role_info: str = "",
+    is_group: bool = True,
+) -> str:
+    """
+    构建身份隔离上下文指令（用于插嘴场景）
+
+    Args:
+        user_id: 用户ID
+        user_name: 用户昵称
+        affinity: 好感度 (0-100)
+        role_info: 角色信息，如"（管理员）"
+        is_group: 是否为群聊
+
+    Returns:
+        格式化的身份上下文字符串
+    """
+    chat_type = "群聊" if is_group else "私聊"
+
+    # 好感度状态描述
+    if affinity >= 80:
+        affinity_status = "友好"
+    elif affinity >= 60:
+        affinity_status = "正常"
+    elif affinity >= 40:
+        affinity_status = "冷淡"
+    elif affinity >= 20:
+        affinity_status = "警惕"
+    else:
+        affinity_status = "敌对"
+
+    context = f"""
+【当前对话上下文 - 请严格遵守】：
+- 当前对话类型：{chat_type}
+- 当前说话用户：{user_name}{role_info}
+- 用户ID：{user_id}
+- 情感积分：{affinity}/100（状态：{affinity_status}）
+
+【重要行为准则】：
+1. 只能看到当前这句话的内容，不要误以为之前群里的其他人的发言也是当前用户说的
+2. 严格区分当前发送者与历史记录中其他群成员
+3. 不要因他人的恶意攻击当前发送者
+4. 情感评分是动态的，请根据当前用户的言行实时评估（可用 update_affinity 调整，范围 ±1~5）
+5. 在回复引用内容时，请确保逻辑闭环，并明确回复对象
+"""
+    return context
+
+
+def build_core_cognition_instructions(affinity: int = 50) -> str:
+    """
+    构建核心认知指令（精简版，用于插嘴场景）
+
+    Args:
+        affinity: 好感度
+
+    Returns:
+        核心认知指令字符串
+    """
+    return f"""
+[当前用户] ID:xxx | 好感度:{affinity}/100
+请严格区分当前用户与群里其他人的发言，不要误伤好人。
+"""

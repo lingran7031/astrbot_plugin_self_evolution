@@ -27,6 +27,7 @@ from .engine.persona import PersonaManager
 from .engine.profile import ProfileManager
 from .engine.graph import GraphRAG
 from .engine.session import SessionManager
+from .engine.context_injection import build_identity_context
 from .cognition import SANSystem, GroupVibeSystem
 from .config import PluginConfig
 
@@ -342,14 +343,15 @@ class SelfEvolutionPlugin(Star):
         if ai_context_info:
             context_info += ai_context_info
 
-        context_info += (
-            f"\n【核心认知指令 - 身份隔离与动态心跳 (CognitionCore 6.0)】：\n"
-            "1. 【重要】你只能看到当前这句话的内容，不要误以为之前群里的其他人的发言也是当前用户说的。\n"
-            "2. 严格区分当前发送者与历史记录中其他群成员。不要因他人的恶意攻击当前发送者。\n"
-            f"3. 情感评分（当前:{affinity}/100）是动态的。请对当前发送者的【每一句话】进行实时情感归因评估。\n"
-            "4. 即使分数已满，也请保持审视。若对方表现优秀请维持评分；若出现废话、无礼或违规，请果断调用 `update_affinity` 进行微调（建议波动范围: ±1~5）。\n"
-            "5. 在回复引用内容时，请确保逻辑闭环，并明确回复对象。"
+        # 使用共享函数构建身份上下文
+        identity_context = build_identity_context(
+            user_id=str(sender_id),
+            user_name=sender_name,
+            affinity=affinity,
+            role_info=role_info,
+            is_group=bool(group_id),
         )
+        context_info += identity_context
         req.system_prompt += context_info
         # --- 环境注入结束 ---
 

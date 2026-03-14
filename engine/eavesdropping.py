@@ -4,6 +4,7 @@ import time
 import asyncio
 from collections import defaultdict
 from astrbot.api.all import AstrMessageEvent
+from .context_injection import build_identity_context
 
 
 class EavesdroppingEngine:
@@ -881,6 +882,19 @@ class EavesdroppingEngine:
     ) -> str:
         """有趣时生成正式回复（带人设+上下文）"""
         try:
+            # 获取用户信息
+            user_id = str(event.get_sender_id())
+            user_name = event.get_sender_name() or "Unknown User"
+            group_id = event.get_group_id()
+            role_info = "（管理员）" if event.is_admin() else ""
+
+            # 获取好感度
+            affinity = 50
+            try:
+                affinity = await self.plugin.dao.get_affinity(user_id)
+            except Exception:
+                pass
+
             # 获取完整人格
             persona_prompt = ""
             try:
@@ -910,6 +924,17 @@ class EavesdroppingEngine:
             prompt_parts = []
             if persona_prompt:
                 prompt_parts.append(persona_prompt)
+
+            # 添加身份上下文（核心修复！）
+            identity_context = build_identity_context(
+                user_id=user_id,
+                user_name=user_name,
+                affinity=affinity,
+                role_info=role_info,
+                is_group=bool(group_id),
+            )
+            prompt_parts.append(identity_context)
+
             prompt_parts.append(f"\n对话：\n{chat_history}\n")
             prompt_parts.append(
                 "你觉得这个对话很有趣，决定参与。现在该你参与互动了。"
