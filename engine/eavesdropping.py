@@ -949,9 +949,10 @@ class EavesdroppingEngine:
                 return ""
 
             logger.info(f"[CognitionCore] 正在请求正式回复...")
+            # 不传框架的历史contexts，避免历史干扰导致身份混淆
             res = await llm_provider.text_chat(
                 prompt=formal_prompt,
-                contexts=contexts,
+                contexts=[],
             )
 
             reply = res.completion_text.strip()
