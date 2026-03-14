@@ -935,6 +935,37 @@ class EavesdroppingEngine:
             )
             prompt_parts.append(identity_context)
 
+            # 补充 SAN 值系统
+            if self.plugin.san_enabled:
+                try:
+                    san_prompt = self.plugin.san_system.get_prompt_injection()
+                    if san_prompt:
+                        prompt_parts.append(san_prompt)
+                except Exception:
+                    pass
+
+            # 补充群氛围
+            if group_id and hasattr(self.plugin, "vibe_system"):
+                try:
+                    vibe_prompt = self.plugin.vibe_system.get_prompt_injection(
+                        str(group_id)
+                    )
+                    if vibe_prompt:
+                        prompt_parts.append(vibe_prompt)
+                except Exception:
+                    pass
+
+            # 补充表情包库
+            if self.plugin.cfg.sticker_learning_enabled:
+                try:
+                    sticker_prompt = (
+                        await self.plugin.entertainment.get_prompt_injection()
+                    )
+                    if sticker_prompt:
+                        prompt_parts.append(sticker_prompt)
+                except Exception:
+                    pass
+
             prompt_parts.append(f"\n对话：\n{chat_history}\n")
             prompt_parts.append(
                 "你觉得这个对话很有趣，决定参与。现在该你参与互动了。"
