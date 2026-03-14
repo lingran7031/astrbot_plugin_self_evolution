@@ -518,6 +518,14 @@ class SelfEvolutionPlugin(Star):
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
         """CognitionCore 6.0: 被动监听 - 滑动上下文窗口"""
+        # 最早检查：群级别闭嘴（直接拦截，不处理任何逻辑）
+        group_id = event.get_group_id()
+        if group_id and group_id in self._shut_until_by_group:
+            if time.time() < self._shut_until_by_group[group_id]:
+                return
+            else:
+                del self._shut_until_by_group[group_id]
+
         logger.debug(
             f"[SelfEvolution] 收到消息: {event.message_str[:30] if event.message_str else '(空)'}"
         )
@@ -1646,16 +1654,12 @@ class SelfEvolutionPlugin(Star):
             )
 
     @filter.command("shut")
-    async def shut_cmd(
-        self, event: AstrMessageEvent, minutes: str = "", group: str = ""
-    ):
-        """闭嘴命令：让AI暂停响应
+    async def shut_cmd(self, event: AstrMessageEvent, minutes: str = ""):
+        """闭嘴命令：让AI暂停响应（只对当前群生效）
         用法：
         - /shut - 查看当前状态
-        - /shut <分钟> - 全局闭嘴
-        - /shut <分钟> <群号> - 指定群闭嘴
-        - /shut 0 - 取消全局闭嘴
-        - /shut 0 <群号> - 取消指定群闭嘴
+        - /shut <分钟> - 让当前群闭嘴
+        - /shut 0 - 取消当前群闭嘴
         """
         user_id = str(event.get_sender_id())
 
@@ -1665,66 +1669,44 @@ class SelfEvolutionPlugin(Star):
             yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
             return
 
+        # 获取当前群号
+        current_group = event.get_group_id()
+        if not current_group:
+            yield event.plain_result("此命令需要在群聊中使用")
+            return
+
         if not minutes:
-            # 显示当前状态
-            status_parts = []
-
-            # 检查全局状态
-            if self._shut_until and time.time() < self._shut_until:
-                remaining = int(self._shut_until - time.time())
-                status_parts.append(f"全局: 剩{remaining}秒")
-
-            # 检查群状态
-            if self._shut_until_by_group:
-                current_group = event.get_group_id()
-                for gid, until in list(self._shut_until_by_group.items()):
-                    if time.time() < until:
-                        remaining = int(until - time.time())
-                        status_parts.append(f"群{gid}: 剩{remaining}秒")
-
-            if status_parts:
-                yield event.plain_result("[!] 闭嘴状态: " + ", ".join(status_parts))
-            else:
-                yield event.plain_result("[OK] 正常模式，未闭嘴")
+            # 显示当前群状态
+            if current_group in self._shut_until_by_group:
+                if time.time() < self._shut_until_by_group[current_group]:
+                    remaining = int(
+                        self._shut_until_by_group[current_group] - time.time()
+                    )
+                    yield event.plain_result(f"[!] 当前群闭嘴模式，剩余 {remaining} 秒")
+                    return
+            yield event.plain_result("[OK] 当前群正常模式，未闭嘴")
             return
 
         # 解析分钟数
         try:
             mins = int(minutes)
         except ValueError:
-            yield event.plain_result("请输入有效的分钟数，如 /shut 5 或 /shut 5 123456")
+            yield event.plain_result("请输入有效的分钟数，如 /shut 5")
             return
 
         if mins <= 0:
-            # 取消闭嘴
-            if group:
-                # 取消指定群
-                if group in self._shut_until_by_group:
-                    del self._shut_until_by_group[group]
-                    yield event.plain_result(f"[OK] 已取消群 {group} 的闭嘴模式")
-                else:
-                    yield event.plain_result(f"[OK] 群 {group} 未设置闭嘴")
+            # 取消当前群闭嘴
+            if current_group in self._shut_until_by_group:
+                del self._shut_until_by_group[current_group]
+                yield event.plain_result("[OK] 已取消当前群的闭嘴模式")
             else:
-                # 取消全局
-                self._shut_until = None
-                # 清理所有群级别闭嘴
-                self._shut_until_by_group.clear()
-                yield event.plain_result("[OK] 已取消所有闭嘴模式")
+                yield event.plain_result("[OK] 当前群未设置闭嘴")
             return
 
-        # 设置闭嘴时间
+        # 设置当前群闭嘴时间
         target_time = time.time() + mins * 60
-
-        if group:
-            # 指定群闭嘴
-            self._shut_until_by_group[group] = target_time
-            yield event.plain_result(
-                f"[OK] 群 {group} 已进入闭嘴模式，持续 {mins} 分钟"
-            )
-        else:
-            # 全局闭嘴
-            self._shut_until = target_time
-            yield event.plain_result(f"[OK] 已进入全局闭嘴模式，持续 {mins} 分钟")
+        self._shut_until_by_group[current_group] = target_time
+        yield event.plain_result(f"[OK] 已让当前群闭嘴，持续 {mins} 分钟")
 
     @filter.command("db")
     async def db_cmd(self, event: AstrMessageEvent, action: str = "", param: str = ""):
