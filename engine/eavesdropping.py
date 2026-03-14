@@ -19,13 +19,6 @@ class EavesdroppingEngine:
         self._bucket_lock = asyncio.Lock()
         self._boredom_lock = asyncio.Lock()
         self._active_users_lock = asyncio.Lock()
-        self._intercepted_lock = asyncio.Lock()
-
-        # 中间消息拦截缓存：{session_id: {"messages": [], "last_update": timestamp}}
-        self.intercepted_messages = defaultdict(
-            lambda: {"messages": [], "last_update": 0.0}
-        )
-        self.intercepted_message_ttl = 30  # 缓存30秒后丢弃
 
         # 漏斗机制 - 用户活跃判定
         self.active_users = defaultdict(
@@ -40,31 +33,6 @@ class EavesdroppingEngine:
         self.session_buffers = {}  # {buffer_key: {"messages": [], "eavesdrop_count": 0, "threshold": int}}
         self.processing_sessions = set()
         self._session_lock = asyncio.Lock()
-
-        # 中间消息模式 - 这些消息会在工具调用期间被拦截
-        self.intermediate_message_patterns = [
-            r"^让我",
-            r"^让我先",
-            r"^让我查查",
-            r"^让我看看",
-            r"^让我再",
-            r"^我来帮你",
-            r"^让我获取",
-            r"^让我整理",
-            r"^我先",
-            r"^我先查",
-            r"^我先看看",
-            r"^我先了解一下",
-            r"^让我先了解一下",
-            r"^让我先查一下",
-            r"^让我先看看",
-            r"^让我来分析",
-            r"^让我来",
-        ]
-        # 预编译中间消息正则
-        self._intermediate_patterns_compiled = [
-            re.compile(p) for p in self.intermediate_message_patterns
-        ]
 
         # 强AI意图句式
         self.ai_intent_patterns = [
@@ -82,41 +50,6 @@ class EavesdroppingEngine:
         self._ai_intent_patterns_compiled = [
             re.compile(p) for p in self.ai_intent_patterns
         ]
-
-    def is_intermediate_message(self, text: str) -> bool:
-        """检查消息是否是中间消息（工具调用期间的过渡性消息），应该被拦截"""
-        if not text:
-            return False
-        text = text.strip()
-        for pattern in self._intermediate_patterns_compiled:
-            if pattern.match(text):
-                logger.debug(f"[IntermediateFilter] 拦截中间消息: {text[:50]}")
-                return True
-        return False
-
-    def cache_intercepted_message(self, session_id: str, message: str):
-        """缓存被拦截的中间消息"""
-        session_id = str(session_id)
-        now = time.time()
-        self.intercepted_messages[session_id]["messages"].append(message)
-        self.intercepted_messages[session_id]["last_update"] = now
-        logger.debug(
-            f"[IntermediateFilter] 缓存中间消息，当前缓存 {len(self.intercepted_messages[session_id]['messages'])} 条"
-        )
-
-    def cleanup_expired_intercepted_messages(self):
-        """清理过期的被拦截消息"""
-        now = time.time()
-        expired_sessions = []
-        for session_id, data in self.intercepted_messages.items():
-            if now - data["last_update"] > self.intercepted_message_ttl:
-                if data["messages"]:
-                    logger.debug(
-                        f"[IntermediateFilter] 丢弃过期缓存消息 {len(data['messages'])} 条"
-                    )
-                expired_sessions.append(session_id)
-        for session_id in expired_sessions:
-            del self.intercepted_messages[session_id]
 
     def _calculate_entropy(self, text: str) -> float:
         """基于香农熵计算文本信息量"""
@@ -351,7 +284,6 @@ class EavesdroppingEngine:
         self._msg_counter = getattr(self, "_msg_counter", 0) + 1
         if self._msg_counter % 100 == 0:
             self.cleanup_expired_active_users()
-            self.cleanup_expired_intercepted_messages()
 
         config = self.plugin.context.get_config()
         bot_wake_prefixes = config.get("wake_prefix", ["/"])

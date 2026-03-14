@@ -497,48 +497,6 @@ class SelfEvolutionPlugin(Star):
         async for result in self.eavesdropping.handle_message(event):
             yield result
 
-    @filter.on_decorating_result()
-    async def on_decorating_result(self, event: AstrMessageEvent):
-        """中间消息过滤器：拦截工具调用期间的过渡性消息"""
-        logger.debug(f"[SelfEvolution] 结果装饰: {event.session_id}")
-        result = event.get_result()
-
-        if not result or not result.chain:
-            return
-
-        session_id = str(event.session_id)
-
-        # 清理过期的被拦截消息
-        self.eavesdropping.cleanup_expired_intercepted_messages()
-
-        # 检查消息链中是否有需要拦截的中间消息
-        filtered_chain = []
-        intercepted = False
-
-        for comp in result.chain:
-            if isinstance(comp, Plain) and comp.text:
-                text = comp.text.strip()
-                if self.eavesdropping.is_intermediate_message(text):
-                    self.eavesdropping.cache_intercepted_message(session_id, text)
-                    intercepted = True
-                    continue
-            filtered_chain.append(comp)
-
-        if intercepted and filtered_chain:
-            # 有消息被拦截，更新result.chain
-            result.chain = filtered_chain
-            logger.info(
-                f"[IntermediateFilter] 已拦截中间消息，剩余 {len(filtered_chain)} 个组件"
-            )
-        elif intercepted and not filtered_chain:
-            # 所有消息都被拦截，使用clear_result清空
-            event.clear_result()
-            logger.info(f"[IntermediateFilter] 拦截所有消息，暂停发送")
-
-        # AI 回复发送成功后，存入 session
-        if result and result.chain and not intercepted:
-            pass
-
     @filter.on_plugin_loaded()
     async def on_loaded(self, metadata):
         """
