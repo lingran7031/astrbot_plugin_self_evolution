@@ -58,10 +58,6 @@ class PluginConfig:
         return self._parse_bool(self._config.get("allow_meta_programming"), False)
 
     @property
-    def core_principles(self):
-        return self._config.get("core_principles", "保持理性、诚实、守法。")
-
-    @property
     def admin_users(self):
         return self._config.get("admin_users", [])
 
@@ -111,14 +107,6 @@ class PluginConfig:
 
     @property
     def prompt_meltdown_message(self):
-        return "错误：权限已熔断，拒绝服务。"
-
-    @property
-    def prompt_communication_guidelines(self):
-        return "像平时在群里和朋友聊天一样自然地回复。如果用户问的是你已经记住的信息，直接回答即可。当需要调用工具获取信息时，请直接调用工具，不要发送过渡性开场白。工具结果返回后再直接给出最终回答。"
-
-    @property
-    def prompt_dream_user_summary(self):
         return "你是记忆助手。请根据今天的对话更新用户的印象笔记。旧笔记：{old_note}。今日对话：{messages}。每个结论必须标注置信度：90-100%为确定事实，50-89%为大概率正确，<50%为不确定。请输出一段精简纯文本，不超过200字。只输出文本，不要其他内容。"
 
     @property
