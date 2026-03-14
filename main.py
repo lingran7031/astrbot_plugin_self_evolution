@@ -835,7 +835,7 @@ class SelfEvolutionPlugin(Star):
                 logger.debug(f"[Interject] 群 {group_id}: 无法获取 bot 实例")
                 return
 
-            msg_count = self.cfg.interject_msg_count
+            msg_count = self.cfg.interject_analyze_count
             result = await bot.call_action(
                 "get_group_msg_history", group_id=int(group_id), count=msg_count
             )
@@ -865,7 +865,7 @@ class SelfEvolutionPlugin(Star):
             prompt = f"""分析以下群聊消息，判断AI是否应该主动插嘴：
 
 群聊消息：
-{chr(10).join(formatted[:20])}
+{chr(10).join(formatted[: self.cfg.interject_analyze_count])}
 
 请以JSON格式输出判断结果：
 {{

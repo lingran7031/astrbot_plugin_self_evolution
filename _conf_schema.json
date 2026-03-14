@@ -138,6 +138,13 @@
         "type": "int",
         "default": 100
     },
+    "interject_analyze_count": {
+        "title": "插嘴分析消息数",
+        "description": "每次检查时发送给 LLM 分析的消息数量。",
+        "hint": "默认 15 条",
+        "type": "int",
+        "default": 15
+    },
     "interject_whitelist": {
         "title": "插嘴白名单群",
         "description": "指定要检查的群号，不填则检查 bot 加入的所有群。",

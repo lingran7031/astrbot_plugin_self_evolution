@@ -266,6 +266,10 @@ class PluginConfig:
         return int(self._config.get("interject_msg_count", 100))
 
     @property
+    def interject_analyze_count(self):
+        return int(self._config.get("interject_analyze_count", 15))
+
+    @property
     def interject_whitelist(self):
         whitelist = self._config.get("interject_whitelist", [])
         if isinstance(whitelist, str):
