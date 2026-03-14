@@ -138,6 +138,13 @@
         "type": "int",
         "default": 100
     },
+    "interject_whitelist": {
+        "title": "插嘴白名单群",
+        "description": "指定要检查的群号，不填则检查 bot 加入的所有群。",
+        "hint": "多个群号用逗号分隔，如: 123456789,987654321",
+        "type": "string",
+        "default": ""
+    },
     "leaky_decay_factor": {
         "title": "欲望衰减系数",
         "description": "欲望随时间的自然衰减系数。",
