@@ -239,6 +239,18 @@ class PluginConfig:
         )
 
     @property
+    def interject_enabled(self):
+        return self._parse_bool(self._config.get("interject_enabled"), False)
+
+    @property
+    def interject_interval(self):
+        return int(self._config.get("interject_interval", 30))
+
+    @property
+    def interject_msg_count(self):
+        return int(self._config.get("interject_msg_count", 100))
+
+    @property
     def eavesdrop_interval_minutes(self):
         return int(self._config.get("eavesdrop_interval_minutes", 10))
 

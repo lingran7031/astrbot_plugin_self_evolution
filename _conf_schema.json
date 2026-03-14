@@ -118,6 +118,26 @@
         "type": "bool",
         "default": true
     },
+    "interject_enabled": {
+        "title": "启用主动插嘴",
+        "description": "定时检查群聊氛围，自主决定是否插嘴。",
+        "type": "bool",
+        "default": false
+    },
+    "interject_interval": {
+        "title": "插嘴检查间隔",
+        "description": "每隔多久检查一次是否需要插嘴。",
+        "hint": "单位：分钟，默认 30",
+        "type": "int",
+        "default": 30
+    },
+    "interject_msg_count": {
+        "title": "插嘴检查消息数",
+        "description": "每次检查时获取的消息数量。",
+        "hint": "默认 100 条",
+        "type": "int",
+        "default": 100
+    },
     "leaky_decay_factor": {
         "title": "欲望衰减系数",
         "description": "欲望随时间的自然衰减系数。",

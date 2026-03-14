@@ -589,6 +589,20 @@ class SelfEvolutionPlugin(Star):
             )
             logger.info(f"[SelfEvolution] 已注册每日总结任务: {summary_cron}")
 
+            # 注册主动插嘴任务
+            if self.cfg.interject_enabled:
+                interject_job_name = "SelfEvolution_Interject"
+                interject_interval = self.cfg.interject_interval
+                interject_cron = f"*/{interject_interval} * * * *"
+                await cron_mgr.add_basic_job(
+                    name=interject_job_name,
+                    cron_expression=interject_cron,
+                    handler=self._scheduled_interject,
+                    description="自我进化插件：定时检查群聊氛围并自主决定是否插嘴。",
+                    persistent=True,
+                )
+                logger.info(f"[SelfEvolution] 已注册主动插嘴任务: {interject_cron}")
+
         except Exception as e:
             logger.error(f"[SelfEvolution] 注册定时任务失败: {e}", exc_info=True)
 
@@ -636,6 +650,141 @@ class SelfEvolutionPlugin(Star):
         logger.info("[Memory] 开始每日群聊总结...")
         await self.memory.daily_summary()
         logger.info("[Memory] 每日群聊总结任务完成。")
+
+    async def _scheduled_interject(self):
+        """主动插嘴定时任务 - 获取群消息，LLM判断是否需要插嘴"""
+        logger.info("[Interject] 开始主动插嘴检查...")
+
+        try:
+            groups = self._get_target_groups()
+            if not groups:
+                logger.debug("[Interject] 无目标群")
+                return
+
+            for group_id in groups:
+                await self._interject_check_group(group_id)
+
+            logger.info("[Interject] 主动插嘴检查完成")
+
+        except Exception as e:
+            logger.warning(f"[Interject] 主动插嘴检查异常: {e}")
+
+    def _get_target_groups(self):
+        """获取需要检查的群列表"""
+        if hasattr(self, "eavesdropping") and hasattr(
+            self.eavesdropping, "active_users"
+        ):
+            return list(self.eavesdropping.active_users.keys())
+        return []
+
+    async def _interject_check_group(self, group_id: str):
+        """检查单个群是否需要插嘴"""
+        try:
+            platform_insts = self.context.platform_manager.platform_insts
+            if not platform_insts:
+                return
+
+            platform = platform_insts[0]
+            if not hasattr(platform, "get_client"):
+                return
+
+            bot = platform.get_client()
+            if not bot:
+                return
+
+            msg_count = self.cfg.interject_msg_count
+            result = await bot.call_action(
+                "get_group_msg_history", group_id=int(group_id), count=msg_count
+            )
+
+            messages = result.get("messages", [])
+            if not messages:
+                return
+
+            formatted = []
+            for msg in messages:
+                sender = msg.get("sender", {})
+                nickname = sender.get("nickname", "未知")
+                content = msg.get("message", "")
+                if content:
+                    formatted.append(f"{nickname}: {content}")
+
+            if not formatted:
+                return
+
+            llm_provider = self.context.get_using_provider("qq")
+            if not llm_provider:
+                return
+
+            prompt = f"""分析以下群聊消息，判断AI是否应该主动插嘴：
+
+群聊消息：
+{chr(10).join(formatted[:20])}
+
+请以JSON格式输出判断结果：
+{{
+    "should_interject": true/false,
+    "reason": "判断理由",
+    "suggested_response": "如果应该插嘴，给出建议的回复内容"
+}}
+
+注意：只有当群里有有趣的讨论、有争议的话题、或者有人提问但没人回答时才应该插嘴。"""
+
+            res = await llm_provider.text_chat(
+                prompt=prompt,
+                contexts=[],
+                system_prompt="你是一个群聊助手，根据消息内容判断是否应该主动发言。只输出JSON。",
+            )
+
+            if not res.completion_text:
+                return
+
+            import re
+
+            match = re.search(r"\{.*\}", res.completion_text, re.DOTALL)
+            if not match:
+                return
+
+            import json
+
+            try:
+                result = json.loads(match.group())
+            except:
+                return
+
+            if result.get("should_interject"):
+                suggested = result.get("suggested_response", "")
+                if suggested:
+                    logger.info(
+                        f"[Interject] 群 {group_id} 建议插嘴: {suggested[:50]}..."
+                    )
+                    await self._do_interject(group_id, suggested)
+
+        except Exception as e:
+            logger.warning(f"[Interject] 群 {group_id} 检查失败: {e}")
+
+    async def _do_interject(self, group_id: str, message: str):
+        """执行插嘴"""
+        try:
+            platform_insts = self.context.platform_manager.platform_insts
+            if not platform_insts:
+                return
+
+            platform = platform_insts[0]
+            if not hasattr(platform, "get_client"):
+                return
+
+            bot = platform.get_client()
+            if not bot:
+                return
+
+            await bot.call_action(
+                "send_group_msg", group_id=int(group_id), message=message
+            )
+            logger.info(f"[Interject] 已向群 {group_id} 发送插嘴消息")
+
+        except Exception as e:
+            logger.warning(f"[Interject] 发送插嘴消息失败: {e}")
 
     async def _scheduled_sticker_tag(self):
         """表情包打标签定时任务"""
