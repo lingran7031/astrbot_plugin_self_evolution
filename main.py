@@ -28,6 +28,7 @@ from .engine.profile import ProfileManager
 from .engine.context_injection import build_identity_context
 from .cognition import SANSystem
 from .config import PluginConfig
+from . import commands
 
 
 # 全局不可变常量提取 (迁移至主类管理)
@@ -1036,51 +1037,14 @@ class SelfEvolutionPlugin(Star):
     @filter.command("version")
     async def show_version(self, event: AstrMessageEvent):
         """显示插件版本"""
-        version = getattr(self, "_cached_version", None)
-        if version is None:
-            import os
-
-            metadata_path = os.path.join(os.path.dirname(__file__), "metadata.yaml")
-            if os.path.exists(metadata_path):
-                with open(metadata_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if line.startswith("version:"):
-                            version = line.split(":", 1)[1].strip()
-                            break
-            if not version:
-                version = "未知"
-            self._cached_version = version
-        yield event.plain_result(f"【Self-Evolution】版本: {version}")
+        result = await commands.handle_version(event, self)
+        yield event.plain_result(result)
 
     @filter.command("sehelp")
     async def show_help(self, event: AstrMessageEvent):
         """显示 Self-Evolution 插件指令帮助"""
-        user_id = event.get_sender_id()
-        is_admin = event.is_admin()
-
-        help_text = """【Self-Evolution 指令帮助】
-
- 【用户指令】
-/reflect              - 手动触发一次自我反省
-/affinity             - 查看 AI 对你的好感度评分
-/view [用户ID]        - 查看用户画像（普通用户只能看自己，管理员可指定用户）
-/create [用户ID]      - 手动创建画像（普通用户只能给自己创建，管理员可指定用户）
-/update [用户ID]      - 手动更新画像（普通用户只能更新自己，管理员可指定用户）"""
-
-        if is_admin:
-            help_text += """
-
-【管理员指令】（仅管理员可用）
-/set_affinity <用户ID> <分数> - 强制重置指定用户的好感度（0-100）
-/delete_profile <用户ID>      - 删除指定用户的画像
-/profile_stats               - 查看画像系统统计信息
-/review_evolutions [页码]    - 列出待审核的人格进化请求
-/approve_evolution <ID>       - 批准指定的进化请求
-/reject_evolution <ID>       - 拒绝指定的进化请求
-/clear_evolutions            - 清空所有待审核的进化请求
-/session                     - 会话管理"""
-
-        yield event.plain_result(help_text)
+        result = await commands.handle_help(event, self)
+        yield event.plain_result(result)
 
     @filter.command("今日老婆")
     async def today_waifu(self, event: AstrMessageEvent):
@@ -1416,98 +1380,58 @@ class SelfEvolutionPlugin(Star):
     @filter.command("view")
     async def view_profile_cmd(self, event: AstrMessageEvent, user_id: str = ""):
         """查看用户画像。普通用户只能看自己，管理员可以指定用户。"""
-        sender_id = str(event.get_sender_id())
-        group_id = event.get_group_id()
-        is_admin = event.is_admin() or (
-            self.admin_users and sender_id in self.admin_users
-        )
-
-        target_user = user_id if user_id else sender_id
-
-        if user_id and not is_admin:
-            yield event.plain_result("权限拒绝：普通用户无法查看他人画像。")
-            return
-
-        if group_id:
-            profile_key = f"{group_id}_{target_user}"
-        else:
-            profile_key = target_user
-
-        if user_id and is_admin and group_id:
-            result = await self.profile.build_profile(user_id, group_id, mode="update")
-            if "失败" in result or "无消息" in result:
-                yield event.plain_result(await self.profile.view_profile(user_id))
-            else:
-                yield event.plain_result(await self.profile.view_profile(user_id))
-        else:
-            yield event.plain_result(await self.profile.view_profile(profile_key))
+        if not commands.check_profile_admin(event, self):
+            if user_id:
+                yield event.plain_result("权限拒绝：普通用户无法查看他人画像。")
+                return
+        result = await commands.handle_view(event, self)
+        yield event.plain_result(result)
 
     @filter.command("create")
     async def create_profile_cmd(self, event: AstrMessageEvent, user_id: str = ""):
         """手动创建用户画像。普通用户只能给自己创建，管理员可以指定用户。"""
-        sender_id = str(event.get_sender_id())
         group_id = event.get_group_id()
-        is_admin = event.is_admin() or (
-            self.admin_users and sender_id in self.admin_users
-        )
-
         if not group_id:
             yield event.plain_result("此指令需要在群聊中使用。")
             return
-
-        target_user = user_id if user_id else sender_id
-
-        if user_id and not is_admin:
-            yield event.plain_result("权限拒绝：普通用户无法给他人创建画像。")
-            return
-
-        result = await self.profile.build_profile(target_user, group_id, mode="create")
+        if not commands.check_profile_admin(event, self):
+            if user_id:
+                yield event.plain_result("权限拒绝：普通用户无法给他人创建画像。")
+                return
+        result = await commands.handle_create(event, self)
         yield event.plain_result(result)
 
     @filter.command("update")
     async def update_profile_cmd(self, event: AstrMessageEvent, user_id: str = ""):
         """手动更新用户画像。普通用户只能更新自己，管理员可以指定用户。"""
-        sender_id = str(event.get_sender_id())
         group_id = event.get_group_id()
-        is_admin = event.is_admin() or (
-            self.admin_users and sender_id in self.admin_users
-        )
-
         if not group_id:
             yield event.plain_result("此指令需要在群聊中使用。")
             return
-
-        target_user = user_id if user_id else sender_id
-
-        if user_id and not is_admin:
-            yield event.plain_result("权限拒绝：普通用户无法更新他人画像。")
-            return
-
-        result = await self.profile.build_profile(target_user, group_id, mode="update")
+        if not commands.check_profile_admin(event, self):
+            if user_id:
+                yield event.plain_result("权限拒绝：普通用户无法更新他人画像。")
+                return
+        result = await commands.handle_update(event, self)
         yield event.plain_result(result)
 
     @filter.command("delete_profile")
     async def delete_profile_cmd(self, event: AstrMessageEvent, user_id: str):
         """【管理员】删除指定用户的画像。"""
-        if not event.is_admin() and (
-            not self.admin_users or str(event.get_sender_id()) not in self.admin_users
-        ):
+        if not commands.check_profile_admin(event, self):
             yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
             return
-        yield event.plain_result(await self.profile.delete_profile(user_id))
+        result = await commands.handle_delete(event, self)
+        yield event.plain_result(result)
 
     @filter.command("profile_stats")
     async def profile_stats_cmd(self, event: AstrMessageEvent):
         """【管理员】查看画像统计信息。"""
-        if not event.is_admin() and (
-            not self.admin_users or str(event.get_sender_id()) not in self.admin_users
-        ):
+        if not commands.check_profile_admin(event, self):
             yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
             return
-        stats = await self.profile.list_profiles()
-        yield event.plain_result(
-            f"画像统计：\n- 用户数: {stats['total_users']}\n- 兴趣标签: {stats['total_tags']}\n- 性格特征: {stats['total_traits']}"
-        )
+        result = await commands.handle_stats(event, self)
+        yield event.plain_result(result)
 
     # ========== 表情包相关 LLM 工具 ==========
 
@@ -1590,93 +1514,11 @@ class SelfEvolutionPlugin(Star):
         self, event: AstrMessageEvent, action: str = "list", param: str = ""
     ):
         """表情包管理命令（全局）"""
-        if not event.is_admin() and (
-            not self.admin_users or str(event.get_sender_id()) not in self.admin_users
-        ):
+        if not commands.check_sticker_admin(event, self):
             yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
             return
-
-        action = action.lower()
-
-        if action == "list":
-            page = int(param) if param and param.isdigit() else 1
-            page_size = 10
-            offset = (page - 1) * page_size
-
-            stickers = await self.dao.get_stickers_by_tags("", page_size, offset)
-            total = await self.dao.get_sticker_count()
-            today = await self.dao.get_today_sticker_count()
-
-            if not stickers:
-                yield event.plain_result("暂无表情包。")
-                return
-
-            result = [
-                f"【表情包列表】（第 {page} 页，共 {total} 张，今日新增 {today} 张）\n"
-            ]
-            for s in stickers:
-                tags = s["tags"][:30] if s["tags"] else "无标签"
-                result.append(f"UUID:{s['uuid']} | 用户:{s['user_id']} | 标签:{tags}")
-            result.append(f"\n【管理指令】")
-            result.append("/sticker delete <UUID>  # 删除指定UUID")
-            result.append("/sticker clear           # 清空所有表情包")
-            yield event.plain_result("\n".join(result))
-
-        elif action == "untagged":
-            untagged = await self.dao.get_untagged_stickers(20)
-            if not untagged:
-                yield event.plain_result("没有未打标签的表情包")
-                return
-
-            result = [f"【未打标签表情包】（共 {len(untagged)} 张）\n"]
-            for s in untagged:
-                result.append(
-                    f"UUID:{s['uuid']} | 用户:{s['user_id']} | 时间:{s['created_at'][:19]}"
-                )
-            result.append(f"\n删除指令：/sticker delete <UUID>")
-            yield event.plain_result("\n".join(result))
-
-        elif action == "delete":
-            if not param:
-                yield event.plain_result("请提供要删除的表情包UUID")
-                return
-
-            sticker_uuid = param.strip()
-            deleted = await self.dao.delete_sticker_by_uuid(sticker_uuid)
-            if deleted:
-                yield event.plain_result(f"已删除表情包: {sticker_uuid}")
-            else:
-                yield event.plain_result(f"未找到表情包: {sticker_uuid}")
-
-        elif action == "clear":
-            count = await self.dao.get_sticker_count()
-            if count == 0:
-                yield event.plain_result("表情包库已经是空的")
-                return
-
-            # 逐个删除
-            deleted = 0
-            for _ in range(count):
-                if await self.dao.delete_oldest_sticker():
-                    deleted += 1
-
-            yield event.plain_result(f"已清空 {deleted} 张表情包")
-
-        elif action == "stats":
-            stats = await self.dao.get_sticker_stats()
-            yield event.plain_result(
-                f"【表情包统计】\n总计: {stats['total']} 张\n今日新增: {stats['today']} 张"
-            )
-
-        else:
-            yield event.plain_result(
-                "【表情包管理】（全局）\n"
-                "/sticker list          # 列出表情包\n"
-                "/sticker untagged     # 查看未打标签的表情包\n"
-                "/sticker delete <UUID> # 删除指定表情包\n"
-                "/sticker clear        # 清空所有表情包\n"
-                "/sticker stats        # 查看统计"
-            )
+        result = await commands.handle_sticker(event, self, action, param)
+        yield event.plain_result(result)
 
     @filter.command("shut")
     async def shut_cmd(self, event: AstrMessageEvent, minutes: str = ""):
@@ -1686,128 +1528,15 @@ class SelfEvolutionPlugin(Star):
         - /shut <分钟> - 让当前群闭嘴
         - /shut 0 - 取消当前群闭嘴
         """
-        user_id = str(event.get_sender_id())
-        current_group = event.get_group_id()
-
-        # 检查是否是管理员
-        is_admin = event.is_admin() or (
-            self.admin_users and user_id in self.admin_users
-        )
-
-        # 检查群级别闭嘴：非管理员在闭嘴期间不能执行任何命令
-        if current_group and current_group in self._shut_until_by_group:
-            if time.time() < self._shut_until_by_group[current_group]:
-                if not is_admin:
-                    return  # 非管理员在闭嘴期间不能执行任何命令
-
-        # 管理员权限检查
-        if not is_admin:
-            yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
-            return
-
-        if not current_group:
-            yield event.plain_result("此命令需要在群聊中使用")
-            return
-
-        if not minutes:
-            # 显示当前群状态
-            if current_group in self._shut_until_by_group:
-                if time.time() < self._shut_until_by_group[current_group]:
-                    remaining = int(
-                        self._shut_until_by_group[current_group] - time.time()
-                    )
-                    yield event.plain_result(f"[!] 当前群闭嘴模式，剩余 {remaining} 秒")
-                    return
-            yield event.plain_result("[OK] 当前群正常模式，未闭嘴")
-            return
-
-        # 解析分钟数
-        try:
-            mins = int(minutes)
-        except ValueError:
-            yield event.plain_result("请输入有效的分钟数，如 /shut 5")
-            return
-
-        if mins <= 0:
-            # 取消当前群闭嘴
-            if current_group in self._shut_until_by_group:
-                del self._shut_until_by_group[current_group]
-                yield event.plain_result("[OK] 已取消当前群的闭嘴模式")
-            else:
-                yield event.plain_result("[OK] 当前群未设置闭嘴")
-            return
-
-        # 设置当前群闭嘴时间
-        target_time = time.time() + mins * 60
-        self._shut_until_by_group[current_group] = target_time
-        yield event.plain_result(f"[OK] 已在当前群开启闭嘴模式，持续 {mins} 分钟")
+        result = await commands.handle_shut(event, self, minutes)
+        if result:
+            yield event.plain_result(result)
 
     @filter.command("db")
     async def db_cmd(self, event: AstrMessageEvent, action: str = "", param: str = ""):
         """数据库管理命令"""
-        user_id = str(event.get_sender_id())
-
-        if not event.is_admin() and (
-            not self.admin_users or user_id not in self.admin_users
-        ):
+        if not commands.check_admin_admin(event, self):
             yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
             return
-
-        action = action.lower()
-
-        if action == "show":
-            # 显示数据库统计信息
-            stats = await self.dao.get_db_stats()
-            table_cn = {
-                "pending_evolutions": "待审核进化",
-                "pending_reflections": "待反思",
-                "user_relationships": "用户关系",
-                "user_interactions": "用户互动",
-                "stickers": "表情包",
-            }
-            msg = ["【数据库统计】\n"]
-            for table, count in stats.items():
-                cn_name = table_cn.get(table, table)
-                msg.append(f"- {cn_name}: {count}")
-            yield event.plain_result("\n".join(msg))
-            return
-
-        elif action == "reset":
-            # 设置待确认状态，有效期 30 秒
-            self._pending_db_reset[user_id] = time.time() + 30
-            yield event.plain_result(
-                "[!] 确认清空所有数据？\n"
-                "此操作不可恢复！\n"
-                "请在 30 秒内输入 /db confirm 确认执行。"
-            )
-            return
-
-        elif action == "confirm":
-            pending_time = self._pending_db_reset.get(user_id, 0)
-
-            if time.time() > pending_time:
-                yield event.plain_result("操作已超时，请重新输入 /db reset")
-                self._pending_db_reset.pop(user_id, None)
-                return
-
-            # 执行清空
-            results = await self.dao.reset_all_data()
-
-            # 清理待确认状态
-            self._pending_db_reset.pop(user_id, None)
-
-            # 生成结果消息
-            msg = ["[OK] 数据库已清空：\n"]
-            for table, count in results.items():
-                msg.append(f"- {table}: {count} 条")
-
-            yield event.plain_result("\n".join(msg))
-            return
-
-        else:
-            yield event.plain_result(
-                "【数据库管理】\n"
-                "/db show      # 查看数据库统计\n"
-                "/db reset     # 清空所有数据（需确认）\n"
-                "/db confirm   # 确认执行清空"
-            )
+        result = await commands.handle_db(event, self, action, param)
+        yield event.plain_result(result)
