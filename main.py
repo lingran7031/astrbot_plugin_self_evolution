@@ -50,7 +50,7 @@ PAGE_LIMIT = 10
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "CognitionCore 6.0 数字生命。",
-    "release ver2.0.0",
+    "Ver 2.1.0",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
