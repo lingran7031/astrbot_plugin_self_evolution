@@ -34,6 +34,9 @@ class EavesdroppingEngine:
         self.processing_sessions = set()
         self._session_lock = asyncio.Lock()
 
+        # 插嘴功能状态
+        self._interject_history = {}  # 群插嘴历史 {群号: {"last_time": timestamp, "last_msg_id": str}}
+
         # 强AI意图句式
         self.ai_intent_patterns = [
             r"^帮我",
@@ -939,3 +942,212 @@ class EavesdroppingEngine:
         """重置互动意愿触发计数器"""
         if group_id in self.session_buffers:
             self.session_buffers[group_id]["eavesdrop_count"] = 0
+
+    # ==================== 插嘴功能 ====================
+
+    async def _get_interject_prompt(self) -> str:
+        """获取插嘴判断的 system prompt"""
+        persona_prompt = ""
+        try:
+            personality = (
+                await self.plugin.context.persona_manager.get_default_persona_v3("qq")
+            )
+            if personality:
+                persona_prompt = personality.get("prompt", "")
+        except Exception as e:
+            logger.debug(f"[Interject] 获取主人格设定失败: {e}")
+
+        if persona_prompt:
+            base_prompt = f"你是 {self.plugin.persona_name}。\n\n{persona_prompt}\n\n"
+        else:
+            base_prompt = f"你是 {self.plugin.persona_name}。\n\n"
+
+        try:
+            if self.plugin._prompts_injection:
+                extra_rules = self.plugin._prompts_injection.get("interject", {}).get(
+                    "judge_prompt", ""
+                )
+                if extra_rules:
+                    extra_rules = extra_rules.replace(
+                        "{persona_name}", self.plugin.persona_name
+                    )
+                    return base_prompt + extra_rules
+        except Exception as e:
+            logger.warning(f"[Interject] 获取插嘴提示词失败: {e}")
+
+        default_prompt = f"你是 {self.plugin.persona_name}。根据群聊消息判断是否应该主动插嘴，只输出JSON。"
+        return base_prompt + default_prompt
+
+    def _clean_message(self, message: str) -> str:
+        """清洗消息中的括号、星号动作和空行"""
+        message = re.sub(r"[（(][^）)]*[）)]", "", message)
+        message = re.sub(r"\*[^*]+\*", "", message)
+        message = re.sub(r"\n\s*\n", "\n", message)
+        return message.strip()
+
+    async def interject_check_group(self, group_id: str):
+        """检查单个群是否需要插嘴"""
+        try:
+            platform_insts = self.plugin.context.platform_manager.platform_insts
+            if not platform_insts:
+                logger.debug(f"[Interject] 群 {group_id}: 无平台实例")
+                return
+
+            platform = platform_insts[0]
+            if not hasattr(platform, "get_client"):
+                logger.debug(f"[Interject] 群 {group_id}: 平台无 get_client")
+                return
+
+            bot = platform.get_client()
+            if not bot:
+                logger.debug(f"[Interject] 群 {group_id}: 无法获取 bot 实例")
+                return
+
+            if group_id in self.plugin._shut_until_by_group:
+                if time.time() < self.plugin._shut_until_by_group[group_id]:
+                    remaining = int(
+                        self.plugin._shut_until_by_group[group_id] - time.time()
+                    )
+                    logger.debug(
+                        f"[Interject] 群 {group_id} 闭嘴中，跳过，剩余 {remaining} 秒"
+                    )
+                    return
+                else:
+                    del self.plugin._shut_until_by_group[group_id]
+
+            msg_count = self.plugin.cfg.interject_analyze_count
+            result = await bot.call_action(
+                "get_group_msg_history", group_id=int(group_id), count=msg_count
+            )
+
+            messages = result.get("messages", [])
+            if not messages:
+                logger.debug(f"[Interject] 群 {group_id}: 无历史消息")
+                return
+
+            bot_id = str(getattr(platform, "client_self_id", ""))
+            has_ai_mention = False
+
+            for msg in messages:
+                message = msg.get("message", [])
+                if isinstance(message, list):
+                    for comp in message:
+                        if comp.get("type") == "at":
+                            at_qq = str(comp.get("qq", ""))
+                            if at_qq == bot_id:
+                                has_ai_mention = True
+                                break
+                        if comp.get("type") == "reply":
+                            reply_sender = str(comp.get("sender", ""))
+                            if reply_sender == bot_id:
+                                has_ai_mention = True
+                                break
+                if has_ai_mention:
+                    break
+
+            cooldown_seconds = self.plugin.cfg.interject_cooldown * 60
+            if group_id in self._interject_history:
+                last_time = self._interject_history[group_id].get("last_time", 0)
+                if not has_ai_mention and (time.time() - last_time) < cooldown_seconds:
+                    logger.debug(
+                        f"[Interject] 群 {group_id}: 冷却时间内且无@AI/引用，跳过插嘴"
+                    )
+                    return
+
+            formatted = []
+            for msg in messages:
+                sender = msg.get("sender", {})
+                nickname = sender.get("nickname", "未知")
+                content = msg.get("message", "")
+                if content:
+                    formatted.append(f"{nickname}: {content}")
+
+            if not formatted:
+                logger.debug(f"[Interject] 群 {group_id}: 消息格式化为空")
+                return
+
+            llm_provider = self.plugin.context.get_using_provider("qq")
+            if not llm_provider:
+                logger.debug(f"[Interject] 群 {group_id}: 无 LLM provider")
+                return
+
+            prompt = f"""分析以下群聊消息，判断AI是否应该主动插嘴：
+
+群聊消息：
+{chr(10).join(formatted[: self.plugin.cfg.interject_analyze_count])}
+
+请以JSON格式输出判断结果：
+{{
+    "should_interject": true/false,
+    "reason": "判断理由",
+    "suggested_response": "如果应该插嘴，给出建议的回复内容"
+}}
+
+注意：只有当群里有有趣的讨论、有争议的话题、或者有人提问但没人回答时才应该插嘴。"""
+
+            res = await llm_provider.text_chat(
+                prompt=prompt,
+                contexts=[],
+                system_prompt=await self._get_interject_prompt(),
+            )
+
+            if not res.completion_text:
+                logger.debug(f"[Interject] 群 {group_id}: LLM 无返回")
+                return
+
+            import json
+
+            match = re.search(r"\{.*\}", res.completion_text, re.DOTALL)
+            if not match:
+                logger.debug(f"[Interject] 群 {group_id}: LLM 返回无法解析 JSON")
+                return
+
+            try:
+                result = json.loads(match.group())
+            except:
+                logger.debug(f"[Interject] 群 {group_id}: JSON 解析失败")
+                return
+
+            if result.get("should_interject"):
+                suggested = result.get("suggested_response", "")
+                if suggested:
+                    logger.info(
+                        f"[Interject] 群 {group_id} 建议插嘴: {suggested[:50]}..."
+                    )
+                    await self._do_interject(group_id, suggested)
+            else:
+                reason = result.get("reason", "未知")
+                logger.debug(f"[Interject] 群 {group_id} 气氛不需要插嘴: {reason[:50]}")
+
+        except Exception as e:
+            logger.warning(f"[Interject] 群 {group_id} 检查失败: {e}", exc_info=True)
+
+    async def _do_interject(self, group_id: str, message: str):
+        """执行插嘴"""
+        try:
+            platform_insts = self.plugin.context.platform_manager.platform_insts
+            if not platform_insts:
+                return
+
+            platform = platform_insts[0]
+            if not hasattr(platform, "get_client"):
+                return
+
+            bot = platform.get_client()
+            if not bot:
+                return
+
+            message = self._clean_message(message)
+            if not message:
+                logger.debug(f"[Interject] 群 {group_id}: 消息清洗后为空")
+                return
+
+            await bot.call_action(
+                "send_group_msg", group_id=int(group_id), message=message
+            )
+
+            self._interject_history[group_id] = {"last_time": time.time()}
+            logger.info(f"[Interject] 群 {group_id} 插嘴成功: {message[:30]}...")
+
+        except Exception as e:
+            logger.warning(f"[Interject] 群 {group_id} 插嘴失败: {e}")
