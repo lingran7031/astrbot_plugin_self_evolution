@@ -235,8 +235,6 @@ class SelfEvolutionPlugin(Star):
 
     def _clean_message(self, message: str) -> str:
         """清洗消息中的括号、星号动作和空行"""
-        import re
-
         # 移除中文括号内容
         message = re.sub(r"[（(][^）)]*[）)]", "", message)
         # 移除星号动作
@@ -519,10 +517,14 @@ class SelfEvolutionPlugin(Star):
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
         """CognitionCore 6.0: 被动监听 - 滑动上下文窗口"""
-        # 最早检查：群级别闭嘴（直接拦截，不处理任何逻辑）
+        # 检查群级别闭嘴（直接拦截，不处理任何逻辑）
         group_id = event.get_group_id()
         if group_id and group_id in self._shut_until_by_group:
             if time.time() < self._shut_until_by_group[group_id]:
+                remaining = int(self._shut_until_by_group[group_id] - time.time())
+                logger.info(
+                    f"[SelfEvolution] 群 {group_id} 闭嘴中，剩余 {remaining} 秒"
+                )
                 return
             else:
                 del self._shut_until_by_group[group_id]
@@ -531,24 +533,11 @@ class SelfEvolutionPlugin(Star):
             f"[SelfEvolution] 收到消息: {event.message_str[:30] if event.message_str else '(空)'}"
         )
 
-        # 检查是否处于闭嘴状态
+        # 检查全局闭嘴状态
         if self._shut_until and time.time() < self._shut_until:
             remaining = int(self._shut_until - time.time())
             logger.info(f"[SelfEvolution] 全局闭嘴中，剩余 {remaining} 秒")
             return
-
-        # 检查群级别闭嘴
-        shut_group_id = event.get_group_id()
-        if shut_group_id and shut_group_id in self._shut_until_by_group:
-            if time.time() < self._shut_until_by_group[shut_group_id]:
-                remaining = int(self._shut_until_by_group[shut_group_id] - time.time())
-                logger.info(
-                    f"[SelfEvolution] 群 {shut_group_id} 闭嘴中，剩余 {remaining} 秒"
-                )
-                return
-            else:
-                # 已过期，清理
-                del self._shut_until_by_group[shut_group_id]
 
         # 命令消息不触发互动意愿系统
         if event.is_at_or_wake_command:
@@ -915,12 +904,8 @@ class SelfEvolutionPlugin(Star):
             cooldown_seconds = self.cfg.interject_cooldown * 60
             if group_id in self._interject_history:
                 last_time = self._interject_history[group_id].get("last_time", 0)
-                import time as time_module
 
-                if (
-                    not has_ai_mention
-                    and (time_module.time() - last_time) < cooldown_seconds
-                ):
+                if not has_ai_mention and (time.time() - last_time) < cooldown_seconds:
                     logger.debug(
                         f"[Interject] 群 {group_id}: 冷却时间内且无@AI/引用，跳过插嘴"
                     )
@@ -967,14 +952,10 @@ class SelfEvolutionPlugin(Star):
                 logger.debug(f"[Interject] 群 {group_id}: LLM 无返回")
                 return
 
-            import re
-
             match = re.search(r"\{.*\}", res.completion_text, re.DOTALL)
             if not match:
                 logger.debug(f"[Interject] 群 {group_id}: LLM 返回无法解析 JSON")
                 return
-
-            import json
 
             try:
                 result = json.loads(match.group())
@@ -1024,9 +1005,7 @@ class SelfEvolutionPlugin(Star):
             )
 
             # 记录插嘴历史
-            import time as time_module
-
-            self._interject_history[group_id] = {"last_time": time_module.time()}
+            self._interject_history[group_id] = {"last_time": time.time()}
 
             logger.info(
                 f"[Interject] 已向群 {group_id} 发送插嘴消息: {message[:30]}..."
@@ -1403,8 +1382,6 @@ class SelfEvolutionPlugin(Star):
             target_user_id(string): 目标用户ID，不填则获取当前用户（可选）
             limit(number): 获取消息数量，默认100，最大1000（可选）
         """
-        import json
-
         target = target_user_id or event.get_sender_id()
 
         # 限制数量
