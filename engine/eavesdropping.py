@@ -113,8 +113,10 @@ class EavesdroppingEngine:
         # 引用回复检测
         if hasattr(msg, "reply") and msg.reply:
             reply_msg = msg.reply
-            if hasattr(reply_msg, "sender") and reply_msg.sender:
-                bot_id = str(self.plugin.context.bot_info.get("user_id", ""))
+            platform_insts = self.plugin.context.platform_manager.platform_insts
+            if platform_insts:
+                platform = platform_insts[0]
+                bot_id = str(getattr(platform, "client_self_id", ""))
                 if str(reply_msg.sender) == bot_id:
                     return True
 

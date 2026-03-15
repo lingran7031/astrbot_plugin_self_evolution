@@ -876,7 +876,7 @@ class SelfEvolutionPlugin(Star):
                 return
 
             # 检查是否有@AI或引用AI的消息
-            bot_id = str(self.context.bot_info.get("user_id", ""))
+            bot_id = str(getattr(platform, "client_self_id", ""))
             has_ai_mention = False
 
             for msg in messages:
