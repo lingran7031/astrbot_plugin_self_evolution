@@ -213,8 +213,7 @@ class ProfileManager:
         files = list(self.profile_dir.glob("user_*.md"))
         return {
             "total_users": len(files),
-            "total_tags": 0,
-            "total_traits": 0,
+            
         }
 
     async def build_profile(self, user_id: str, group_id: str, mode: str = "update") -> str:
