@@ -145,6 +145,13 @@
         "type": "int",
         "default": 15
     },
+    "interject_cooldown": {
+        "title": "插嘴冷却时间",
+        "description": "插嘴后再次插嘴的冷却时间。",
+        "hint": "单位：分钟，默认 30",
+        "type": "int",
+        "default": 30
+    },
     "interject_whitelist": {
         "title": "插嘴白名单群",
         "description": "指定要检查的群号，不填则检查 bot 加入的所有群。",

@@ -903,10 +903,20 @@ class SelfEvolutionPlugin(Star):
                 if has_ai_mention:
                     break
 
-            # 如果没有@AI且之前插过嘴，跳过
-            if not has_ai_mention and group_id in self._interject_history:
-                logger.debug(f"[Interject] 群 {group_id}: 无新@AI，跳过插嘴")
-                return
+            # 如果没有@AI且在冷却时间内，跳过
+            cooldown_seconds = self.cfg.interject_cooldown * 60
+            if group_id in self._interject_history:
+                last_time = self._interject_history[group_id].get("last_time", 0)
+                import time as time_module
+
+                if (
+                    not has_ai_mention
+                    and (time_module.time() - last_time) < cooldown_seconds
+                ):
+                    logger.debug(
+                        f"[Interject] 群 {group_id}: 冷却时间内且无新@AI，跳过插嘴"
+                    )
+                    return
 
             formatted = []
             for msg in messages:
@@ -1008,12 +1018,7 @@ class SelfEvolutionPlugin(Star):
             # 记录插嘴历史
             import time as time_module
 
-            self._interject_history[group_id] = {
-                "last_time": time_module.time(),
-                "last_msg_id": str(
-                    int(time_module.time() * 1000)
-                ),  # 使用时间戳作为临时ID
-            }
+            self._interject_history[group_id] = {"last_time": time_module.time()}
 
             logger.info(
                 f"[Interject] 已向群 {group_id} 发送插嘴消息: {message[:30]}..."
