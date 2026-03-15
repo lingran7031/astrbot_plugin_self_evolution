@@ -21,6 +21,8 @@ class ProfileManager:
         self._cache_ttl = 300  # 缓存5分钟
         self._cache_access_time = {}  # 记录缓存访问时间
         self._last_cache_cleanup = 0
+        # 画像构建冷却时间 {group_id_user_id: timestamp}
+        self._profile_build_cooldown = {}
 
     @property
     def precision_mode(self):
@@ -213,6 +215,16 @@ class ProfileManager:
 
         logger.info(f"[Profile] 构建画像: 用户={user_id}, 群={group_id}, 模式={mode}")
 
+        # 冷却时间检查
+        cooldown_key = f"{group_id}_{user_id}"
+        last_build = self._profile_build_cooldown.get(cooldown_key, 0)
+        cooldown_seconds = self.plugin.cfg.profile_cooldown_minutes * 60
+        if time.time() - last_build < cooldown_seconds:
+            remaining = int(cooldown_seconds - (time.time() - last_build))
+            minutes = remaining // 60
+            seconds = remaining % 60
+            return f"画像操作冷却中，请 {minutes} 分 {seconds} 秒后再试"
+
         try:
             platform_insts = self.plugin.context.platform_manager.platform_insts
             if not platform_insts:
@@ -275,6 +287,8 @@ class ProfileManager:
                 return "生成画像失败，请重试"
 
             await self.save_profile(user_id, new_note)
+            # 更新冷却时间
+            self._profile_build_cooldown[cooldown_key] = time.time()
             logger.info(f"[Profile] 已保存用户画像: {user_id}")
             return f"画像已{'创建' if mode == 'create' else '更新'}"
 

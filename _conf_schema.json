@@ -91,6 +91,13 @@
         "type": "int",
         "default": 500
     },
+    "profile_cooldown_minutes": {
+        "title": "画像冷却时间",
+        "description": "创建/更新用户画像的冷却时间。",
+        "hint": "默认 10 分钟",
+        "type": "int",
+        "default": 10
+    },
     "enable_context_recall": {
         "title": "启用上下文追踪",
         "description": "当用户引用 AI 之前的话时，是否自动注入上下文。",
