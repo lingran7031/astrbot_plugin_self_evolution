@@ -1130,7 +1130,12 @@ class SelfEvolutionPlugin(Star):
     async def update_affinity_tool(
         self, event: AstrMessageEvent, delta: int, reason: str
     ) -> str:
-        """根据用户的言行调整其情感积分。"""
+        """根据用户的言行调整其情感积分（好感度）。
+
+        Args:
+            delta(int): 调整值，范围-20到+20之间的整数
+            reason(string): 调整理由
+        """
         MAX_DELTA = 20
         delta = max(-MAX_DELTA, min(MAX_DELTA, delta))
 
