@@ -900,10 +900,18 @@ class SelfEvolutionPlugin(Star):
                             if at_qq == bot_id:
                                 has_ai_mention = True
                                 break
+
+                        # 检查引用消息
+                        if comp.get("type") == "reply":
+                            # 检查被引用者是否是 bot
+                            reply_sender = str(comp.get("sender", ""))
+                            if reply_sender == bot_id:
+                                has_ai_mention = True
+                                break
                 if has_ai_mention:
                     break
 
-            # 如果没有@AI且在冷却时间内，跳过
+            # 如果没有@AI/引用且在冷却时间内，跳过
             cooldown_seconds = self.cfg.interject_cooldown * 60
             if group_id in self._interject_history:
                 last_time = self._interject_history[group_id].get("last_time", 0)
@@ -914,7 +922,7 @@ class SelfEvolutionPlugin(Star):
                     and (time_module.time() - last_time) < cooldown_seconds
                 ):
                     logger.debug(
-                        f"[Interject] 群 {group_id}: 冷却时间内且无新@AI，跳过插嘴"
+                        f"[Interject] 群 {group_id}: 冷却时间内且无@AI/引用，跳过插嘴"
                     )
                     return
 
