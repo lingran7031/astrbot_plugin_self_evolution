@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger("astrbot")
 
-from . import (
+from .tasks import (
     scheduled_interject,
     scheduled_memory_summary,
     scheduled_profile_cleanup,
