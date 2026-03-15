@@ -26,7 +26,7 @@ from .engine.memory import MemoryManager
 from .engine.meta_infra import MetaInfra
 from .engine.persona import PersonaManager
 from .engine.profile import ProfileManager
-from .scheduler import register_tasks
+from .scheduler.register import register_tasks
 
 # 全局不可变常量提取 (迁移至主类管理)
 ANCHOR_MARKER = "Core Safety Anchor"
