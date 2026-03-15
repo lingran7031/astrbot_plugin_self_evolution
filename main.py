@@ -497,6 +497,11 @@ class SelfEvolutionPlugin(Star):
         async for result in self.eavesdropping.handle_message(event):
             yield result
 
+    @filter.on_decorating_result()
+    async def on_decorating_result(self, event: AstrMessageEvent):
+        """已弃用：中间消息过滤器（保留为空实现以兼容框架）"""
+        pass
+
     @filter.on_plugin_loaded()
     async def on_loaded(self, metadata):
         """插件加载完成后，注册定时任务"""
