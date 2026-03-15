@@ -179,10 +179,19 @@ class SANSystem:
 
     def _get_listened_groups(self):
         """获取需要监听的群列表"""
-        if hasattr(self.plugin, "eavesdropping") and hasattr(self.plugin.eavesdropping, "active_users"):
-            return list(self.plugin.eavesdropping.active_users.keys())
+        # 方式1: 白名单配置
         whitelist = getattr(self.plugin.cfg, "profile_group_whitelist", [])
-        return whitelist if whitelist else []
+        if whitelist:
+            logger.info(f"[SAN] 使用白名单群列表: {whitelist}")
+            return whitelist
+        # 方式2: eavesdropping active_users
+        if hasattr(self.plugin, "eavesdropping") and hasattr(self.plugin.eavesdropping, "active_users"):
+            groups = list(self.plugin.eavesdropping.active_users.keys())
+            if groups:
+                logger.info(f"[SAN] 使用 eavesdropping 活跃群列表: {groups}")
+                return groups
+        # 方式3: 通过 platform 获取 bot 加入的群列表
+        return []
 
     async def _analyze_group(self, group_id: str) -> int:
         """分析单个群的状态，返回 SAN 值变化"""

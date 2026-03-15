@@ -51,10 +51,21 @@ async def scheduled_interject(plugin):
     logger.info("[Interject] 开始主动插嘴检查...")
 
     try:
-        groups = list(plugin.eavesdropping.active_users.keys())
-        if not groups:
-            logger.debug("[Interject] 无目标群（eavesdropping 未监听任何群）")
-            return
+        # 方式1: 白名单配置
+        whitelist = plugin.cfg.interject_whitelist
+        if whitelist:
+            logger.info(f"[Interject] 使用白名单群列表: {whitelist}")
+            groups = whitelist
+        # 方式2: eavesdropping active_users
+        elif plugin.eavesdropping.active_users:
+            groups = list(plugin.eavesdropping.active_users.keys())
+            logger.info(f"[Interject] 使用 eavesdropping 活跃群列表: {groups}")
+        # 方式3: 通过 platform 获取 bot 加入的群列表
+        else:
+            groups = await _fetch_groups_from_platform(plugin)
+            if not groups:
+                logger.debug("[Interject] 无目标群")
+                return
 
         logger.info(f"[Interject] 目标群列表: {groups}")
 
@@ -64,6 +75,27 @@ async def scheduled_interject(plugin):
         logger.info("[Interject] 主动插嘴检查完成")
     except Exception as e:
         logger.warning(f"[Interject] 定时任务执行失败: {e}")
+
+
+async def _fetch_groups_from_platform(plugin):
+    """从 platform 获取 bot 加入的群列表"""
+    try:
+        platform = plugin.context.platform_manager.platform_insts[0]
+        bot = platform.get_client()
+        result = await bot.call_action("get_group_list")
+        if isinstance(result, list):
+            groups_data = result
+        elif isinstance(result, dict):
+            groups_data = result.get("data", [])
+        else:
+            groups_data = []
+        groups = [str(g.get("group_id", "")) for g in groups_data if g.get("group_id")]
+        if groups:
+            logger.info(f"[Interject] 获取到 bot 加入的群列表: {groups}")
+        return groups
+    except Exception as e:
+        logger.debug(f"[Interject] 获取群列表失败: {e}")
+        return []
 
 
 async def scheduled_sticker_tag(plugin):
