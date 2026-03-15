@@ -332,8 +332,8 @@ class SelfEvolutionPlugin(Star):
         # 4. 用户画像注入 - 按需加载（动态上下文路由）
         has_reply = bool(quoted_info)
         has_at = bool(at_targets)
-        if self.enable_profile_update and (has_reply or has_at):
-            profile_summary = await self.profile.get_profile_summary(user_id)
+        if self.enable_profile_update and (has_reply or has_at) and group_id:
+            profile_summary = await self.profile.get_profile_summary(group_id, user_id)
             if profile_summary:
                 req.system_prompt += f"\n\n[用户印象笔记]\n{profile_summary}\n"
                 req.system_prompt += (
