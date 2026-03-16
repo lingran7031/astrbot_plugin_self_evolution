@@ -1120,9 +1120,16 @@ class EavesdroppingEngine:
                 logger.debug(f"[Interject] 群 {group_id}: 消息清洗后为空")
                 return
 
-            await bot.call_action("send_group_msg", group_id=int(group_id), message=message)
+            result = await bot.call_action("send_group_msg", group_id=int(group_id), message=message)
 
-            self._interject_history[group_id] = {"last_time": time.time()}
+            msg_id = None
+            if result and isinstance(result, dict):
+                msg_id = result.get("message_id")
+
+            self._interject_history[group_id] = {
+                "last_time": time.time(),
+                "last_msg_id": str(msg_id) if msg_id else None,
+            }
             logger.debug(f"[Interject] 群 {group_id} 插嘴成功: {message[:30]}...")
 
         except Exception as e:
