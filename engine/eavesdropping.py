@@ -1019,7 +1019,9 @@ class EavesdroppingEngine:
 
             logger.info(f"[Interject] 群 {group_id}: 新增 {new_msg_count} 条消息，开始分析...")
 
-            formatted = [parse_message_chain(msg) for msg in messages]
+            import asyncio
+
+            formatted = await asyncio.gather(*[parse_message_chain(msg, self.plugin) for msg in messages])
 
             if not formatted:
                 logger.debug(f"[Interject] 群 {group_id}: 消息格式化为空")

@@ -5,7 +5,7 @@
 from astrbot.api import logger
 
 
-def parse_message_chain(msg: dict, plugin=None) -> str:
+async def parse_message_chain(msg: dict, plugin=None) -> str:
     """解析消息链为可读文本
 
     Args:
@@ -51,14 +51,10 @@ def parse_message_chain(msg: dict, plugin=None) -> str:
                         if hasattr(platform, "get_client"):
                             bot = platform.get_client()
                             if bot:
-                                import asyncio
-
-                                result = asyncio.get_event_loop().run_until_complete(
-                                    bot.call_action("get_msg", message_id=int(msg_id))
-                                )
+                                result = await bot.call_action("get_msg", message_id=int(msg_id))
                                 orig_msg = result.get("message", [])
                                 orig_sender = result.get("sender", {}).get("nickname", "未知")
-                                orig_content = parse_message_chain({"message": orig_msg}, plugin)
+                                orig_content = await parse_message_chain({"message": orig_msg}, plugin)
                                 parts.append(f"[回复了 {orig_sender}: {orig_content}]")
                 except Exception:
                     parts.append(f"[回复消息ID:{msg_id}]")
@@ -113,7 +109,10 @@ async def get_group_history(plugin, group_id: str, count: int = 10) -> str:
         if not messages:
             return ""
 
-        return "\n".join(parse_message_chain(msg, plugin) for msg in messages)
+        import asyncio
+
+        results = await asyncio.gather(*[parse_message_chain(msg, plugin) for msg in messages])
+        return "\n".join(results)
     except Exception as e:
         logger.debug(f"[ContextInjection] 获取群消息历史失败: {e}")
         return ""
