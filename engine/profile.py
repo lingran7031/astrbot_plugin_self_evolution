@@ -3,7 +3,10 @@ import logging
 import random
 import time
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
+
+import yaml
 
 logger = logging.getLogger("astrbot")
 
@@ -23,6 +26,8 @@ class ProfileManager:
         self._last_cache_cleanup = 0
         # 画像构建冷却时间 {group_id_user_id: timestamp}
         self._profile_build_cooldown = {}
+        # 每日更新记录 {group_id_user_id: "YYYY-MM-DD"}
+        self._profile_daily_updated = {}
 
     @property
     def precision_mode(self):
@@ -42,13 +47,12 @@ class ProfileManager:
         return [k.strip() for k in keywords.split(",")]
 
     def _get_profile_path(self, group_id: str, user_id: str, nickname: str = "") -> Path:
-        # 清理昵称中的非法字符
         if nickname:
             import re
 
             safe_nickname = re.sub(r'[<>:"/\\|?*]', "", nickname)[:20]
-            return self.profile_dir / f"user_{group_id}_{user_id}_{safe_nickname}.md"
-        return self.profile_dir / f"user_{group_id}_{user_id}.md"
+            return self.profile_dir / f"{group_id}_{user_id}_{safe_nickname}.yaml"
+        return self.profile_dir / f"{group_id}_{user_id}.yaml"
 
     def _is_core_info(self, line: str) -> bool:
         """判断是否为核心信息（永不丢失）"""
@@ -78,39 +82,36 @@ class ProfileManager:
             logger.debug(f"[Profile] 已清理 {len(expired_users)} 个过期缓存")
 
     async def load_profile(self, group_id: str, user_id: str) -> str:
-        """读取用户画像（Markdown 文本），无则返回空"""
+        """读取用户画像（YAML 格式），无则返回空"""
         profile_key = f"{group_id}_{user_id}"
-        # 定期清理过期缓存
         self._cleanup_expired_cache()
 
-        # 先从缓存读取
         if profile_key in self._profile_cache:
             self._cache_access_time[profile_key] = time.time()
             logger.debug(f"[Profile] 从缓存加载画像: {profile_key}")
             return self._profile_cache[profile_key]
 
-        # 先尝试不带 nickname 的文件
         path = self._get_profile_path(group_id, user_id)
         if path.exists():
             try:
-                content = path.read_text(encoding="utf-8").strip()
-                # 存入缓存
-                self._profile_cache[profile_key] = content
-                self._cache_access_time[profile_key] = time.time()
-                logger.info(f"[Profile] 从磁盘加载画像: {profile_key} ({len(content)} 字符)")
+                content = self._load_profile_from_file(path)
+                if content:
+                    self._profile_cache[profile_key] = content
+                    self._cache_access_time[profile_key] = time.time()
+                    logger.info(f"[Profile] 从磁盘加载画像: {profile_key} ({len(content)} 字符)")
                 return content
             except OSError as e:
                 logger.warning(f"[Profile] 读取画像失败 {profile_key}: {e}")
 
-        # 尝试查找带 nickname 的文件
-        pattern = f"user_{group_id}_{user_id}_*.md"
+        pattern = f"{group_id}_{user_id}_*.yaml"
         matching_files = list(self.profile_dir.glob(pattern))
         if matching_files:
             try:
-                content = matching_files[0].read_text(encoding="utf-8").strip()
-                self._profile_cache[profile_key] = content
-                self._cache_access_time[profile_key] = time.time()
-                logger.info(f"[Profile] 从磁盘加载画像: {profile_key} ({len(content)} 字符)")
+                content = self._load_profile_from_file(matching_files[0])
+                if content:
+                    self._profile_cache[profile_key] = content
+                    self._cache_access_time[profile_key] = time.time()
+                    logger.info(f"[Profile] 从磁盘加载画像: {profile_key} ({len(content)} 字符)")
                 return content
             except OSError as e:
                 logger.warning(f"[Profile] 读取画像失败 {profile_key}: {e}")
@@ -118,15 +119,28 @@ class ProfileManager:
         logger.debug(f"[Profile] 用户无画像: {profile_key}")
         return ""
 
+    def _load_profile_from_file(self, path: Path) -> str:
+        """从 yaml 文件加载画像内容"""
+        try:
+            content = path.read_text(encoding="utf-8").strip()
+            data = yaml.safe_load(content)
+            if data and isinstance(data, dict):
+                return data.get("content", "")
+            return content
+        except Exception as e:
+            logger.warning(f"[Profile] 解析画像文件失败 {path}: {e}")
+            return ""
+
     async def save_profile(self, group_id: str, user_id: str, content: str, nickname: str = ""):
-        """保存用户画像（Markdown 文本）"""
+        """保存用户画像（YAML 格式，直接保存 LLM 返回的 YAML）"""
         profile_key = f"{group_id}_{user_id}"
-        # 定期清理过期缓存
         self._cleanup_expired_cache()
 
         path = self._get_profile_path(group_id, user_id, nickname)
+
+        # 直接保存 LLM 返回的 yaml 内容
         path.write_text(content, encoding="utf-8")
-        # 更新缓存
+
         self._profile_cache[profile_key] = content
         self._cache_access_time[profile_key] = time.time()
         logger.info(f"[Profile] 已保存用户画像: {path.name} ({len(content)} 字符)")
@@ -225,12 +239,12 @@ class ProfileManager:
     async def list_profiles(self) -> dict:
         """列出所有画像统计"""
         logger.info("[Profile] 列出所有画像统计")
-        files = list(self.profile_dir.glob("user_*.md"))
+        files = list(self.profile_dir.glob("*.yaml"))
         return {
             "total_users": len(files),
         }
 
-    async def build_profile(self, user_id: str, group_id: str, mode: str = "update") -> str:
+    async def build_profile(self, user_id: str, group_id: str, mode: str = "update", force: bool = False) -> str:
         """
         从 NapCat 获取用户在群里的消息，构建/更新画像
 
@@ -238,15 +252,26 @@ class ProfileManager:
             user_id: 用户ID
             group_id: 群ID
             mode: "create" 覆盖创建, "update" 增量更新
+            force: 是否强制更新（忽略每日限制）
         """
 
-        logger.info(f"[Profile] 构建画像: 用户={user_id}, 群={group_id}, 模式={mode}")
+        logger.info(f"[Profile] 构建画像: 用户={user_id}, 群={group_id}, 模式={mode}, 强制={force}")
+
+        daily_key = f"{group_id}_{user_id}"
+
+        # 每日更新限制检查
+        if not force:
+            today = datetime.now().strftime("%Y-%m-%d")
+            last_update_date = self._profile_daily_updated.get(daily_key)
+            if last_update_date == today:
+                logger.info(f"[Profile] 用户 {user_id} 今日已更新，跳过")
+                return "今日已更新"
 
         # 冷却时间检查
         cooldown_key = f"{group_id}_{user_id}"
         last_build = self._profile_build_cooldown.get(cooldown_key, 0)
         cooldown_seconds = self.plugin.cfg.profile_cooldown_minutes * 60
-        if time.time() - last_build < cooldown_seconds:
+        if time.time() - last_build < cooldown_seconds and not force:
             remaining = int(cooldown_seconds - (time.time() - last_build))
             minutes = remaining // 60
             seconds = remaining % 60
@@ -306,7 +331,12 @@ class ProfileManager:
                 f"目标用户：{nickname} (QQ: {user_id})\n"
                 f"{'旧笔记：' + existing_note + '\n' if mode == 'update' else ''}"
                 f"用户消息：\n" + "\n".join(user_messages) + "\n"
-                "请根据以上消息输出一段详细用户画像描述。使用Markdown格式输出，不少于500字。"
+                "请以 YAML 格式输出用户画像，包含以下字段：\n"
+                "- user_id: 用户QQ号\n"
+                "- group_id: 群号\n"
+                "- nickname: 用户昵称\n"
+                "- updated_at: 更新时间（格式：YYYY-MM-DD HH:MM:SS）\n"
+                "- content: 用户画像描述（使用Markdown格式，不少于500字）\n"
             )
 
             llm_provider = self.plugin.context.get_using_provider("qq")
@@ -327,6 +357,8 @@ class ProfileManager:
             await self.save_profile(group_id, user_id, new_note, nickname)
             # 更新冷却时间
             self._profile_build_cooldown[cooldown_key] = time.time()
+            # 更新每日记录
+            self._profile_daily_updated[daily_key] = datetime.now().strftime("%Y-%m-%d")
             logger.info(f"[Profile] 已保存用户画像: {user_id}")
             return f"画像已{'创建' if mode == 'create' else '更新'}"
 
@@ -450,6 +482,7 @@ class ProfileManager:
 
             # 为每个目标用户构建画像
             built_count = 0
+            today = datetime.now().strftime("%Y-%m-%d")
             for user_info in target_users:
                 user_id = user_info.get("user_id")
                 nickname = user_info.get("nickname", "未知")
@@ -457,6 +490,13 @@ class ProfileManager:
                 reason = user_info.get("reason", "")
 
                 if not user_id:
+                    continue
+
+                # 每日更新检查
+                daily_key = f"{group_id}_{user_id}"
+                last_update_date = self._profile_daily_updated.get(daily_key)
+                if last_update_date == today:
+                    logger.debug(f"[Profile] 用户 {user_id} 今日已更新，跳过")
                     continue
 
                 # 检查冷却时间
@@ -486,7 +526,12 @@ class ProfileManager:
                     f"{'旧笔记：' + existing_note + '\n' if existing_note != '(暂无)' else ''}"
                     f"用户消息：\n" + "\n".join(user_messages) + "\n"
                     f"{interested_tag}\n"
-                    "请根据以上消息输出一段详细用户画像描述。使用Markdown格式输出，不少于300字。"
+                    "请以 YAML 格式输出用户画像，包含以下字段：\n"
+                    "- user_id: 用户QQ号\n"
+                    "- group_id: 群号\n"
+                    "- nickname: 用户昵称\n"
+                    "- updated_at: 更新时间（格式：YYYY-MM-DD HH:MM:SS）\n"
+                    "- content: 用户画像描述（使用Markdown格式，不少于300字）\n"
                 )
 
                 res = await llm_provider.text_chat(
@@ -499,6 +544,7 @@ class ProfileManager:
                 if new_note:
                     await self.save_profile(group_id, user_id, new_note, nickname)
                     self._profile_build_cooldown[cooldown_key] = time.time()
+                    self._profile_daily_updated[daily_key] = today
                     built_count += 1
                     logger.info(f"[Profile] 自动构建画像完成: 用户={user_id}, 感兴趣={interested}")
 

@@ -1081,9 +1081,5 @@ class EavesdroppingEngine:
             self._interject_history[group_id] = {"last_time": time.time()}
             logger.info(f"[Interject] 群 {group_id} 插嘴成功: {message[:30]}...")
 
-            # 插嘴后自动分析并构建用户画像
-            if hasattr(self.plugin, "profile"):
-                asyncio.create_task(self.plugin.profile.analyze_and_build_profiles(group_id))
-
         except Exception as e:
             logger.warning(f"[Interject] 群 {group_id} 插嘴失败: {e}")

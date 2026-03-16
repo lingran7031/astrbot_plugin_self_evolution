@@ -118,3 +118,50 @@ async def scheduled_profile_cleanup(plugin):
         logger.info("[Profile] 清理过期画像完成")
     except Exception as e:
         logger.warning(f"[Profile] 清理过期画像失败: {e}")
+
+
+async def scheduled_profile_build(plugin):
+    """定时批量构建用户画像"""
+    logger.info("[Profile] 开始定时批量构建画像...")
+
+    if not plugin.cfg.auto_profile_enabled:
+        logger.info("[Profile] 自动画像构建已关闭")
+        return
+
+    try:
+        whitelist = plugin.cfg.profile_group_whitelist
+        if not whitelist:
+            logger.info("[Profile] 白名单为空，使用 bot 加入的群列表")
+            groups = await _fetch_groups_from_platform(plugin)
+        else:
+            groups = whitelist
+            logger.info(f"[Profile] 使用白名单群列表: {groups}")
+
+        if not groups:
+            logger.info("[Profile] 无目标群")
+            return
+
+        batch_size = plugin.cfg.auto_profile_batch_size
+        batch_interval = plugin.cfg.auto_profile_batch_interval
+
+        logger.info(f"[Profile] 共有 {len(groups)} 个群，每次处理 {batch_size} 个，间隔 {batch_interval} 分钟")
+
+        import asyncio
+
+        for i in range(0, len(groups), batch_size):
+            batch = groups[i : i + batch_size]
+            logger.info(f"[Profile] 处理批次 {i // batch_size + 1}，群: {batch}")
+
+            for group_id in batch:
+                try:
+                    await plugin.profile.analyze_and_build_profiles(str(group_id))
+                except Exception as e:
+                    logger.warning(f"[Profile] 群 {group_id} 画像构建失败: {e}")
+
+            if i + batch_size < len(groups):
+                logger.info(f"[Profile] 批次处理完成，等待 {batch_interval} 分钟...")
+                await asyncio.sleep(batch_interval * 60)
+
+        logger.info("[Profile] 定时批量构建画像完成")
+    except Exception as e:
+        logger.warning(f"[Profile] 定时批量构建画像失败: {e}")
