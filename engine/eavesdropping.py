@@ -964,6 +964,12 @@ class EavesdroppingEngine:
                 logger.debug(f"[Interject] 群 {group_id}: 消息格式化为空")
                 return
 
+            # 检查新增消息数量
+            min_msg_count = self.plugin.cfg.interject_min_msg_count
+            if len(messages) < min_msg_count:
+                logger.debug(f"[Interject] 群 {group_id}: 新增消息数量不足({len(messages)}条)，跳过插嘴")
+                return
+
             llm_provider = self.plugin.context.get_using_provider("qq")
             if not llm_provider:
                 logger.debug(f"[Interject] 群 {group_id}: 无 LLM provider")
