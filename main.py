@@ -316,10 +316,12 @@ class SelfEvolutionPlugin(Star):
 
         # 身份信息已在【内部参考信息】中提供，不再重复注入
         req.system_prompt += context_info
-        # --- 环境注入结束 ---
 
-        # 获取消息文本（提前定义以便后续使用）
+        # 注入用户当前消息，便于调试和 AI 理解上下文
         msg_text = event.message_str
+        if msg_text:
+            req.system_prompt += f"\n\n【当前用户消息】\n{msg_text}\n"
+        # --- 环境注入结束 ---
 
         # 4. 用户画像注入 - 按需加载（动态上下文路由）
         has_reply = bool(quoted_info)
