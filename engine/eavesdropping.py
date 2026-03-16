@@ -518,7 +518,7 @@ class EavesdroppingEngine:
             # 获取对话上下文
             contexts = []
             if self.plugin.cfg.inject_group_history:
-                hist_str = await get_group_history(self.plugin, str(group_id), 10)
+                hist_str = await get_group_history(self.plugin, str(group_id), self.plugin.cfg.group_history_count)
                 if hist_str:
                     chat_history = hist_str
             # 构建判断prompt
@@ -799,7 +799,9 @@ class EavesdroppingEngine:
             # 获取对话上下文
             contexts = []
             if self.plugin.cfg.inject_group_history:
-                chat_history_str = await get_group_history(self.plugin, str(group_id), 10)
+                chat_history_str = await get_group_history(
+                    self.plugin, str(group_id), self.plugin.cfg.group_history_count
+                )
                 if chat_history_str:
                     chat_history = chat_history_str
 
@@ -925,7 +927,7 @@ class EavesdroppingEngine:
                 else:
                     del self.plugin._shut_until_by_group[group_id]
 
-            msg_count = self.plugin.cfg.interject_analyze_count
+            msg_count = self.plugin.cfg.group_history_count
             result = await bot.call_action("get_group_msg_history", group_id=int(group_id), count=msg_count)
 
             messages = result.get("messages", [])

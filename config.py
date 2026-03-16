@@ -151,14 +151,6 @@ class PluginConfig:
         return int(self._config.get("interject_interval", 30))
 
     @property
-    def interject_msg_count(self):
-        return int(self._config.get("interject_msg_count", 100))
-
-    @property
-    def interject_analyze_count(self):
-        return int(self._config.get("interject_analyze_count", 15))
-
-    @property
     def interject_cooldown(self):
         return int(self._config.get("interject_cooldown", 30))
 

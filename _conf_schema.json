@@ -167,20 +167,6 @@
         "type": "int",
         "default": 30
     },
-    "interject_msg_count": {
-        "title": "插嘴检查消息数",
-        "description": "每次检查时获取的消息数量。",
-        "hint": "默认 100 条",
-        "type": "int",
-        "default": 100
-    },
-    "interject_analyze_count": {
-        "title": "插嘴分析消息数",
-        "description": "每次检查时发送给 LLM 分析的消息数量。",
-        "hint": "默认 15 条",
-        "type": "int",
-        "default": 15
-    },
     "interject_cooldown": {
         "title": "插嘴冷却时间",
         "description": "插嘴后再次插嘴的冷却时间",
