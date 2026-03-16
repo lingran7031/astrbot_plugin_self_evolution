@@ -199,6 +199,51 @@ class SelfEvolutionPlugin(Star):
         except Exception as e:
             logger.warning(f"[SelfEvolution] 释放资源异常: {e}")
 
+    def _parse_message_chain(self, msg: dict) -> str:
+        """解析消息链为可读文本"""
+        nickname = msg.get("sender", {}).get("nickname", "未知")
+        message = msg.get("message", [])
+
+        if isinstance(message, str):
+            return f"{nickname}: {message}"
+
+        parts = []
+        for seg in message:
+            seg_type = seg.get("type")
+            data = seg.get("data", {})
+
+            if seg_type == "text":
+                text = data.get("text", "")
+                if text:
+                    parts.append(text)
+            elif seg_type == "image":
+                sub_type = data.get("sub_type", 0)
+                if sub_type == 1:
+                    parts.append("[动画表情]")
+                else:
+                    parts.append("[图片]")
+            elif seg_type == "at":
+                qq = data.get("qq", "")
+                if qq == "all":
+                    parts.append("@全体成员")
+                else:
+                    parts.append(f"@{qq}")
+            elif seg_type == "face":
+                parts.append(f"[表情{data.get('id', '')}]")
+            elif seg_type == "reply":
+                parts.append("[引用消息]")
+            elif seg_type == "record":
+                parts.append("[语音]")
+            elif seg_type == "video":
+                parts.append("[视频]")
+            elif seg_type == "share":
+                title = data.get("title", "")
+                if title:
+                    parts.append(f"[分享: {title}]")
+
+        content = "".join(parts) if parts else "[消息]"
+        return f"{nickname}: {content}"
+
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
         """
@@ -333,16 +378,12 @@ class SelfEvolutionPlugin(Star):
                             result = await bot.call_action(
                                 "get_group_msg_history",
                                 group_id=int(group_id),
+                                message_seq=0,
                                 count=self.cfg.group_history_count,
                             )
                             messages = result.get("messages", [])
                             if messages:
-                                hist_str = "\n".join(
-                                    [
-                                        f"{msg.get('sender', {}).get('nickname', '未知')}: {msg.get('message', '')}"
-                                        for msg in messages
-                                    ]
-                                )
+                                hist_str = "\n".join(self._parse_message_chain(msg) for msg in messages)
                                 req.system_prompt += f"\n\n【群消息历史】\n{hist_str}\n"
             except Exception as e:
                 logger.debug(f"[Debug] 获取群消息历史失败: {e}")
