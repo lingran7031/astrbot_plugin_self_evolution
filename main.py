@@ -322,12 +322,16 @@ class SelfEvolutionPlugin(Star):
             history_mgr = self.context.message_history_manager
             if history_mgr and hasattr(history_mgr, "get"):
                 group_id_for_history = group_id if group_id else None
+                logger.debug(f"[Debug] 获取历史: group_id={group_id_for_history}, has_history_mgr={bool(history_mgr)}")
                 hist = await history_mgr.get(group_id_for_history, limit=10)
+                logger.debug(f"[Debug] 历史记录: {hist}")
                 if hist:
                     hist_str = "\n".join([f"{h.get('role', 'user')}: {h.get('content', '')}" for h in hist])
                     req.system_prompt += f"\n\n【框架历史上下文】\n{hist_str}\n"
-        except Exception:
-            pass
+            else:
+                logger.debug(f"[Debug] 无 history_mgr: {history_mgr}")
+        except Exception as e:
+            logger.debug(f"[Debug] 获取历史失败: {e}")
 
         # 注入用户当前消息，便于调试和 AI 理解上下文
         msg_text = event.message_str
