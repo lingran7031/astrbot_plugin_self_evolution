@@ -942,6 +942,15 @@ class EavesdroppingEngine:
             except Exception:
                 bot_id = str(getattr(platform, "client_self_id", ""))
 
+            # 检查最新一条消息是否是 AI 自己发的
+            if messages:
+                latest_msg = messages[0]
+                latest_sender = latest_msg.get("sender", {})
+                latest_sender_id = str(latest_sender.get("user_id", ""))
+                if latest_sender_id == bot_id:
+                    logger.debug(f"[Interject] 群 {group_id}: 最新一条是AI自己的回复，跳过插嘴")
+                    return
+
             has_ai_mention = False
 
             for msg in messages:
@@ -953,19 +962,31 @@ class EavesdroppingEngine:
                             if at_qq == bot_id:
                                 has_ai_mention = True
                                 break
-                        if comp.get("type") == "reply":
-                            reply_sender = str(comp.get("sender", ""))
-                            if reply_sender == bot_id:
-                                has_ai_mention = True
-                                break
                 if has_ai_mention:
                     break
 
             # 检查 bot 回复后的冷静期逻辑
             # bot 回复后，在接下来的期间：
-            # 1. 新消息不超过 interject_min_msg_count 条
+            # 1. 新增消息不超过 interject_min_msg_count 条
             # 2. 且没人 @ 或回复 bot
             # 则不插嘴
+
+            # 计算新增消息数量
+            last_msg_id = None
+            if group_id in self._interject_history:
+                last_msg_id = self._interject_history[group_id].get("last_msg_id")
+
+            # 找到新增消息的起始位置
+            new_msg_count = len(messages)
+            if last_msg_id:
+                for i, msg in enumerate(messages):
+                    msg_id = str(msg.get("message_id", ""))
+                    if msg_id == last_msg_id:
+                        new_msg_count = i  # 从 last_msg_id 之后的消息数
+                        break
+
+            min_msg_count = self.plugin.cfg.interject_min_msg_count
+
             if group_id in self._interject_history:
                 last_time = self._interject_history[group_id].get("last_time", 0)
                 cooldown_seconds = self.plugin.cfg.interject_cooldown * 60
@@ -973,26 +994,30 @@ class EavesdroppingEngine:
                 if (time.time() - last_time) < cooldown_seconds:
                     # 在冷却时间内
                     if not has_ai_mention:
-                        # 检查新消息数量
-                        min_msg_count = self.plugin.cfg.interject_min_msg_count
-                        if len(messages) < min_msg_count:
+                        if new_msg_count < min_msg_count:
                             logger.debug(
-                                f"[Interject] 群 {group_id}: bot回复后冷却时间内，新消息{len(messages)}条<{min_msg_count}条且无@/引用，跳过插嘴"
+                                f"[Interject] 群 {group_id}: 冷却时间内，新增消息{new_msg_count}条<{min_msg_count}条且无@/引用，跳过插嘴"
                             )
                             return
                     else:
                         # 有人 @ 或回复 bot，重置冷却时间
-                        self._interject_history[group_id] = {"last_time": time.time()}
+                        pass
                 else:
-                    # 冷却时间过了，检查消息数量是否足够
-                    min_msg_count = self.plugin.cfg.interject_min_msg_count
-                    if len(messages) < min_msg_count:
+                    # 冷却时间过了，检查新增消息数量是否足够
+                    if new_msg_count < min_msg_count:
                         logger.debug(
-                            f"[Interject] 群 {group_id}: 冷却时间已过，但消息数量不足({len(messages)}条<{min_msg_count}条)，跳过插嘴"
+                            f"[Interject] 群 {group_id}: 冷却时间已过，但新增消息不足({new_msg_count}条<{min_msg_count}条)，跳过插嘴"
                         )
                         return
+            else:
+                # 首次运行，检查新增消息数量
+                if new_msg_count < min_msg_count:
+                    logger.debug(
+                        f"[Interject] 群 {group_id}: 首次运行，新增消息不足({new_msg_count}条<{min_msg_count}条)，跳过插嘴"
+                    )
+                    return
 
-            logger.info(f"[Interject] 群 {group_id}: 获取到 {len(messages)} 条消息，开始分析...")
+            logger.info(f"[Interject] 群 {group_id}: 新增 {new_msg_count} 条消息，开始分析...")
 
             formatted = [parse_message_chain(msg) for msg in messages]
 
@@ -1054,15 +1079,20 @@ class EavesdroppingEngine:
                 suggested = result.get("suggested_response", "")
                 if suggested:
                     logger.debug(f"[Interject] 群 {group_id} 建议插嘴: {suggested[:50]}...")
-                    await self._do_interject(group_id, suggested)
+                    await self._do_interject(group_id, suggested, messages)
             else:
                 reason = result.get("reason", "未知")
                 logger.debug(f"[Interject] 群 {group_id} 气氛不需要插嘴: {reason[:50]}")
 
+            # 更新 last_msg_id
+            if messages:
+                latest_msg_id = str(messages[0].get("message_id", ""))
+                self._interject_history[group_id] = {"last_time": time.time(), "last_msg_id": latest_msg_id}
+
         except Exception as e:
             logger.warning(f"[Interject] 群 {group_id} 检查失败: {e}", exc_info=True)
 
-    async def _do_interject(self, group_id: str, message: str):
+    async def _do_interject(self, group_id: str, message: str, messages: list = None):
         """执行插嘴"""
         try:
             platform_insts = self.plugin.context.platform_manager.platform_insts
