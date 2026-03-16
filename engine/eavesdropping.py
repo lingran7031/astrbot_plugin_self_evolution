@@ -971,31 +971,31 @@ class EavesdroppingEngine:
             # 2. 且没人 @ 或回复 bot
             # 则不插嘴
 
-            # 计算新增消息数量
-            last_msg_id = None
+            # 计算新增消息数量 - 使用 message_seq 更可靠
+            last_msg_seq = None
             if group_id in self._interject_history:
-                last_msg_id = self._interject_history[group_id].get("last_msg_id")
+                last_msg_seq = self._interject_history[group_id].get("last_msg_seq")
 
             total_msgs = len(messages)
             # 找到新增消息的起始位置
             new_msg_count = total_msgs
             found_last_msg = False
-            if last_msg_id:
+            if last_msg_seq is not None:
                 for i, msg in enumerate(messages):
-                    msg_id = str(msg.get("message_id", ""))
-                    if msg_id == last_msg_id:
-                        new_msg_count = i  # 从 last_msg_id 之后的消息数
+                    msg_seq = msg.get("message_seq")
+                    if msg_seq is not None and msg_seq <= last_msg_seq:
+                        new_msg_count = i  # 从 last_msg_seq 之前的消息数
                         found_last_msg = True
                         break
 
-                # 如果找不到上次的 last_msg_id，说明消息已过期，使用全部消息数
+                # 如果找不到上次的 last_msg_seq，说明消息已过期，使用全部消息数
                 if not found_last_msg:
                     new_msg_count = total_msgs
                     logger.debug(
-                        f"[Interject] 群 {group_id}: 未找到上次的last_msg_id({last_msg_id})，使用全部消息数{total_msgs}作为新增"
+                        f"[Interject] 群 {group_id}: 未找到上次的last_msg_seq({last_msg_seq})，使用全部消息数{total_msgs}作为新增"
                     )
             else:
-                logger.debug(f"[Interject] 群 {group_id}: 无last_msg_id记录，使用全部消息数{total_msgs}作为新增")
+                logger.debug(f"[Interject] 群 {group_id}: 无last_msg_seq记录，使用全部消息数{total_msgs}作为新增")
 
             min_msg_count = self.plugin.cfg.interject_min_msg_count
 
@@ -1098,10 +1098,10 @@ class EavesdroppingEngine:
                 reason = result.get("reason", "未知")
                 logger.debug(f"[Interject] 群 {group_id} 气氛不需要插嘴: {reason[:50]}")
 
-            # 更新 last_msg_id
+            # 更新 last_msg_seq
             if messages:
-                latest_msg_id = str(messages[0].get("message_id", ""))
-                self._interject_history[group_id] = {"last_time": time.time(), "last_msg_id": latest_msg_id}
+                latest_msg_seq = messages[0].get("message_seq")
+                self._interject_history[group_id] = {"last_time": time.time(), "last_msg_seq": latest_msg_seq}
 
         except Exception as e:
             logger.warning(f"[Interject] 群 {group_id} 检查失败: {e}", exc_info=True)
@@ -1128,13 +1128,13 @@ class EavesdroppingEngine:
 
             result = await bot.call_action("send_group_msg", group_id=int(group_id), message=message)
 
-            msg_id = None
+            msg_seq = None
             if result and isinstance(result, dict):
-                msg_id = result.get("message_id")
+                msg_seq = result.get("message_id")  # message_id 在 QQ 中通常等于 message_seq
 
             self._interject_history[group_id] = {
                 "last_time": time.time(),
-                "last_msg_id": str(msg_id) if msg_id else None,
+                "last_msg_seq": msg_seq,
             }
             logger.debug(f"[Interject] 群 {group_id} 插嘴成功: {message[:30]}...")
 
