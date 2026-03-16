@@ -211,8 +211,9 @@ class SelfEvolutionPlugin(Star):
 
         logger.debug(f"[CognitionCore] 进入 LLM 请求拦截层。用户: {user_id}")
 
-        # 清空框架的 contexts，完全自己控制
-        req.contexts = []
+        # 根据配置决定是否禁用框架 contexts
+        if self.cfg.disable_framework_contexts:
+            req.contexts = []
 
         # 图片处理去重：检查是否已在消息监听阶段处理过
         if hasattr(event, "_image_processed") and event._image_processed:
@@ -320,20 +321,31 @@ class SelfEvolutionPlugin(Star):
         # 身份信息已在【内部参考信息】中提供，不再重复注入
         req.system_prompt += context_info
 
-        # 注入框架传来的历史对话上下文（便于调试）
-        try:
-            history_mgr = self.context.message_history_manager
-            if history_mgr and hasattr(history_mgr, "get"):
-                group_id_for_history = group_id if group_id else None
-                hist = await history_mgr.get(
-                    platform_id=event.unified_msg_origin, group_id=group_id_for_history, page=1, page_size=10
-                )
-                logger.debug(f"[Debug] 历史记录条数: {len(hist) if hist else 0}")
-                if hist:
-                    hist_str = "\n".join([f"{h.get('role', 'user')}: {h.get('content', '')}" for h in hist])
-                    req.system_prompt += f"\n\n【框架历史上下文】\n{hist_str}\n"
-        except Exception as e:
-            logger.debug(f"[Debug] 获取历史失败: {e}")
+        # 根据配置决定是否注入群消息历史
+        if self.cfg.inject_group_history and group_id:
+            try:
+                platform_insts = self.context.platform_manager.platform_insts
+                if platform_insts:
+                    platform = platform_insts[0]
+                    if hasattr(platform, "get_client"):
+                        bot = platform.get_client()
+                        if bot:
+                            result = await bot.call_action(
+                                "get_group_msg_history",
+                                group_id=int(group_id),
+                                count=self.cfg.group_history_count,
+                            )
+                            messages = result.get("messages", [])
+                            if messages:
+                                hist_str = "\n".join(
+                                    [
+                                        f"{msg.get('sender', {}).get('nickname', '未知')}: {msg.get('message', '')}"
+                                        for msg in messages
+                                    ]
+                                )
+                                req.system_prompt += f"\n\n【群消息历史】\n{hist_str}\n"
+            except Exception as e:
+                logger.debug(f"[Debug] 获取群消息历史失败: {e}")
 
         # 注入用户当前消息，便于调试和 AI 理解上下文
         msg_text = event.message_str

@@ -448,6 +448,27 @@
         "type": "bool",
         "default": false
     },
+    "disable_framework_contexts": {
+        "title": "禁用框架上下文",
+        "description": "清空框架自动传入的对话历史，完全由插件自己控制",
+        "hint": "开启后需要手动注入历史，否则AI没有对话上下文",
+        "type": "bool",
+        "default": false
+    },
+    "inject_group_history": {
+        "title": "注入群消息历史",
+        "description": "将群消息历史注入到Prompt中",
+        "hint": "开启后会将群消息历史注入到system_prompt中，供AI参考",
+        "type": "bool",
+        "default": true
+    },
+    "group_history_count": {
+        "title": "群消息历史数量",
+        "description": "注入群消息历史的条数",
+        "hint": "默认10条，过多会增加Prompt长度",
+        "type": "int",
+        "default": 10
+    },
     "max_prompt_injection_length": {
         "title": "Prompt 注入最大长度",
         "description": "控制 prompt 注入的最大字符数，超出部分会被截断",

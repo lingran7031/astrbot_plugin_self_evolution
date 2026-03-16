@@ -365,6 +365,18 @@ class PluginConfig:
         return self._parse_bool(self._config.get("debug_log_enabled"), False)
 
     @property
+    def disable_framework_contexts(self):
+        return self._parse_bool(self._config.get("disable_framework_contexts"), False)
+
+    @property
+    def inject_group_history(self):
+        return self._parse_bool(self._config.get("inject_group_history"), True)
+
+    @property
+    def group_history_count(self):
+        return int(self._config.get("group_history_count", 10))
+
+    @property
     def max_prompt_injection_length(self):
         return int(self._config.get("max_prompt_injection_length", 2000))
 
