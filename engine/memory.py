@@ -67,7 +67,43 @@ class MemoryManager:
                 logger.info(f"[Memory] 使用 eavesdropping 活跃群列表: {groups}")
                 return groups
         # 方式3: 通过 platform 获取 bot 加入的群列表
-        return []
+        return self._fetch_groups_from_platform()
+
+    def _fetch_groups_from_platform(self):
+        """从 platform 获取 bot 加入的群列表"""
+        import asyncio
+
+        try:
+            platform = self.plugin.context.platform_manager.platform_insts[0]
+            bot = platform.get_client()
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # 如果在异步环境中，创建任务
+                    async def fetch():
+                        result = await bot.call_action("get_group_list")
+                        return self._parse_group_list(result)
+
+                    # 同步调用，返回空列表
+                    return []
+                else:
+                    result = asyncio.run(bot.call_action("get_group_list"))
+                    return self._parse_group_list(result)
+            except Exception:
+                return []
+        except Exception as e:
+            logger.debug(f"[Memory] 获取群列表失败: {e}")
+            return []
+
+    def _parse_group_list(self, result):
+        """解析群列表结果"""
+        if isinstance(result, list):
+            groups_data = result
+        elif isinstance(result, dict):
+            groups_data = result.get("data", [])
+        else:
+            groups_data = []
+        return [str(g.get("group_id", "")) for g in groups_data if g.get("group_id")]
 
     async def _summarize_group(self, group_id: str):
         """总结单个群的消息"""
