@@ -160,10 +160,17 @@
     },
     "interject_cooldown": {
         "title": "插嘴冷却时间",
-        "description": "插嘴后再次插嘴的冷却时间。",
+        "description": "插嘴后再次插嘴的冷却时间",
         "hint": "单位：分钟，默认 30",
         "type": "int",
         "default": 30
+    },
+    "interject_min_msg_count": {
+        "title": "插嘴最小消息数",
+        "description": "触发插嘴判断的最小消息数",
+        "hint": "消息数不足时跳过，默认 10",
+        "type": "int",
+        "default": 10
     },
     "interject_whitelist": {
         "title": "插嘴白名单群",

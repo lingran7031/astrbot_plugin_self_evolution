@@ -275,6 +275,10 @@ class PluginConfig:
         return int(self._config.get("interject_cooldown", 30))
 
     @property
+    def interject_min_msg_count(self):
+        return int(self._config.get("interject_min_msg_count", 10))
+
+    @property
     def interject_whitelist(self):
         whitelist = self._config.get("interject_whitelist", [])
         if isinstance(whitelist, str):
