@@ -956,12 +956,28 @@ class EavesdroppingEngine:
                 if has_ai_mention:
                     break
 
-            cooldown_seconds = self.plugin.cfg.interject_cooldown * 60
+            # 检查 bot 回复后的冷静期逻辑
+            # bot 回复后，在接下来的期间：
+            # 1. 新消息不超过 interject_min_msg_count 条
+            # 2. 且没人 @ 或回复 bot
+            # 则不插嘴
             if group_id in self._interject_history:
                 last_time = self._interject_history[group_id].get("last_time", 0)
-                if not has_ai_mention and (time.time() - last_time) < cooldown_seconds:
-                    logger.debug(f"[Interject] 群 {group_id}: 冷却时间内且无@AI/引用，跳过插嘴")
-                    return
+                cooldown_seconds = self.plugin.cfg.interject_cooldown * 60
+
+                if (time.time() - last_time) < cooldown_seconds:
+                    # 在冷却时间内
+                    if not has_ai_mention:
+                        # 检查新消息数量
+                        min_msg_count = self.plugin.cfg.interject_min_msg_count
+                        if len(messages) < min_msg_count:
+                            logger.debug(
+                                f"[Interject] 群 {group_id}: bot回复后冷却时间内，新消息{len(messages)}条<{min_msg_count}条且无@/引用，跳过插嘴"
+                            )
+                            return
+                    else:
+                        # 有人 @ 或回复 bot，重置冷却时间
+                        self._interject_history[group_id] = {"last_time": time.time()}
 
             formatted = []
             for msg in messages:
@@ -1064,6 +1080,10 @@ class EavesdroppingEngine:
 
             self._interject_history[group_id] = {"last_time": time.time()}
             logger.info(f"[Interject] 群 {group_id} 插嘴成功: {message[:30]}...")
+
+            # 插嘴后自动分析并构建用户画像
+            if hasattr(self.plugin, "profile"):
+                asyncio.create_task(self.plugin.profile.analyze_and_build_profiles(group_id))
 
         except Exception as e:
             logger.warning(f"[Interject] 群 {group_id} 插嘴失败: {e}")
