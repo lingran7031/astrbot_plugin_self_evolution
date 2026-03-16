@@ -96,7 +96,7 @@ class EavesdroppingEngine:
             }
         return bucket_data
 
-    def _check_funnel_trigger(self, event: AstrMessageEvent) -> bool:
+    async def _check_funnel_trigger(self, event: AstrMessageEvent) -> bool:
         """漏斗触发检测：@/命令/引用/唤醒词/意图正则"""
         msg = event.message_obj
         msg_text = event.message_str or ""
@@ -119,7 +119,12 @@ class EavesdroppingEngine:
             platform_insts = self.plugin.context.platform_manager.platform_insts
             if platform_insts:
                 platform = platform_insts[0]
-                bot_id = str(getattr(platform, "client_self_id", ""))
+                bot = platform.bot
+                try:
+                    login_info = await bot.call_action("get_login_info")
+                    bot_id = str(login_info.get("user_id", ""))
+                except Exception:
+                    bot_id = str(getattr(platform, "client_self_id", ""))
                 if str(reply_msg.sender) == bot_id:
                     return True
 
@@ -307,7 +312,7 @@ class EavesdroppingEngine:
         logger.info(f"[CognitionCore] 收到待评估消息，{label}: {msg_text[:30] if msg_text else '(无文字)'}")
 
         # 漏斗机制：检测用户是否活跃
-        funnel_triggered = self._check_funnel_trigger(event)
+        funnel_triggered = await self._check_funnel_trigger(event)
 
         if funnel_triggered:
             await self._mark_user_active_async(group_id, user_id)
@@ -353,7 +358,7 @@ class EavesdroppingEngine:
 
         # 计算 boost 值（统一入口，根据触发条件不同）
         critical_pattern = re.compile(f"({self.plugin.cfg.critical_keywords})", re.IGNORECASE)
-        funnel_triggered = self._check_funnel_trigger(event)
+        funnel_triggered = await self._check_funnel_trigger(event)
 
         trigger_reason = ""
         boost = params["daily_boost"]  # 默认普通消息 boost
@@ -925,7 +930,13 @@ class EavesdroppingEngine:
                 logger.debug(f"[Interject] 群 {group_id}: 无历史消息")
                 return
 
-            bot_id = str(getattr(platform, "client_self_id", ""))
+            # 通过 NapCat API 获取机器人真实 QQ 号
+            try:
+                login_info = await bot.call_action("get_login_info")
+                bot_id = str(login_info.get("user_id", ""))
+            except Exception:
+                bot_id = str(getattr(platform, "client_self_id", ""))
+
             has_ai_mention = False
 
             for msg in messages:
