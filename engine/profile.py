@@ -213,7 +213,6 @@ class ProfileManager:
         files = list(self.profile_dir.glob("user_*.md"))
         return {
             "total_users": len(files),
-            
         }
 
     async def build_profile(self, user_id: str, group_id: str, mode: str = "update") -> str:
@@ -319,3 +318,177 @@ class ProfileManager:
         except Exception as e:
             logger.warning(f"[Profile] 构建画像失败: {e}")
             return f"构建画像失败: {e}"
+
+    async def analyze_and_build_profiles(self, group_id: str, messages: list = None) -> str:
+        """
+        自动分析群消息，找出活跃/感兴趣的用户，并自动构建画像
+
+        Args:
+            group_id: 群ID
+            messages: 可选的群消息列表，如果为None则自动获取
+
+        Returns:
+            处理结果描述
+        """
+        import json
+
+        logger.info(f"[Profile] 自动分析并构建画像: 群={group_id}")
+
+        try:
+            # 获取群消息
+            if messages is None:
+                platform_insts = self.plugin.context.platform_manager.platform_insts
+                if not platform_insts:
+                    return "无法获取平台实例"
+
+                platform = platform_insts[0]
+                if not hasattr(platform, "get_client"):
+                    return "平台不支持获取 bot"
+
+                bot = platform.get_client()
+                if not bot:
+                    return "无法获取 bot 实例"
+
+                msg_count = self.plugin.cfg.profile_msg_count
+                result = await bot.call_action("get_group_msg_history", group_id=int(group_id), count=msg_count)
+                messages = result.get("messages", [])
+
+            if not messages:
+                return "群消息为空"
+
+            # 统计用户消息数量
+            user_msg_counts = defaultdict(int)
+            user_nicknames = {}
+            user_contents = defaultdict(list)
+
+            for msg in messages:
+                sender = msg.get("sender", {})
+                user_id = str(sender.get("user_id", ""))
+                if not user_id or user_id == "0":
+                    continue
+                nickname = sender.get("nickname", "未知")
+                content = msg.get("message", "")
+                if content:
+                    user_msg_counts[user_id] += 1
+                    if user_id not in user_nicknames:
+                        user_nicknames[user_id] = nickname
+                    user_contents[user_id].append(f"{nickname}: {content}")
+
+            if not user_msg_counts:
+                return "无法分析用户消息"
+
+            # 按消息数量排序，取前5名活跃用户
+            sorted_users = sorted(user_msg_counts.items(), key=lambda x: x[1], reverse=True)
+            active_users = sorted_users[:5]
+
+            # 让 LLM 判断哪些用户值得构建画像
+            # 格式化消息给 LLM
+            top_users_summary = []
+            for user_id, count in active_users:
+                nickname = user_nicknames.get(user_id, "未知")
+                # 取该用户最近5条消息
+                user_msgs = user_contents[user_id][-5:]
+                top_users_summary.append(
+                    f"用户: {nickname} (QQ: {user_id}), 消息数: {count}, 最近消息: {'; '.join(user_msgs)}"
+                )
+
+            prompt = (
+                f"你是用户画像分析师。请分析以下群聊用户，判断哪些用户值得构建画像。\n\n"
+                + "\n".join(top_users_summary)
+                + "\n\n"
+                "请以JSON数组格式输出，格式如下：\n"
+                '[{"user_id": "用户QQ号", "nickname": "用户昵称", "reason": "为什么值得构建画像", "interested": true/false}]\n\n'
+                "规则：\n"
+                "1. interested=true 表示该用户是AI感兴趣的用户（如活跃、有趣、经常发言、有独特观点等）\n"
+                "2. interested=false 表示普通用户，可以构建画像但不紧急\n"
+                "3. 只返回JSON数组，不要其他内容"
+            )
+
+            llm_provider = self.plugin.context.get_using_provider("qq")
+            if not llm_provider:
+                return "无法获取 LLM Provider"
+
+            res = await llm_provider.text_chat(
+                prompt=prompt,
+                contexts=[],
+                system_prompt="你是一个专业的用户画像分析师，只输出JSON数组。",
+            )
+
+            result_text = res.completion_text.strip() if res.completion_text else ""
+
+            # 解析 JSON
+            try:
+                # 尝试提取 JSON 部分
+                if "```json" in result_text:
+                    result_text = result_text.split("```json")[1].split("```")[0]
+                elif "```" in result_text:
+                    result_text = result_text.split("```")[1].split("```")[0]
+
+                target_users = json.loads(result_text)
+            except json.JSONDecodeError:
+                logger.warning(f"[Profile] 解析用户列表失败: {result_text}")
+                # 如果解析失败，取前3名活跃用户
+                target_users = [
+                    {"user_id": uid, "nickname": user_nicknames.get(uid, "未知"), "interested": True}
+                    for uid, _ in active_users[:3]
+                ]
+
+            # 为每个目标用户构建画像
+            built_count = 0
+            for user_info in target_users:
+                user_id = user_info.get("user_id")
+                nickname = user_info.get("nickname", "未知")
+                interested = user_info.get("interested", False)
+                reason = user_info.get("reason", "")
+
+                if not user_id:
+                    continue
+
+                # 检查冷却时间
+                cooldown_key = f"{group_id}_{user_id}"
+                last_build = self._profile_build_cooldown.get(cooldown_key, 0)
+                cooldown_seconds = self.plugin.cfg.profile_cooldown_minutes * 60
+                if time.time() - last_build < cooldown_seconds:
+                    logger.debug(f"[Profile] 用户 {user_id} 冷却中，跳过")
+                    continue
+
+                # 获取该用户的最近消息
+                user_messages = user_contents.get(user_id, [])
+                if not user_messages:
+                    continue
+
+                # 构建画像
+                existing_note = await self.load_profile(group_id, user_id)
+                existing_note = existing_note[:500] if existing_note else "(暂无)"
+
+                # 添加感兴趣标记
+                interested_tag = "\n\n> ⭐ 该用户被AI标记为'感兴趣'" if interested else ""
+
+                profile_prompt = (
+                    f"你是记忆助手。请根据对话分析用户特征。\n"
+                    f"目标用户：{nickname} (QQ: {user_id})\n"
+                    f"构建原因：{reason}\n"
+                    f"{'旧笔记：' + existing_note + '\n' if existing_note != '(暂无)' else ''}"
+                    f"用户消息：\n" + "\n".join(user_messages) + "\n"
+                    f"{interested_tag}\n"
+                    "请根据以上消息输出一段详细用户画像描述。使用Markdown格式输出，不少于300字。"
+                )
+
+                res = await llm_provider.text_chat(
+                    prompt=profile_prompt,
+                    contexts=[],
+                    system_prompt="你是一个专业的用户画像分析师。根据用户消息分析其身份背景、性格特征、兴趣爱好、沟通方式等。",
+                )
+
+                new_note = res.completion_text.strip() if res.completion_text else ""
+                if new_note:
+                    await self.save_profile(group_id, user_id, new_note, nickname)
+                    self._profile_build_cooldown[cooldown_key] = time.time()
+                    built_count += 1
+                    logger.info(f"[Profile] 自动构建画像完成: 用户={user_id}, 感兴趣={interested}")
+
+            return f"自动分析完成，为 {built_count} 位用户构建了画像"
+
+        except Exception as e:
+            logger.warning(f"[Profile] 自动分析并构建画像失败: {e}")
+            return f"自动分析失败: {e}"
