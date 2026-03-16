@@ -89,6 +89,7 @@ class ProfileManager:
             logger.debug(f"[Profile] 从缓存加载画像: {profile_key}")
             return self._profile_cache[profile_key]
 
+        # 先尝试不带 nickname 的文件
         path = self._get_profile_path(group_id, user_id)
         if path.exists():
             try:
@@ -100,6 +101,20 @@ class ProfileManager:
                 return content
             except OSError as e:
                 logger.warning(f"[Profile] 读取画像失败 {profile_key}: {e}")
+
+        # 尝试查找带 nickname 的文件
+        pattern = f"user_{group_id}_{user_id}_*.md"
+        matching_files = list(self.profile_dir.glob(pattern))
+        if matching_files:
+            try:
+                content = matching_files[0].read_text(encoding="utf-8").strip()
+                self._profile_cache[profile_key] = content
+                self._cache_access_time[profile_key] = time.time()
+                logger.info(f"[Profile] 从磁盘加载画像: {profile_key} ({len(content)} 字符)")
+                return content
+            except OSError as e:
+                logger.warning(f"[Profile] 读取画像失败 {profile_key}: {e}")
+
         logger.debug(f"[Profile] 用户无画像: {profile_key}")
         return ""
 
