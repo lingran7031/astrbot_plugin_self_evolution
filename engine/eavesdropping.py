@@ -978,12 +978,18 @@ class EavesdroppingEngine:
 
             # 找到新增消息的起始位置
             new_msg_count = len(messages)
+            found_last_msg = False
             if last_msg_id:
                 for i, msg in enumerate(messages):
                     msg_id = str(msg.get("message_id", ""))
                     if msg_id == last_msg_id:
                         new_msg_count = i  # 从 last_msg_id 之后的消息数
+                        found_last_msg = True
                         break
+
+                # 如果找不到上次的 last_msg_id，说明消息已过期，按没有新增处理
+                if not found_last_msg:
+                    new_msg_count = 0
 
             min_msg_count = self.plugin.cfg.interject_min_msg_count
 
