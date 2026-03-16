@@ -999,6 +999,14 @@ class EavesdroppingEngine:
 
             min_msg_count = self.plugin.cfg.interject_min_msg_count
 
+            # 每次检查时都更新 last_msg_seq，确保下次能正确计算新增消息
+            if messages:
+                latest_msg_seq = messages[0].get("message_seq")
+                self._interject_history[group_id] = {
+                    "last_time": self._interject_history.get(group_id, {}).get("last_time", time.time()),
+                    "last_msg_seq": latest_msg_seq,
+                }
+
             if group_id in self._interject_history:
                 last_time = self._interject_history[group_id].get("last_time", 0)
                 cooldown_seconds = self.plugin.cfg.interject_cooldown * 60
