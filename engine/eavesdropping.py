@@ -935,12 +935,19 @@ class EavesdroppingEngine:
                 logger.debug(f"[Interject] 群 {group_id}: 无历史消息")
                 return
 
+            first_seq = messages[-1].get("message_seq") if messages else None
+            last_seq = messages[0].get("message_seq") if messages else None
+            logger.debug(
+                f"[Interject] 群 {group_id}: 获取到{len(messages)}条消息，message_seq范围: {first_seq} ~ {last_seq}"
+            )
+
             # 通过 NapCat API 获取机器人真实 QQ 号
             try:
                 login_info = await bot.call_action("get_login_info")
                 bot_id = str(login_info.get("user_id", ""))
             except Exception:
                 bot_id = str(getattr(platform, "client_self_id", ""))
+            logger.debug(f"[Interject] 群 {group_id}: bot_id = {bot_id}")
 
             # 检查最新一条消息是否是 AI 自己发的
             if messages:
@@ -964,6 +971,8 @@ class EavesdroppingEngine:
                                 break
                 if has_ai_mention:
                     break
+
+            logger.debug(f"[Interject] 群 {group_id}: has_ai_mention = {has_ai_mention}")
 
             # 检查 bot 回复后的冷静期逻辑
             # bot 回复后，在接下来的期间：
@@ -1006,10 +1015,16 @@ class EavesdroppingEngine:
                     "last_time": self._interject_history.get(group_id, {}).get("last_time", time.time()),
                     "last_msg_seq": latest_msg_seq,
                 }
+                logger.debug(f"[Interject] 群 {group_id}: 更新 last_msg_seq = {latest_msg_seq}")
 
             if group_id in self._interject_history:
                 last_time = self._interject_history[group_id].get("last_time", 0)
                 cooldown_seconds = self.plugin.cfg.interject_cooldown * 60
+                elapsed = time.time() - last_time
+                remaining = cooldown_seconds - elapsed
+                logger.debug(
+                    f"[Interject] 群 {group_id}: last_time={last_time}, cooldown={cooldown_seconds}秒, 已过{elapsed:.1f}秒, 剩余{remaining:.1f}秒"
+                )
 
                 if (time.time() - last_time) < cooldown_seconds:
                     # 在冷却时间内
@@ -1047,6 +1062,10 @@ class EavesdroppingEngine:
                 logger.debug(f"[Interject] 群 {group_id}: 消息格式化为空")
                 return
 
+            # 打印消息内容
+            msg_preview = "\n".join(formatted[:5])
+            logger.debug(f"[Interject] 群 {group_id}: 消息内容预览:\n{msg_preview}")
+
             # 检查新增消息数量（已在上面冷却逻辑中统一检查）
             min_msg_count = self.plugin.cfg.interject_min_msg_count
 
@@ -1074,6 +1093,9 @@ class EavesdroppingEngine:
 2. 只有当群里有有趣的讨论、有争议的话题、或者有人提问但没人回答时才应该插嘴
 3. 如果消息中没有@当前机器人，通常不应该插嘴"""
 
+            logger.debug(f"[Interject] 群 {group_id}: 完整Prompt:\n{prompt}")
+            logger.info(f"[Interject] 群 {group_id}: 正在请求LLM判断...")
+
             res = await llm_provider.text_chat(
                 prompt=prompt,
                 contexts=[],
@@ -1083,6 +1105,8 @@ class EavesdroppingEngine:
             if not res.completion_text:
                 logger.debug(f"[Interject] 群 {group_id}: LLM 无返回")
                 return
+
+            logger.debug(f"[Interject] 群 {group_id}: LLM原始返回:\n{res.completion_text}")
 
             import json
 
@@ -1096,6 +1120,13 @@ class EavesdroppingEngine:
             except:
                 logger.debug(f"[Interject] 群 {group_id}: JSON 解析失败")
                 return
+
+            should_interject = result.get("should_interject", False)
+            reason = result.get("reason", "")
+            suggested_response = result.get("suggested_response", "")
+            logger.info(
+                f"[Interject] 群 {group_id}: 判断结果 - should_interject={should_interject}, reason={reason[:100]}, suggested={suggested_response[:50] if suggested_response else ''}"
+            )
 
             if result.get("should_interject"):
                 suggested = result.get("suggested_response", "")
@@ -1116,17 +1147,21 @@ class EavesdroppingEngine:
 
     async def _do_interject(self, group_id: str, message: str, messages: list = None):
         """执行插嘴"""
+        logger.info(f"[Interject] 群 {group_id} 准备插嘴，消息: {message[:50]}...")
         try:
             platform_insts = self.plugin.context.platform_manager.platform_insts
             if not platform_insts:
+                logger.debug(f"[Interject] 群 {group_id}: 无平台实例")
                 return
 
             platform = platform_insts[0]
             if not hasattr(platform, "get_client"):
+                logger.debug(f"[Interject] 群 {group_id}: 平台无 get_client")
                 return
 
             bot = platform.get_client()
             if not bot:
+                logger.debug(f"[Interject] 群 {group_id}: 无法获取 bot 实例")
                 return
 
             message = self._clean_message(message)
@@ -1134,6 +1169,7 @@ class EavesdroppingEngine:
                 logger.debug(f"[Interject] 群 {group_id}: 消息清洗后为空")
                 return
 
+            logger.debug(f"[Interject] 群 {group_id}: 清洗后的消息: {message[:50]}...")
             result = await bot.call_action("send_group_msg", group_id=int(group_id), message=message)
 
             msg_seq = None
@@ -1144,7 +1180,7 @@ class EavesdroppingEngine:
                 "last_time": time.time(),
                 "last_msg_seq": msg_seq,
             }
-            logger.debug(f"[Interject] 群 {group_id} 插嘴成功: {message[:30]}...")
+            logger.info(f"[Interject] 群 {group_id} 插嘴成功! message_id={msg_seq}, 消息: {message[:50]}...")
 
         except Exception as e:
             logger.warning(f"[Interject] 群 {group_id} 插嘴失败: {e}")
