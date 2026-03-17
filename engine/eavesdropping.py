@@ -949,14 +949,15 @@ class EavesdroppingEngine:
                 bot_id = str(getattr(platform, "client_self_id", ""))
             logger.debug(f"[Interject] 群 {group_id}: bot_id = {bot_id}")
 
-            # 检查最新一条消息是否是 AI 自己发的
-            if messages:
-                latest_msg = messages[0]
-                latest_sender = latest_msg.get("sender", {})
-                latest_sender_id = str(latest_sender.get("user_id", ""))
-                if latest_sender_id == bot_id:
-                    logger.debug(f"[Interject] 群 {group_id}: 最新一条是AI自己的回复，跳过插嘴")
-                    return
+            # 检查最新一条消息是否是 AI 自己发的 - 暂时注释用于调试
+            # if messages:
+            #     latest_msg = messages[0]
+            #     latest_sender = latest_msg.get("sender", {})
+            #     latest_sender_id = str(latest_sender.get("user_id", ""))
+            #     logger.debug(f"[Interject] 群 {group_id}: 最新消息sender={latest_sender}, latest_sender_id={latest_sender_id}, bot_id={bot_id}")
+            #     if latest_sender_id == bot_id:
+            #         logger.debug(f"[Interject] 群 {group_id}: 最新一条是AI自己的回复，跳过插嘴")
+            #         return
 
             has_ai_mention = False
 
@@ -1066,6 +1067,11 @@ class EavesdroppingEngine:
             msg_preview = "\n".join(formatted[:5])
             logger.debug(f"[Interject] 群 {group_id}: 消息内容预览:\n{msg_preview}")
 
+            # 添加原始消息JSON到prompt用于调试
+            import json
+
+            raw_messages_json = json.dumps(messages[:10], ensure_ascii=False, indent=2)
+
             # 检查新增消息数量（已在上面冷却逻辑中统一检查）
             min_msg_count = self.plugin.cfg.interject_min_msg_count
 
@@ -1078,8 +1084,11 @@ class EavesdroppingEngine:
 
 当前机器人ID：{bot_id}
 
-群聊消息：
+群聊消息（格式化后）：
 {chr(10).join(formatted[: self.plugin.cfg.interject_analyze_count])}
+
+原始消息JSON（用于调试sender信息）：
+{raw_messages_json}
 
 请以JSON格式输出判断结果：
 {{
