@@ -161,7 +161,9 @@ class MemoryManager:
                 logger.debug(f"[Memory] 群 {group_id}: 消息格式化为空")
                 return []
 
-            latest_messages = formatted[-100:] if len(formatted) > 100 else formatted
+            latest_messages = (
+                formatted[-self.memory_msg_count :] if len(formatted) > self.memory_msg_count else formatted
+            )
 
             logger.debug(
                 f"[Memory] 群 {group_id}: 获取到 {len(formatted)} 条消息，取最新的 {len(latest_messages)} 条进行总结"
