@@ -147,15 +147,27 @@ class MemoryManager:
             )
 
             messages = result.get("messages", [])
-            formatted = []
-            for msg in messages:
-                sender = msg.get("sender", {})
-                nickname = sender.get("nickname", "未知")
-                content = msg.get("message", "")
-                if content:
-                    formatted.append(f"{nickname}: {content}")
+            if not messages:
+                logger.debug(f"[Memory] 群 {group_id}: 无消息")
+                return []
 
-            return formatted
+            from .context_injection import parse_message_chain
+
+            formatted = await asyncio.gather(*[parse_message_chain(msg, self.plugin) for msg in messages])
+
+            formatted = [f for f in formatted if f]
+
+            if not formatted:
+                logger.debug(f"[Memory] 群 {group_id}: 消息格式化为空")
+                return []
+
+            latest_messages = formatted[-100:] if len(formatted) > 100 else formatted
+
+            logger.debug(
+                f"[Memory] 群 {group_id}: 获取到 {len(formatted)} 条消息，取最新的 {len(latest_messages)} 条进行总结"
+            )
+
+            return latest_messages
 
         except Exception as e:
             logger.warning(f"[Memory] 获取群消息失败: {e}")
@@ -168,7 +180,7 @@ class MemoryManager:
             if not llm_provider:
                 return None
 
-            prompt = SUMMARY_PROMPT.format(messages="\n".join(messages[:100]))
+            prompt = SUMMARY_PROMPT.format(messages="\n".join(messages))
 
             res = await llm_provider.text_chat(
                 prompt=prompt,
