@@ -1,4 +1,6 @@
 import asyncio
+import json
+import math
 import re
 import time
 from collections import defaultdict, deque
@@ -21,6 +23,8 @@ class EavesdroppingEngine:
         self._bucket_lock = asyncio.Lock()
         self._boredom_lock = asyncio.Lock()
         self._active_users_lock = asyncio.Lock()
+        self._session_lock = asyncio.Lock()
+        self._interject_lock = asyncio.Lock()
 
         # 漏斗机制 - 用户活跃判定
         self.active_users = defaultdict(
@@ -58,8 +62,6 @@ class EavesdroppingEngine:
         """基于香农熵计算文本信息量"""
         if not text or len(text) < 2:
             return 1.0
-
-        import math
 
         # 统计字符频率
         freq = {}
@@ -400,53 +402,52 @@ class EavesdroppingEngine:
                 return
 
         # 统一欲望累积流程
-        import math
-
         current_time = time.time()
-        bucket_data = self._get_or_init_bucket_data(session_id, current_time)
+        async with self._bucket_lock:
+            bucket_data = self._get_or_init_bucket_data(session_id, current_time)
 
-        # 如果正在观察期间遇到感兴趣话题，重置计数器
-        if bucket_data.get("triggered", False) and trigger_reason:
-            bucket_data["consecutive_replies"] = 0
-            logger.debug(f"[CognitionCore] 观察期间遇到 {trigger_reason}，重置观察计数器 ({label})")
+            # 如果正在观察期间遇到感兴趣话题，重置计数器
+            if bucket_data.get("triggered", False) and trigger_reason:
+                bucket_data["consecutive_replies"] = 0
+                logger.debug(f"[CognitionCore] 观察期间遇到 {trigger_reason}，重置观察计数器 ({label})")
 
-        last_time = bucket_data.get("last_time", current_time)
-        delta_t = current_time - last_time
+            last_time = bucket_data.get("last_time", current_time)
+            delta_t = current_time - last_time
 
-        is_cooling_down = bucket_data.get("is_cooling_down", False)
-        cooling_end_time = bucket_data.get("cooling_end_time", 0)
+            is_cooling_down = bucket_data.get("is_cooling_down", False)
+            cooling_end_time = bucket_data.get("cooling_end_time", 0)
 
-        if is_cooling_down and current_time >= cooling_end_time:
-            is_cooling_down = False
-            logger.debug(f"[CognitionCore] 冷却结束，欲望恢复累积 ({label})")
+            if is_cooling_down and current_time >= cooling_end_time:
+                is_cooling_down = False
+                logger.debug(f"[CognitionCore] 冷却结束，欲望恢复累积 ({label})")
 
-        old_value = float(bucket_data.get("value", 2.0))
+            old_value = float(bucket_data.get("value", 2.0))
 
-        if is_cooling_down:
-            decay_factor = 0.3
-            exp_decay = math.exp(-decay_factor * delta_t / 60)
-            new_value = old_value * exp_decay
-            logger.debug(f"[CognitionCore] 贤者时间冷却中 Z={new_value:.2f}/{params['threshold']} ({label})")
-        else:
-            decay_factor = params.get("decay", 0.9)
-            exp_decay = math.exp(-decay_factor * delta_t / 60)
-            new_value = old_value * exp_decay + boost
-            logger.debug(
-                f"[CognitionCore] 欲望累积 [{trigger_reason}] Z={new_value:.2f}/{params['threshold']} boost={boost:.1f} ({label})"
-            )
+            if is_cooling_down:
+                decay_factor = 0.3
+                exp_decay = math.exp(-decay_factor * delta_t / 60)
+                new_value = old_value * exp_decay
+                logger.debug(f"[CognitionCore] 贤者时间冷却中 Z={new_value:.2f}/{params['threshold']} ({label})")
+            else:
+                decay_factor = params.get("decay", 0.9)
+                exp_decay = math.exp(-decay_factor * delta_t / 60)
+                new_value = old_value * exp_decay + boost
+                logger.debug(
+                    f"[CognitionCore] 欲望累积 [{trigger_reason}] Z={new_value:.2f}/{params['threshold']} boost={boost:.1f} ({label})"
+                )
 
-        self.leaky_bucket[session_id] = {
-            "value": new_value,
-            "last_time": current_time,
-            "is_cooling_down": is_cooling_down,
-            "cooling_end_time": cooling_end_time,
-            "triggered": bucket_data.get("triggered", False),
-            "consecutive_replies": bucket_data.get("consecutive_replies", 0),
-        }
+            self.leaky_bucket[session_id] = {
+                "value": new_value,
+                "last_time": current_time,
+                "is_cooling_down": is_cooling_down,
+                "cooling_end_time": cooling_end_time,
+                "triggered": bucket_data.get("triggered", False),
+                "consecutive_replies": bucket_data.get("consecutive_replies", 0),
+            }
 
-        current_z = new_value
-        triggered = bucket_data.get("triggered", False)
-        consecutive_replies = bucket_data.get("consecutive_replies", 0)
+            current_z = new_value
+            triggered = bucket_data.get("triggered", False)
+            consecutive_replies = bucket_data.get("consecutive_replies", 0)
         cooldown_messages = self.plugin.cfg.desire_cooldown_messages
 
         if current_z >= params["threshold"] and not triggered:
@@ -1124,8 +1125,6 @@ class EavesdroppingEngine:
                 return
 
             logger.debug(f"[Interject] 群 {group_id}: LLM原始返回:\n{res.completion_text}")
-
-            import json
 
             match = re.search(r"\{.*\}", res.completion_text, re.DOTALL)
             if not match:
