@@ -783,24 +783,31 @@ class SelfEvolutionPlugin(Star):
         target = target_user_id or event.get_sender_id()
         limit = min(max(1, limit), 1000)
 
+        logger.debug(f"[Tool] get_user_messages: target={target}, limit={limit}")
+
         try:
             platform_insts = self.context.platform_manager.platform_insts
             if not platform_insts:
+                logger.warning("[Tool] get_user_messages: 无法获取平台实例")
                 return "无法获取平台实例"
 
             platform = platform_insts[0]
             if not hasattr(platform, "get_client"):
+                logger.warning("[Tool] get_user_messages: 平台不支持获取 bot")
                 return "平台不支持获取 bot"
 
             bot = platform.get_client()
             if not bot:
+                logger.warning("[Tool] get_user_messages: 无法获取 bot 实例")
                 return "无法获取 bot 实例"
 
             group_id = event.get_group_id()
 
             if not group_id:
+                logger.debug("[Tool] get_user_messages: 私聊场景不适用")
                 return "此工具仅适用于群聊场景"
 
+            logger.debug(f"[Tool] get_user_messages: 群={group_id}, 获取{limit}条消息")
             result = await bot.call_action("get_group_msg_history", group_id=int(group_id), count=limit)
             messages = result.get("messages", [])
 
