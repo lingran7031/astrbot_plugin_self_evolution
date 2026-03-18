@@ -201,6 +201,20 @@
         "type": "int",
         "default": 80
     },
+    "interject_dry_run": {
+        "title": "影子模式（Dry Run）",
+        "description": "开启后不实际发送消息，只输出日志用于调优",
+        "hint": "建议开启1-2天调优参数后关闭",
+        "type": "bool",
+        "default": false
+    },
+    "interject_random_bypass_rate": {
+        "title": "随机松绑概率",
+        "description": "本地过滤未命中时，仍有概率放行给LLM判断",
+        "hint": "默认 0.1 (10%)，增加AI的不可预测性",
+        "type": "float",
+        "default": 0.1
+    },
 
     "eavesdrop_message_threshold": {
         "title": "互动意愿消息数阈值",
