@@ -126,13 +126,6 @@ class SelfEvolutionDAO:
                 UNIQUE(group_id, created_at)
             )
         """)
-        # 迁移旧表：如果存在 pending_reflections，保留数据但不推荐使用
-        try:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS pending_reflections_old AS SELECT * FROM pending_reflections
-            """)
-        except:
-            pass  # 表不存在或已迁移
         # 好感度关系表
         await db.execute("""
             CREATE TABLE IF NOT EXISTS user_relationships (
@@ -285,29 +278,6 @@ class SelfEvolutionDAO:
                 ),
             )
             await db.commit()
-
-    @with_db_retry()
-    async def set_pending_reflection(self, session_id: str, is_pending: bool):
-        logger.warning("[DAO] set_pending_reflection 已废弃，请使用 save_session_reflection")
-        db = await self.get_conn()
-        async with self._write_lock:
-            await db.execute(
-                "INSERT INTO pending_reflections (session_id, is_pending) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET is_pending=?",
-                (session_id, int(is_pending), int(is_pending)),
-            )
-            await db.commit()
-
-    @with_db_retry()
-    async def pop_pending_reflection(self, session_id: str) -> bool:
-        logger.warning("[DAO] pop_pending_reflection 已废弃，请使用 get_session_reflection + delete_session_reflection")
-        db = await self.get_conn()
-        async with self._write_lock:
-            cursor = await db.execute(
-                "UPDATE pending_reflections SET is_pending = 0 WHERE session_id = ? AND is_pending = 1",
-                (session_id,),
-            )
-            await db.commit()
-            return cursor.rowcount > 0
 
     @with_db_retry()
     async def save_session_reflection(self, session_id: str, user_id: str, note: str, facts: str = "", bias: str = ""):
