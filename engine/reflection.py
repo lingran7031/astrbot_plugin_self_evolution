@@ -185,14 +185,14 @@ class DailyBatchProcessor:
 
     async def generate_group_daily_report(self, group_id: str, messages: list, umo: str | None = None) -> dict:
         """
-        生成群日报
+        生成会话日报
 
         Args:
-            group_id: 群ID
+            group_id: 会话范围ID
             messages: 消息列表
 
         Returns:
-            群日报dict
+            会话日报dict
         """
         try:
             if not messages:
@@ -220,7 +220,7 @@ class DailyBatchProcessor:
             res = await provider.text_chat(prompt=prompt, contexts=[])
 
             if not res or not res.completion_text:
-                logger.warning("[Reflection] 生成群日报失败：LLM响应为空")
+                logger.warning("[Reflection] 生成会话日报失败：LLM响应为空")
                 return {}
 
             import re
@@ -231,16 +231,16 @@ class DailyBatchProcessor:
             match = re.search(r"\{.*\}", reply_text, re.DOTALL)
             if match:
                 result = json.loads(match.group())
-                logger.info(f"[Reflection] 生成群日报成功: {group_id} - {result.get('topic', '')}")
+                logger.info(f"[Reflection] 生成会话日报成功: {group_id} - {result.get('topic', '')}")
                 return result
 
             return {}
         except Exception as e:
-            logger.warning(f"[Reflection] 生成群日报异常: {e}")
+            logger.warning(f"[Reflection] 生成会话日报异常: {e}")
             return {}
 
     async def save_group_daily_report(self, group_id: str, report: dict) -> bool:
-        """保存群日报到数据库"""
+        """保存会话日报到数据库"""
         try:
             scope_type = "私聊" if self._is_private_scope(group_id) else "群聊"
             extra_scope = (
@@ -257,10 +257,10 @@ class DailyBatchProcessor:
                 f"重要事件: {', '.join(report.get('notable_events', []))}"
             )
             await self.plugin.dao.save_group_daily_report(group_id, summary)
-            logger.debug(f"[Reflection] 群日报已保存: group_id={group_id}")
+            logger.debug(f"[Reflection] 会话日报已保存: group_id={group_id}")
             return True
         except Exception as e:
-            logger.warning(f"[Reflection] 保存群日报失败: {e}")
+            logger.warning(f"[Reflection] 保存会话日报失败: {e}")
             return False
 
     async def process_active_user_profiles(

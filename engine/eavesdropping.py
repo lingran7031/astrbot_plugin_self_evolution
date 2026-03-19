@@ -211,7 +211,6 @@ class EavesdroppingEngine:
             "enabled": self.plugin.cfg.boredom_enabled,
             "threshold": 0.3,  # 硬编码：信息熵阈值
             "consecutive_count": self.plugin.cfg.boredom_consecutive_count,
-            "sarcastic_reply": self.plugin.cfg.boredom_sarcastic_reply,
         }
 
     async def _update_boredom_async(self, group_id: str, entropy: float):
@@ -351,9 +350,6 @@ class EavesdroppingEngine:
         is_bored = False
         if boredom_params["enabled"]:
             is_bored = await self._update_boredom_async(group_id, entropy)
-
-        # 将无聊状态传递给评估函数
-        self._current_boredom_state = is_bored
 
         params = self._get_leaky_params()
 

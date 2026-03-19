@@ -291,7 +291,7 @@ class SANSystem:
             res = await llm_provider.text_chat(
                 prompt=prompt,
                 contexts=[],
-                system_prompt="你是一个群聊分析助手，只输出 JSON，不要其他内容。",
+                system_prompt="你是一个会话分析助手，只输出 JSON，不要其他内容。",
             )
 
             text = res.completion_text.strip()

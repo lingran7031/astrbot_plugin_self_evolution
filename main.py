@@ -30,8 +30,6 @@ from .engine.persona import PersonaManager
 from .engine.profile import ProfileManager
 from .scheduler.register import register_tasks
 
-# 全局不可变常量提取 (迁移至主类管理)
-ANCHOR_MARKER = "Core Safety Anchor"
 PROTECTED_TOOLS = frozenset(
     {
         "toggle_tool",
@@ -41,7 +39,6 @@ PROTECTED_TOOLS = frozenset(
         "approve_evolution",
     }
 )
-PAGE_LIMIT = 10
 PRIVATE_SCOPE_PREFIX = "private_"
 
 
@@ -49,7 +46,7 @@ PRIVATE_SCOPE_PREFIX = "private_"
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "CognitionCore 7.0 数字生命。",
-    "Ver 2.6.0",
+    "Ver 2.7.0",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -181,40 +178,6 @@ class SelfEvolutionPlugin(Star):
         if name.startswith("_") or name in ("cfg", "config", "context"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         return getattr(self.cfg, name)
-
-    def _clean_messages(self, messages: list) -> list:
-        """清洗消息：去重+长度过滤"""
-        if not messages:
-            return []
-
-        cleaned = []
-        last_content = ""
-
-        for msg in messages:
-            # 提取消息内容
-            if ":" in msg:
-                content = msg.split(":", 1)[1].strip()
-            else:
-                content = msg
-
-            # 去重：连续相同的消息只保留一条
-            if content == last_content:
-                continue
-
-            # 长度过滤：小于3个字符且不含实词的消息过滤掉
-            if len(content) < 3:
-                last_content = content
-                continue
-
-            cleaned.append(msg)
-            last_content = content
-
-        return cleaned
-
-    def _post_init(self):
-        logger.info(
-            f"[SelfEvolution] === 插件初始化完成 | 模式: {'审核' if self.review_mode else '自动'} | 元编程: {self.allow_meta_programming} | SAN: {self.san_system.value}/{self.san_system.max_value} ==="
-        )
 
     def _load_prompts_injection(self):
         """加载提示词注入配置文件"""

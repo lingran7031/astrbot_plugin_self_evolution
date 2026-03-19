@@ -213,7 +213,7 @@ class MemoryManager:
             res = await llm_provider.text_chat(
                 prompt=prompt,
                 contexts=[],
-                system_prompt="你是一个群聊总结助手，只输出精简的总结文本。",
+                system_prompt="你是一个会话总结助手，只输出精简的总结文本。",
             )
 
             return res.completion_text.strip() if res.completion_text else None
