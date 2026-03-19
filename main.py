@@ -609,7 +609,7 @@ class SelfEvolutionPlugin(Star):
                 from .engine.context_injection import parse_message_chain
 
                 formatted = []
-                for msg in messages[:20]:
+                for msg in reversed(messages[:20]):
                     text = await parse_message_chain(msg, self)
                     if text:
                         formatted.append(text)
