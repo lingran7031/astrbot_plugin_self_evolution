@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-
 
 async def normalize_event_message_text(event, dao) -> tuple[str, bool]:
     """Normalize an incoming event into stable plain text for downstream cognition logic."""
@@ -9,7 +7,6 @@ async def normalize_event_message_text(event, dao) -> tuple[str, bool]:
     message_chain = getattr(message_obj, "message", None)
 
     has_image = False
-    image_source = None
 
     if message_chain:
         from astrbot.core.message.components import Image
@@ -17,20 +14,10 @@ async def normalize_event_message_text(event, dao) -> tuple[str, bool]:
         for comp in message_chain:
             if isinstance(comp, Image):
                 has_image = True
-                image_source = getattr(comp, "url", None) or ""
                 break
 
     if not has_image:
         return event.message_str or "", False
-
-    group_id = event.get_group_id() if hasattr(event, "get_group_id") else None
-    if group_id and image_source and dao:
-        img_hash = hashlib.md5(image_source.encode()).hexdigest()
-        sticker = await dao.get_sticker_by_hash(img_hash)
-        if sticker and sticker.get("description"):
-            return f"[{sticker['description']}]", True
-        if sticker and sticker.get("tags"):
-            return f'[收到一张"{sticker["tags"]}"表情包]', True
 
     return "[图片]", True
 
