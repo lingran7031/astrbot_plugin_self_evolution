@@ -17,6 +17,7 @@ class EntertainmentEngine:
         self.plugin = plugin
         self._last_tag_time = 0
         self._last_send_time = {}
+        self._image_freq_cache: dict[str, dict[str, int]] = {}
 
     @property
     def dao(self):
@@ -98,42 +99,78 @@ class EntertainmentEngine:
 
             img_index = 0
             for comp in message_obj.message:
-                if isinstance(comp, Image):
-                    sub_type = image_sub_types.get(img_index, 0)
-                    img_index += 1
-                    if sub_type == 0:
+                if not isinstance(comp, Image):
+                    continue
+
+                sub_type = image_sub_types.get(img_index, 0)
+                img_index += 1
+
+                try:
+                    base64_data = await comp.convert_to_base64()
+                except Exception as e:
+                    logger.warning(f"[Sticker] 获取图片Base64失败: {e}")
+                    continue
+
+                sticker_hash = hashlib.md5(base64_data.encode()).hexdigest()
+
+                if sub_type == 0:
+                    freq_threshold = self.cfg.sticker_freq_threshold
+                    if freq_threshold > 0:
+                        user_cache = self._image_freq_cache.setdefault(user_id, {})
+                        current_count = user_cache.get(sticker_hash, 0) + 1
+                        user_cache[sticker_hash] = current_count
+
+                        if current_count < freq_threshold:
+                            logger.debug(
+                                f"[Sticker] sub_type=0 频率不足跳过: user={user_id}, group={group_id}, "
+                                f"count={current_count}/{freq_threshold}, hash={sticker_hash[:8]}"
+                            )
+                            continue
+
+                        logger.debug(
+                            f"[Sticker] sub_type=0 频率达标学习: user={user_id}, group={group_id}, "
+                            f"count={current_count}/{freq_threshold}"
+                        )
+                    else:
                         logger.debug(f"[Sticker] sub_type=0 普通图片，跳过: user={user_id}, group={group_id}")
                         continue
 
-                    try:
-                        base64_data = await comp.convert_to_base64()
-                    except Exception as e:
-                        logger.warning(f"[Sticker] 获取图片Base64失败: {e}")
-                        continue
-
-                    sticker_hash = hashlib.md5(base64_data.encode()).hexdigest()
-
-                    daily_count = await self.dao.get_today_sticker_count()
-                    if daily_count >= self.cfg.sticker_daily_limit:
-                        logger.debug(f"[Sticker] 今日已达上限 {self.cfg.sticker_daily_limit}")
-                        return False
-
-                    total_count = await self.dao.get_sticker_count()
-                    if total_count >= self.cfg.sticker_total_limit:
-                        await self.dao.delete_oldest_sticker()
-                        logger.debug("[Sticker] 已达总上限，删除最旧的")
-
-                    sticker_uuid = await self.dao.add_sticker(group_id, user_id, base64_data, "", sticker_hash)
-                    if sticker_uuid:
-                        logger.debug(f"[Sticker] 成功学习表情包: user={user_id}, group={group_id}, sub_type={sub_type}")
-                        return True
-                    else:
-                        logger.debug(f"[Sticker] 表情包已存在: hash={sticker_hash}")
+                learned = await self._save_sticker(group_id, user_id, base64_data, sticker_hash, sub_type)
+                if learned:
+                    self._image_freq_cache.setdefault(user_id, {}).pop(sticker_hash, None)
+                    return True
 
         except Exception as e:
             logger.warning(f"[Sticker] 学习表情包异常: {e}")
 
         return False
+
+    async def _save_sticker(
+        self,
+        group_id: str,
+        user_id: str,
+        base64_data: str,
+        sticker_hash: str,
+        sub_type: int,
+    ) -> bool:
+        """保存表情包到数据库"""
+        daily_count = await self.dao.get_today_sticker_count()
+        if daily_count >= self.cfg.sticker_daily_limit:
+            logger.debug(f"[Sticker] 今日已达上限 {self.cfg.sticker_daily_limit}")
+            return False
+
+        total_count = await self.dao.get_sticker_count()
+        if total_count >= self.cfg.sticker_total_limit:
+            await self.dao.delete_oldest_sticker()
+            logger.debug("[Sticker] 已达总上限，删除最旧的")
+
+        sticker_uuid = await self.dao.add_sticker(group_id, user_id, base64_data, "", sticker_hash)
+        if sticker_uuid:
+            logger.debug(f"[Sticker] 成功学习表情包: user={user_id}, group={group_id}, sub_type={sub_type}")
+            return True
+        else:
+            logger.debug(f"[Sticker] 表情包已存在: hash={sticker_hash}")
+            return False
 
     async def tag_stickers(self) -> bool:
         """给未打标签的表情包打标签（有冷却时间）"""

@@ -478,6 +478,13 @@
         "type": "int",
         "default": 30
     },
+    "sticker_freq_threshold": {
+        "title": "表情包频率阈值",
+        "description": "当图片sub_type=0时，同一用户发送相同图片多少次才判定为表情包",
+        "hint": "默认 2 次，设为 0 则禁用频率判定",
+        "type": "int",
+        "default": 2
+    },
 
     "debug_log_enabled": {
         "title": "Debug 日志模式",
