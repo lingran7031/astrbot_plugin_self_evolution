@@ -128,6 +128,13 @@ class SelfEvolutionDAO:
                 last_interaction TEXT NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS known_scopes (
+                scope_id TEXT PRIMARY KEY,
+                scope_type TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL
+            )
+        """)
 
     async def get_conn(self):
         """带有存活检测的全局连接获取器，兼顾长连接性能与雪崩恢复，防阻塞分离读写锁"""
