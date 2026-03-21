@@ -91,13 +91,18 @@ class EntertainmentEngine:
             raw_msg = getattr(event, "raw_message", None)
             image_sub_types: dict[str, int] = {}
             if raw_msg and hasattr(raw_msg, "get"):
-                for seg in raw_msg.get("message", []):
+                raw_msg_list = raw_msg.get("message", [])
+                logger.debug(f"[Sticker] raw_msg message count: {len(raw_msg_list)}")
+                for seg in raw_msg_list:
                     if seg.get("type") == "image":
                         img_data = seg.get("data", {})
                         img_file = img_data.get("file", "")
                         img_sub_type = img_data.get("sub_type", 0)
                         if img_file:
                             image_sub_types[img_file] = img_sub_type
+                        logger.debug(f"[Sticker] raw image: file={img_file}, sub_type={img_sub_type}")
+
+            logger.debug(f"[Sticker] image_sub_types: {image_sub_types}")
 
             for comp in message_obj.message:
                 if not isinstance(comp, Image):
@@ -105,6 +110,7 @@ class EntertainmentEngine:
 
                 comp_file = getattr(comp, "file", "") or ""
                 sub_type = image_sub_types.get(comp_file, 0)
+                logger.debug(f"[Sticker] comp.file={comp_file}, matched_sub_type={sub_type}")
 
                 try:
                     base64_data = await comp.convert_to_base64()
