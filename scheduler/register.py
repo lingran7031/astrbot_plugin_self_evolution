@@ -13,7 +13,6 @@ from .tasks import (
     scheduled_profile_cleanup,
     scheduled_reflection,
     scheduled_san_analyze,
-    scheduled_sticker_tag,
 )
 
 
@@ -68,19 +67,6 @@ async def register_tasks(plugin):
             persistent=True,
         )
         logger.info(f"[SelfEvolution] 已注册每日批处理任务: {plugin.reflection_schedule}")
-
-        # 注册表情包打标签任务（每 N 分钟）
-        if plugin.cfg.sticker_learning_enabled:
-            sticker_tag_interval = plugin.cfg.sticker_tag_cooldown
-            sticker_tag_cron = f"*/{sticker_tag_interval} * * * *"
-            await cron_mgr.add_basic_job(
-                name="SelfEvolution_StickerTag",
-                cron_expression=sticker_tag_cron,
-                handler=lambda: scheduled_sticker_tag(plugin),
-                description="自我进化插件：定时给表情包打标签。",
-                persistent=True,
-            )
-            logger.info(f"[SelfEvolution] 已注册表情包打标签任务: {sticker_tag_cron}")
 
         # 注册 SAN 分析任务
         if plugin.cfg.san_enabled and plugin.cfg.san_auto_analyze_enabled:
