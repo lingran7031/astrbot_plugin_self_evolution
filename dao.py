@@ -135,6 +135,17 @@ class SelfEvolutionDAO:
                 last_seen_at TEXT NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS stickers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT UNIQUE NOT NULL,
+                hash TEXT UNIQUE NOT NULL,
+                group_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                url TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
 
     async def get_conn(self):
         """带有存活检测的全局连接获取器，兼顾长连接性能与雪崩恢复，防阻塞分离读写锁"""
@@ -515,42 +526,12 @@ class SelfEvolutionDAO:
             return row["cnt"] if row else 0
 
     @with_db_retry()
-    async def get_stickers(self, limit: int = 10, offset: int = 0) -> list:
-        """根据标签搜索表情包（全局）"""
-        db = await self.get_conn()
-        async with self._db_lock:
-            if tags:
-                cursor = await db.execute(
-                    "SELECT id, uuid, group_id, user_id, url, tags, description, created_at FROM stickers WHERE tags LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
-                    (f"%{tags}%", limit, offset),
-                )
-            else:
-                cursor = await db.execute(
-                    "SELECT id, uuid, group_id, user_id, url, tags, description, created_at FROM stickers ORDER BY id DESC LIMIT ? OFFSET ?",
-                    (limit, offset),
-                )
-            rows = await cursor.fetchall()
-            return [
-                {
-                    "id": row["id"],
-                    "uuid": row["uuid"],
-                    "group_id": row["group_id"],
-                    "user_id": row["user_id"],
-                    "url": row["url"],
-                    "tags": row["tags"],
-                    "description": row["description"] or "",
-                    "created_at": row["created_at"],
-                }
-                for row in rows
-            ]
-
-    @with_db_retry()
     async def get_random_sticker(self) -> dict | None:
         """随机获取一张表情包（全局）"""
         db = await self.get_conn()
         async with self._db_lock:
             cursor = await db.execute(
-                "SELECT id, group_id, user_id, url, tags, description, created_at FROM stickers WHERE tags != '' ORDER BY RANDOM() LIMIT 1"
+                "SELECT id, group_id, user_id, url, created_at FROM stickers ORDER BY RANDOM() LIMIT 1"
             )
             row = await cursor.fetchone()
             if row:
@@ -559,8 +540,6 @@ class SelfEvolutionDAO:
                     "group_id": row["group_id"],
                     "user_id": row["user_id"],
                     "url": row["url"],
-                    "tags": row["tags"],
-                    "description": row["description"] or "",
                     "created_at": row["created_at"],
                 }
             return None
@@ -603,13 +582,13 @@ class SelfEvolutionDAO:
             }
 
     @with_db_retry()
-    async def get_stickers(self, limit: int = 10, offset: int = 0) -> list:
+    async def get_stickers(self, limit: int = 10) -> list:
         """获取表情包列表（全局）"""
         db = await self.get_conn()
         async with self._db_lock:
             cursor = await db.execute(
-                "SELECT id, uuid, group_id, user_id, url, created_at FROM stickers ORDER BY id DESC LIMIT ? OFFSET ?",
-                (limit, offset),
+                "SELECT id, uuid, group_id, user_id, url, created_at FROM stickers ORDER BY id DESC LIMIT ?",
+                (limit,),
             )
             rows = await cursor.fetchall()
             return [
@@ -623,25 +602,6 @@ class SelfEvolutionDAO:
                 }
                 for row in rows
             ]
-
-    @with_db_retry()
-    async def get_random_sticker(self) -> dict | None:
-        """随机获取一张表情包（全局）"""
-        db = await self.get_conn()
-        async with self._db_lock:
-            cursor = await db.execute(
-                "SELECT id, group_id, user_id, url, created_at FROM stickers ORDER BY RANDOM() LIMIT 1"
-            )
-            row = await cursor.fetchone()
-            if row:
-                return {
-                    "id": row["id"],
-                    "group_id": row["group_id"],
-                    "user_id": row["user_id"],
-                    "url": row["url"],
-                    "created_at": row["created_at"],
-                }
-            return None
 
     @with_db_retry()
     async def get_sticker_by_uuid(self, sticker_uuid: str) -> dict | None:

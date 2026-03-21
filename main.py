@@ -977,41 +977,36 @@ class SelfEvolutionPlugin(Star):
     # ========== 表情包相关 LLM 工具 ==========
 
     @filter.llm_tool(name="list_stickers")
-    async def list_stickers_tool(self, event: AstrMessageEvent, tags: str = "", limit: int = 10) -> str:
+    async def list_stickers_tool(self, event: AstrMessageEvent, limit: int = 10) -> str:
         """列出可用的表情包（全局）。
 
         Args:
-            tags(string): 可选，按标签筛选（模糊匹配）
             limit(int): 返回数量，默认10，最大50
         """
         if limit > 50:
             limit = 50
 
-        stickers = await self.entertainment.list_stickers(tags if tags else "", limit)
+        stickers = await self.entertainment.list_stickers(limit)
 
         if not stickers:
-            return "表情包库为空或未找到匹配的表情包"
+            return "表情包库为空"
 
         result = ["【表情包列表】"]
         for s in stickers:
-            tag_str = s.get("tags", "") or "无标签"
-            result.append(f"[UUID:{s['uuid']}] {tag_str}")
+            result.append(f"[UUID:{s['uuid']}]")
 
         return "\n".join(result)
 
     @filter.llm_tool(name="send_sticker")
-    async def send_sticker_tool(self, event: AstrMessageEvent, sticker_uuid: str = None, tags: str = ""):
+    async def send_sticker_tool(self, event: AstrMessageEvent, sticker_uuid: str = None):
         """发送表情包给用户。不传参数时随机发送一张。
 
         Args:
-            sticker_uuid(string): 可选，指定表情包UUID（推荐）
-            tags(string): 可选，按标签筛选后随机发送，如 "搞笑" 或 "表情包"
+            sticker_uuid(string): 可选，指定表情包UUID
         """
         # 日志记录
         if sticker_uuid:
             logger.info(f"[Sticker] 发送表情包: UUID={sticker_uuid}")
-        elif tags:
-            logger.info(f"[Sticker] 发送表情包: 标签筛选={tags}")
         else:
             logger.info("[Sticker] 发送表情包: 随机")
         group_id = event.get_group_id()
@@ -1032,9 +1027,6 @@ class SelfEvolutionPlugin(Star):
         sticker = None
         if sticker_uuid:
             sticker = await self.dao.get_sticker_by_uuid(sticker_uuid)
-        elif tags:
-            stickers = await self.entertainment.list_stickers(tags, 1)
-            sticker = stickers[0] if stickers else None
         else:
             sticker = await self.entertainment.get_sticker_for_sending()
 
@@ -1047,6 +1039,7 @@ class SelfEvolutionPlugin(Star):
 
             url = sticker["url"]
             yield event.chain_result([Image.fromURL(url)])
+            return
         except Exception as e:
             logger.warning(f"[Sticker] 发送表情包失败: {e}")
             yield event.plain_result(f"发送失败: {e}")
