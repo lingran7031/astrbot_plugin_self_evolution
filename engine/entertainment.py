@@ -92,7 +92,11 @@ class EntertainmentEngine:
             image_sub_types: dict[str, int] = {}
             if raw_msg and hasattr(raw_msg, "get"):
                 raw_msg_list = raw_msg.get("message", [])
-                logger.debug(f"[Sticker] raw_msg message count: {len(raw_msg_list)}")
+                logger.debug(f"[Sticker] raw_msg type: {type(raw_msg)}, raw_msg_list len: {len(raw_msg_list)}")
+                logger.debug(f"[Sticker] raw_msg keys: {list(raw_msg.keys()) if hasattr(raw_msg, 'keys') else 'N/A'}")
+                logger.debug(
+                    f"[Sticker] raw_msg _payload keys: {list(raw_msg._payload.keys()) if hasattr(raw_msg, '_payload') else 'N/A'}"
+                )
                 for seg in raw_msg_list:
                     if seg.get("type") == "image":
                         img_data = seg.get("data", {})
