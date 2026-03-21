@@ -188,8 +188,8 @@
     },
     "interject_random_bypass_rate": {
         "title": "插嘴触发概率",
-        "description": "LLM判定满足条件后，最终执行的概率阈值，0-1，越高越容易触发",
-        "hint": "默认 0.5 (50%)，设为 1 则每次必触发",
+        "description": "LLM判定满足条件后，最终执行的概率阈值",
+        "hint": "默认 0.5，设为 1 则每次必触发",
         "type": "float",
         "default": 0.5
     },
@@ -473,7 +473,7 @@
     },
     "sticker_send_threshold": {
         "title": "发表情包触发阈值",
-        "description": "LLM请求发送表情包的概率阈值，0-100，越高越容易发送",
+        "description": "控制表情包发送概率",
         "hint": "默认 50，设为 0 则禁用发送",
         "type": "int",
         "default": 50
