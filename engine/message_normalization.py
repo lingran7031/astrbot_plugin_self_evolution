@@ -9,24 +9,23 @@ async def normalize_event_message_text(event, dao) -> tuple[str, bool]:
     message_chain = getattr(message_obj, "message", None)
 
     has_image = False
-    image_base64 = None
+    image_url = None
 
     if message_chain:
+        from astrbot.core.message.components import Image
+
         for comp in message_chain:
-            if hasattr(comp, "convert_to_base64"):
+            if isinstance(comp, Image):
                 has_image = True
-                try:
-                    image_base64 = await comp.convert_to_base64()
-                except Exception:
-                    image_base64 = None
+                image_url = getattr(comp, "url", None) or ""
                 break
 
     if not has_image:
         return event.message_str or "", False
 
     group_id = event.get_group_id() if hasattr(event, "get_group_id") else None
-    if group_id and image_base64 and dao:
-        img_hash = hashlib.md5(image_base64.encode()).hexdigest()
+    if group_id and image_url and dao:
+        img_hash = hashlib.md5(image_url.encode()).hexdigest()
         sticker = await dao.get_sticker_by_hash(img_hash)
         if sticker and sticker.get("description"):
             return f"[{sticker['description']}]", True

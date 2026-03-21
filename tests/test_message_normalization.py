@@ -27,11 +27,8 @@ class _FakeEvent:
 
 
 class _FakeImage:
-    def __init__(self, base64_data="image-data"):
-        self.base64_data = base64_data
-
-    async def convert_to_base64(self):
-        return self.base64_data
+    def __init__(self, url="https://example.com/image.jpg"):
+        self.url = url
 
 
 class MessageNormalizationTests(IsolatedAsyncioTestCase):

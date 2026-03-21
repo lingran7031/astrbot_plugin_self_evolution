@@ -91,7 +91,7 @@ class SelfEvolutionDAO:
                 status TEXT NOT NULL
             )
         """)
-        # 表情包表
+        # 表情包表（重构：改用URL存储）
         await db.execute("""
             CREATE TABLE IF NOT EXISTS stickers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,11 +99,10 @@ class SelfEvolutionDAO:
                 hash TEXT UNIQUE NOT NULL,
                 group_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
-                base64_data TEXT NOT NULL,
+                url TEXT NOT NULL,
                 tags TEXT DEFAULT '',
                 description TEXT DEFAULT '',
-                created_at TEXT NOT NULL,
-                UNIQUE(group_id, user_id, base64_data)
+                created_at TEXT NOT NULL
             )
         """)
         # 会话反思表（单会话内省）
@@ -160,24 +159,6 @@ class SelfEvolutionDAO:
             await db.execute("ALTER TABLE stickers ADD COLUMN description TEXT")
         except:
             pass  # 列已存在忽略错误
-
-        # 迁移旧数据：给已有记录生成 uuid 和 hash（基于 base64_data 计算）
-        cursor = await db.execute("SELECT id, uuid, base64_data FROM stickers WHERE uuid IS NULL OR hash IS NULL")
-        rows = await cursor.fetchall()
-        for row in rows:
-            row_id = row["id"]
-            base64_data = row["base64_data"]
-            if base64_data:
-                new_hash = hashlib.md5(base64_data.encode()).hexdigest()
-            else:
-                new_hash = uuid.uuid4().hex
-            new_uuid = row["uuid"] if row["uuid"] else uuid.uuid4().hex
-            await db.execute(
-                "UPDATE stickers SET uuid = ?, hash = ? WHERE id = ?",
-                (new_uuid, new_hash, row_id),
-            )
-        if rows:
-            await db.commit()
 
     async def get_conn(self):
         """带有存活检测的全局连接获取器，兼顾长连接性能与雪崩恢复，防阻塞分离读写锁"""
@@ -514,7 +495,7 @@ class SelfEvolutionDAO:
         self,
         group_id: str,
         user_id: str,
-        base64_data: str,
+        url: str,
         tags: str = "",
         sticker_hash: str = None,
         description: str = "",
@@ -525,15 +506,15 @@ class SelfEvolutionDAO:
             try:
                 sticker_uuid = uuid.uuid4().hex
                 if sticker_hash is None:
-                    sticker_hash = hashlib.md5(base64_data.encode()).hexdigest()
+                    sticker_hash = hashlib.md5(url.encode()).hexdigest()
                 await db.execute(
-                    "INSERT INTO stickers (uuid, hash, group_id, user_id, base64_data, tags, description, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+                    "INSERT INTO stickers (uuid, hash, group_id, user_id, url, tags, description, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
                     (
                         sticker_uuid,
                         sticker_hash,
                         group_id,
                         user_id,
-                        base64_data,
+                        url,
                         tags,
                         description,
                     ),
@@ -567,7 +548,7 @@ class SelfEvolutionDAO:
         db = await self.get_conn()
         async with self._db_lock:
             cursor = await db.execute(
-                "SELECT id, uuid, group_id, user_id, base64_data, created_at "
+                "SELECT id, uuid, group_id, user_id, url, created_at "
                 "FROM stickers WHERE tags = '' OR tags IS NULL ORDER BY id ASC LIMIT ?",
                 (limit,),
             )
@@ -578,7 +559,7 @@ class SelfEvolutionDAO:
                     "uuid": row["uuid"],
                     "group_id": row["group_id"],
                     "user_id": row["user_id"],
-                    "base64_data": row["base64_data"],
+                    "url": row["url"],
                     "created_at": row["created_at"],
                 }
                 for row in rows
@@ -603,12 +584,12 @@ class SelfEvolutionDAO:
         async with self._db_lock:
             if tags:
                 cursor = await db.execute(
-                    "SELECT id, uuid, group_id, user_id, base64_data, tags, description, created_at FROM stickers WHERE tags LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                    "SELECT id, uuid, group_id, user_id, url, tags, description, created_at FROM stickers WHERE tags LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
                     (f"%{tags}%", limit, offset),
                 )
             else:
                 cursor = await db.execute(
-                    "SELECT id, uuid, group_id, user_id, base64_data, tags, description, created_at FROM stickers ORDER BY id DESC LIMIT ? OFFSET ?",
+                    "SELECT id, uuid, group_id, user_id, url, tags, description, created_at FROM stickers ORDER BY id DESC LIMIT ? OFFSET ?",
                     (limit, offset),
                 )
             rows = await cursor.fetchall()
@@ -618,7 +599,7 @@ class SelfEvolutionDAO:
                     "uuid": row["uuid"],
                     "group_id": row["group_id"],
                     "user_id": row["user_id"],
-                    "base64_data": row["base64_data"],
+                    "url": row["url"],
                     "tags": row["tags"],
                     "description": row["description"] or "",
                     "created_at": row["created_at"],
@@ -632,7 +613,7 @@ class SelfEvolutionDAO:
         db = await self.get_conn()
         async with self._db_lock:
             cursor = await db.execute(
-                "SELECT id, group_id, user_id, base64_data, tags, description, created_at FROM stickers WHERE tags != '' ORDER BY RANDOM() LIMIT 1"
+                "SELECT id, group_id, user_id, url, tags, description, created_at FROM stickers WHERE tags != '' ORDER BY RANDOM() LIMIT 1"
             )
             row = await cursor.fetchone()
             if row:
@@ -640,7 +621,7 @@ class SelfEvolutionDAO:
                     "id": row["id"],
                     "group_id": row["group_id"],
                     "user_id": row["user_id"],
-                    "base64_data": row["base64_data"],
+                    "url": row["url"],
                     "tags": row["tags"],
                     "description": row["description"] or "",
                     "created_at": row["created_at"],
@@ -690,7 +671,7 @@ class SelfEvolutionDAO:
         db = await self.get_conn()
         async with self._db_lock:
             cursor = await db.execute(
-                "SELECT id, uuid, hash, group_id, user_id, base64_data, tags, description, created_at FROM stickers WHERE hash = ?",
+                "SELECT id, uuid, hash, group_id, user_id, url, tags, description, created_at FROM stickers WHERE hash = ?",
                 (sticker_hash,),
             )
             row = await cursor.fetchone()
@@ -701,7 +682,7 @@ class SelfEvolutionDAO:
                     "hash": row["hash"],
                     "group_id": row["group_id"],
                     "user_id": row["user_id"],
-                    "base64_data": row["base64_data"],
+                    "url": row["url"],
                     "tags": row["tags"],
                     "description": row["description"] or "",
                     "created_at": row["created_at"],
@@ -714,7 +695,7 @@ class SelfEvolutionDAO:
         db = await self.get_conn()
         async with self._db_lock:
             cursor = await db.execute(
-                "SELECT id, uuid, hash, group_id, user_id, base64_data, tags, description, created_at FROM stickers WHERE uuid = ?",
+                "SELECT id, uuid, hash, group_id, user_id, url, tags, description, created_at FROM stickers WHERE uuid = ?",
                 (sticker_uuid,),
             )
             row = await cursor.fetchone()
@@ -725,7 +706,7 @@ class SelfEvolutionDAO:
                     "hash": row["hash"],
                     "group_id": row["group_id"],
                     "user_id": row["user_id"],
-                    "base64_data": row["base64_data"],
+                    "url": row["url"],
                     "tags": row["tags"],
                     "description": row["description"] or "",
                     "created_at": row["created_at"],

@@ -356,7 +356,9 @@ class SelfEvolutionPlugin(Star):
         has_reply = bool(quoted_info)
         has_at = bool(at_targets)
         profile_scope_id = self._resolve_profile_scope_id(group_id, user_id)
-        should_inject_profile = self.enable_profile_update and (((has_reply or has_at) and bool(group_id)) or not group_id)
+        should_inject_profile = self.enable_profile_update and (
+            ((has_reply or has_at) and bool(group_id)) or not group_id
+        )
         if should_inject_profile:
             profile_summary = await self.profile.get_profile_summary(profile_scope_id, user_id)
             if profile_summary:
@@ -915,7 +917,9 @@ class SelfEvolutionPlugin(Star):
                 return f"用户 {target} 在私聊中无消息记录"
 
             location = f"群 {group_id}" if group_id else "私聊"
-            return f"用户 {target} 在{location}的历史消息（共 {len(user_messages)} 条）：\n" + "\n".join(user_messages[:20])
+            return f"用户 {target} 在{location}的历史消息（共 {len(user_messages)} 条）：\n" + "\n".join(
+                user_messages[:20]
+            )
 
         except Exception as e:
             logger.warning(f"[SelfEvolution] 获取用户消息失败: {e}")
@@ -1035,8 +1039,8 @@ class SelfEvolutionPlugin(Star):
         try:
             from astrbot.core.message.components import Image
 
-            base64_data = sticker["base64_data"]
-            yield event.chain_result([Image.fromBase64(base64_data)])
+            url = sticker["url"]
+            yield event.chain_result([Image.fromURL(url)])
         except Exception as e:
             logger.warning(f"[Sticker] 发送表情包失败: {e}")
             yield event.plain_result(f"发送失败: {e}")
