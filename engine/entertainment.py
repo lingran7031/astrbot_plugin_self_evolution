@@ -90,23 +90,20 @@ class EntertainmentEngine:
 
             raw_msg = getattr(event, "raw_message", None)
             image_sub_types: dict[str, int] = {}
-            if raw_msg and hasattr(raw_msg, "get"):
-                raw_msg_list = raw_msg.get("message", [])
-                logger.debug(f"[Sticker] raw_msg type: {type(raw_msg)}, raw_msg_list len: {len(raw_msg_list)}")
-                logger.debug(f"[Sticker] raw_msg keys: {list(raw_msg.keys()) if hasattr(raw_msg, 'keys') else 'N/A'}")
-                logger.debug(
-                    f"[Sticker] raw_msg _payload keys: {list(raw_msg._payload.keys()) if hasattr(raw_msg, '_payload') else 'N/A'}"
-                )
+            if raw_msg:
+                raw_msg_list = getattr(raw_msg, "message", None) or []
                 for seg in raw_msg_list:
-                    if seg.get("type") == "image":
-                        img_data = seg.get("data", {})
-                        img_file = img_data.get("file", "")
-                        img_sub_type = img_data.get("sub_type", 0)
+                    if isinstance(seg, dict):
+                        seg_type = seg.get("type")
+                        seg_data = seg.get("data", {})
+                    else:
+                        seg_type = getattr(seg, "type", None)
+                        seg_data = getattr(seg, "data", {}) or {}
+                    if seg_type == "image":
+                        img_file = seg_data.get("file", "")
+                        img_sub_type = seg_data.get("sub_type", 0)
                         if img_file:
                             image_sub_types[img_file] = img_sub_type
-                        logger.debug(f"[Sticker] raw image: file={img_file}, sub_type={img_sub_type}")
-
-            logger.debug(f"[Sticker] image_sub_types: {image_sub_types}")
 
             for comp in message_obj.message:
                 if not isinstance(comp, Image):
