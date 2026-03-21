@@ -87,8 +87,24 @@ class EntertainmentEngine:
             if not message_obj or not hasattr(message_obj, "message"):
                 return False
 
+            raw_msg = getattr(event, "raw_message", None)
+            image_sub_types = {}
+            if raw_msg and isinstance(raw_msg, dict):
+                for seg in raw_msg.get("message", []):
+                    if seg.get("type") == "image":
+                        img_data = seg.get("data", {})
+                        img_sub_type = img_data.get("sub_type", 0)
+                        image_sub_types[len(image_sub_types)] = img_sub_type
+
+            img_index = 0
             for comp in message_obj.message:
                 if isinstance(comp, Image):
+                    sub_type = image_sub_types.get(img_index, 0)
+                    img_index += 1
+                    if sub_type == 0:
+                        logger.debug(f"[Sticker] sub_type=0 普通图片，跳过: user={user_id}, group={group_id}")
+                        continue
+
                     try:
                         base64_data = await comp.convert_to_base64()
                     except Exception as e:
@@ -109,7 +125,7 @@ class EntertainmentEngine:
 
                     sticker_uuid = await self.dao.add_sticker(group_id, user_id, base64_data, "", sticker_hash)
                     if sticker_uuid:
-                        logger.debug(f"[Sticker] 成功学习表情包: user={user_id}, group={group_id}")
+                        logger.debug(f"[Sticker] 成功学习表情包: user={user_id}, group={group_id}, sub_type={sub_type}")
                         return True
                     else:
                         logger.debug(f"[Sticker] 表情包已存在: hash={sticker_hash}")
