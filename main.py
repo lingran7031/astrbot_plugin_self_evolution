@@ -47,7 +47,7 @@ PRIVATE_SCOPE_PREFIX = "private_"
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "CognitionCore 7.0 数字生命。",
-    "Ver 2.8.7",
+    "Ver 2.8.8",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
