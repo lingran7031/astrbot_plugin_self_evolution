@@ -1,6 +1,7 @@
 import asyncio
 import json
 import math
+import random
 import re
 import time
 from collections import defaultdict, deque
@@ -1011,7 +1012,7 @@ class EavesdroppingEngine:
             # 随机松绑：即使没有命中关键词，也有概率放行
             import random
 
-            bypass_rate = self.plugin.cfg.interject_random_bypass_rate
+            bypass_rate = self.plugin.cfg.interject_trigger_probability
             if random.random() < bypass_rate:
                 logger.debug(f"[Interject] 群: 随机松绑命中，概率={bypass_rate}")
                 return {
@@ -1073,7 +1074,7 @@ class EavesdroppingEngine:
                 return
 
             # 检查白名单
-            whitelist = getattr(self.plugin.cfg, "target_group_scopes", [])
+            whitelist = self.plugin.cfg.target_group_scopes
             if whitelist and group_id not in [str(g) for g in whitelist]:
                 logger.debug(f"[Interject] 群 {group_id}: [L1] 不在白名单，跳过")
                 return
@@ -1276,7 +1277,7 @@ class EavesdroppingEngine:
                         self._update_interject_cursor(group_id, latest_msg_seq)
                         return
 
-                    trigger_prob = self.plugin.cfg.interject_random_bypass_rate
+                    trigger_prob = self.plugin.cfg.interject_trigger_probability
                     if random.random() >= trigger_prob:
                         logger.debug(
                             f"[Interject] 群 {group_id}: [L4] 触发概率未达标，跳过: roll={random.random():.2f}, threshold={trigger_prob}"

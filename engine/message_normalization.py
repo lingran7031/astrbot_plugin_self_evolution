@@ -9,12 +9,18 @@ async def normalize_event_message_text(event, dao) -> tuple[str, bool]:
     has_image = False
 
     if message_chain:
-        from astrbot.core.message.components import Image
+        try:
+            from astrbot.core.message.components import Image
 
-        for comp in message_chain:
-            if isinstance(comp, Image):
-                has_image = True
-                break
+            for comp in message_chain:
+                if isinstance(comp, Image):
+                    has_image = True
+                    break
+        except (ImportError, ModuleNotFoundError):
+            for comp in message_chain:
+                if hasattr(comp, "url"):
+                    has_image = True
+                    break
 
     if not has_image:
         return event.message_str or "", False

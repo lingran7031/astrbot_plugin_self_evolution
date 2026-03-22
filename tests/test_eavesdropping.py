@@ -46,6 +46,7 @@ class EavesdroppingInterjectTests(IsolatedAsyncioTestCase):
         )
         cfg = SimpleNamespace(
             target_group_scopes=[],
+            target_scopes=[],
             group_history_count=5,
             interject_cooldown=0,
             interject_silence_timeout=0,
@@ -55,6 +56,8 @@ class EavesdroppingInterjectTests(IsolatedAsyncioTestCase):
             interject_analyze_count=5,
             interject_urgency_threshold=80,
             interject_dry_run=False,
+            interject_random_bypass_rate=0.5,
+            interject_trigger_probability=1.0,
         )
         plugin = SimpleNamespace(
             context=context,

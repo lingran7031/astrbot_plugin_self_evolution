@@ -26,6 +26,7 @@ from .engine.entertainment import EntertainmentEngine
 from .engine.event_context import extract_interaction_context
 from .engine.message_normalization import ensure_event_message_text
 from .engine.memory import MemoryManager
+from .engine.memory_router import MemoryRouter
 from .engine.meta_infra import MetaInfra
 from .engine.persona import PersonaManager
 from .engine.profile import ProfileManager
@@ -108,6 +109,7 @@ class SelfEvolutionPlugin(Star):
 
             self.session_reflection = SessionReflection(self)
             self.daily_batch = DailyBatchProcessor(self)
+            self.memory_router = MemoryRouter(self)
             logger.info(
                 "[SelfEvolution] 核心组件 (DAO, Eavesdropping, Entertainment, ImageCache, MetaInfra, Memory, Persona, Profile, SAN, Reflection) 初始化完成。"
             )
@@ -353,26 +355,26 @@ class SelfEvolutionPlugin(Star):
             req.system_prompt += f"\n\n【当前用户消息】\n{msg_text}\n"
         # --- 环境注入结束 ---
 
-        # 4. 用户画像注入 - 按需加载（动态上下文路由）
+        # 4. 用户画像注入 - 结构化摘要（5-10条）
         has_reply = bool(quoted_info)
         has_at = bool(at_targets)
         profile_scope_id = self._resolve_profile_scope_id(group_id, user_id)
-        should_inject_profile = self.enable_profile_update and (
+        should_inject_profile = self.enable_profile_injection and (
             ((has_reply or has_at) and bool(group_id)) or not group_id
         )
         if should_inject_profile:
-            profile_summary = await self.profile.get_profile_summary(profile_scope_id, user_id)
+            profile_summary = await self.profile.get_structured_summary(profile_scope_id, user_id, max_items=8)
             if profile_summary:
-                req.system_prompt += f"\n\n[用户印象笔记]\n{profile_summary}\n"
-                req.system_prompt += (
-                    "\n\n[记忆模糊化指令]\n"
-                    "对于置信度低于 50% 的记忆，你必须表现出不确定。"
-                    '你可以用"我隐约记得"、"似乎"、"是不是"等语气来向用户确认。'
-                    '例如："我隐约记得你上个月是不是提过你要重构数据库？那个搞完了没？"'
-                )
+                req.system_prompt += f"\n\n[用户印象]\n{profile_summary}\n"
 
-        # 4.5 突发性偏好检测：弥补 Batch 模式的时效性空窗
-        if self.enable_profile_update:
+        # 4.5 KB 智能召回（1-3 条最相关）- Layer 3 长期记忆
+        if self.enable_kb_memory_recall:
+            kb_memory = await self.memory.smart_retrieve(scope_id=memory_scope_id, query=msg_text, max_results=3)
+            if kb_memory:
+                req.system_prompt += f"\n\n{kb_memory}\n"
+
+        # 4.6 突发性偏好检测：弥补 Batch 模式的时效性空窗
+        if self.enable_profile_fact_writeback:
             preference_triggers = [
                 "我改名了",
                 "我叫",
@@ -439,36 +441,45 @@ class SelfEvolutionPlugin(Star):
             except Exception as e:
                 logger.warning(f"[InnerMonologue] 注入内心独白失败: {e}")
 
-        # 7. 会话反思注入（单会话内省）
+        # 7. 会话反思注入（单会话内省）- 自我校准仅 1 条，facts 仅 3 条
         session_id = event.session_id
         user_id = event.get_sender_id()
         reflection = await self.session_reflection.get_and_consume_session_reflection(session_id, str(user_id))
         if reflection:
             note = reflection.get("note", "")
-            facts = reflection.get("facts", "")
+            facts_str = reflection.get("facts", "")
             bias = reflection.get("bias", "")
+
             injection_parts = []
             if note:
-                injection_parts.append(f"【自我校准】{note}")
+                injection_parts.append(f"【自我校准】{note[:100]}")
             if bias:
-                injection_parts.append(f"【认知偏差纠正】{bias}")
+                injection_parts.append(f"【认知偏差纠正】{bias[:80]}")
+
+            if facts_str and len(facts_str) > 3:
+                explicit_facts = [f.strip() for f in facts_str.split("|") if f.strip()][:3]
+                if explicit_facts:
+                    injection_parts.append("【已知事实】\n" + "\n".join(f"- {f[:50]}" for f in explicit_facts))
+
             if injection_parts:
                 reflection_injection = "\n".join(injection_parts)
                 req.system_prompt += f"\n\n{reflection_injection}\n"
-                logger.info(f"[Reflection] 会话反思已注入: {note[:50]}...")
-            if facts and len(facts) > 3:
-                profile_scope_id = self._resolve_profile_scope_id(event.get_group_id(), event.get_sender_id())
-                for fact in facts.split("|"):
-                    fact = fact.strip()
-                    if fact:
-                        profile_note = f"- 【反思提炼】{fact}"
-                        await self.profile.append_profile_content(
-                            profile_scope_id,
-                            event.get_sender_id(),
-                            profile_note,
-                            nickname=event.get_sender_name() or "",
-                        )
-                        logger.debug(f"[Reflection] 反思事实已写入画像: {fact[:30]}...")
+                logger.info(f"[Reflection] 会话反思已注入: note={note[:30] if note else None}...")
+
+            # 8. 将 explicit_facts 蒸馏写入结构化画像（第二层记忆）
+            if facts_str and len(facts_str) > 3:
+                all_facts = [f.strip() for f in facts_str.split("|") if f.strip()]
+                if all_facts:
+                    profile_scope_id = self._resolve_profile_scope_id(event.get_group_id(), event.get_sender_id())
+                    written = await self.session_reflection.distill_profile_facts(
+                        explicit_facts=all_facts,
+                        user_id=str(event.get_sender_id()),
+                        group_id=event.get_group_id(),
+                        profile_scope_id=profile_scope_id,
+                        nickname=event.get_sender_name() or "",
+                    )
+                    if written > 0:
+                        logger.debug(f"[Reflection] 已将 {written} 条事实蒸馏写入画像")
 
         # 框架人格由框架自动注入，不再手动追加
         # 先截断过长的注入内容，避免超出 token 限制
@@ -811,43 +822,59 @@ class SelfEvolutionPlugin(Star):
         entity: str,
         content: str,
     ) -> str:
-        """【推荐使用】统一的认知记忆存储工具。根据 category 自动分发到对应的存储系统。
+        """【推荐使用】统一的认知记忆存储工具。根据内容自动路由到 profile / KB / reflection_hint。
 
         触发场景：当你在对话中发现任何需要永久记住的信息时，使用此工具。
+
+        路由规则：
+        - 事件/约定/决策类 → 知识库（session_event）
+        - 身份/偏好/性格类 → 画像（profile）
+        - 语气/风格/态度纠偏类 → reflection_hint（不持久化）
 
         注意：群聊和私聊均可使用；私聊场景仅支持记录当前会话用户。
 
         Args:
-            category(string): 记忆分类，必填。选项：
-                - user_profile: 用户画像/印象（关于这个人的一切）
-                - user_preference: 用户偏好（喜欢/讨厌什么）
+            category(string): 记忆分类，可选：
+                - user_profile: 用户画像
+                - user_preference: 用户偏好
+                - user_trait: 用户性格/行为特征
+                - session_event: 会话事件/约定（会写入 KB）
             entity(string): 关联实体，必填。如：用户ID
-            content(string): 要记忆的内容，必填。用精简的纯文本描述。
+            content(string): 要记忆的内容，必填。
         """
-        group_id = event.get_group_id()
-        sender_id = str(event.get_sender_id())
-        profile_scope_id = self._resolve_profile_scope_id(group_id, sender_id)
-
         if not category or not content:
             return "请提供 category 和 content 参数。"
 
-        if category not in ("user_profile", "user_preference"):
-            return "当前只支持 user_profile 和 user_preference 类别。"
+        target_user_id = str(entity or event.get_sender_id()).strip()
+        sender_id = str(event.get_sender_id())
+        group_id = event.get_group_id()
+        scope_id = self._resolve_profile_scope_id(group_id, sender_id)
 
-        timestamp = time.strftime("%Y-%m-%d %H:%M")
-
-        target_user_id = str(entity or sender_id).strip()
         if not group_id and target_user_id != sender_id:
             return "私聊场景仅支持记录当前会话用户。"
 
-        profile_content = f"---\n**{timestamp}**\n{content}"
-        await self.profile.append_profile_content(
-            profile_scope_id,
-            target_user_id,
-            profile_content,
+        valid_categories = ("user_profile", "user_preference", "user_trait", "session_event")
+        if category not in valid_categories:
+            return f"category 仅支持: {', '.join(valid_categories)}"
+
+        fact_type_map = {
+            "user_profile": None,
+            "user_preference": "preference",
+            "user_trait": "trait",
+            "session_event": None,
+        }
+        fact_type = fact_type_map.get(category)
+
+        result = await self.memory_router.write(
+            content=content,
+            scope_id=scope_id,
+            user_id=target_user_id,
+            category=category,
+            fact_type=fact_type,
             nickname=event.get_sender_name() if target_user_id == sender_id else "",
+            source="manual",
         )
-        return f"已更新用户 {target_user_id} 的{('偏好' if category == 'user_preference' else '画像')}。"
+        return result
 
     @filter.llm_tool(name="get_user_messages")
     async def get_user_messages(self, event: AstrMessageEvent, target_user_id: str = None, limit: int = 100) -> str:

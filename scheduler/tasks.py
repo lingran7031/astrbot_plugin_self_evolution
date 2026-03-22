@@ -30,7 +30,7 @@ async def scheduled_reflection(plugin):
     await plugin.dao.init_db()
 
     target_groups = []
-    whitelist = getattr(plugin.cfg, "target_group_scopes", [])
+    whitelist = plugin.cfg.target_group_scopes
     if whitelist:
         target_groups.extend(str(group_id) for group_id in whitelist)
     else:
