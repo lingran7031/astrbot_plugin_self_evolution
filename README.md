@@ -285,9 +285,9 @@ Prompt 注入主链（main.py）
 | `/reflect` | 手动触发会话反思 |
 | `/affinity` | 查看当前好感度 |
 | `/今日老婆` | 今日老婆 |
-| `/view [用户ID]` | 查看画像 |
+| `/view [用户ID]` | 查看画像（只读，不触发 LLM） |
 | `/create [用户ID]` | 创建画像 |
-| `/update [用户ID]` | 更新画像 |
+| `/update [用户ID]` | 重新分析并刷新画像 |
 | `/shut [分钟]` | 临时闭嘴 |
 
 ### 管理员命令
@@ -310,7 +310,7 @@ Prompt 注入主链（main.py）
 |------|------|
 | `get_user_profile` | 获取当前用户画像 |
 | `upsert_cognitive_memory` | 写入用户画像记忆 |
-| `get_user_messages` | 获取用户历史消息 |
+| `get_user_messages` | 获取用户历史消息（精确返回目标用户条数，支持分页） |
 | `update_affinity` | 调整好感度 |
 | `evolve_persona` | 提交人格进化提案 |
 | `list_tools` | 查看工具列表 |
@@ -326,7 +326,8 @@ Prompt 注入主链（main.py）
 
 | 任务 | 层级 | 说明 |
 |------|------|------|
-| `SelfEvolution_DailyReflection` | 核心 | 每日批处理，生成日报并刷新画像、恢复好感度 |
+| `SelfEvolution_DailyReflection` | 核心 | 每日批处理，生成日报并刷新画像 |
+| `SelfEvolution_AffinityRecovery` | 核心 | 每日好感度恢复（独立于批处理） |
 | `SelfEvolution_MemorySummary` | 核心 | 每日会话总结 |
 | `SelfEvolution_ProfileBuild` | 核心 | 自动画像构建 |
 | `SelfEvolution_ProfileCleanup` | 核心 | 清理过期画像 |

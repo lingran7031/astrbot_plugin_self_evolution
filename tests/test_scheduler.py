@@ -192,6 +192,14 @@ class SchedulerTasksTests(IsolatedAsyncioTestCase):
 
         plugin.dao.init_db.assert_awaited_once()
         plugin.daily_batch.run_daily_batch.assert_awaited_once()
+
+    async def test_scheduled_affinity_recovery_calls_recover_all_affinity(self):
+        plugin = SimpleNamespace(
+            dao=SimpleNamespace(recover_all_affinity=AsyncMock()),
+        )
+
+        await tasks.scheduled_affinity_recovery(plugin)
+
         plugin.dao.recover_all_affinity.assert_awaited_once_with(recovery_amount=2)
 
     async def test_scheduled_reflection_keeps_private_active_scopes(self):

@@ -914,7 +914,14 @@ class SelfEvolutionPlugin(Star):
         return result
 
     @filter.llm_tool(name="get_user_messages")
-    async def get_user_messages(self, event: AstrMessageEvent, target_user_id: str = None, limit: int = 100) -> str:
+    async def get_user_messages(
+        self,
+        event: AstrMessageEvent,
+        target_user_id: str = None,
+        limit: int = 30,
+        page_size: int = 100,
+        max_pages: int = 20,
+    ) -> str:
         """获取指定用户的历史消息记录。
 
         触发场景：
@@ -923,14 +930,20 @@ class SelfEvolutionPlugin(Star):
 
         Args:
             target_user_id(string): 目标用户ID，不填则获取当前用户（可选）
-            limit(number): 获取消息数量，默认100，最大1000（可选）
+            limit(number): 最多返回目标用户的消息条数，默认30（可选）
+            page_size(number): 每次拉历史的分页大小，默认100（可选）
+            max_pages(number): 群聊场景最多翻多少页，默认20（可选）
 
         注意：群聊和私聊均可使用；私聊场景仅支持当前会话用户。
         """
         target = str(target_user_id or event.get_sender_id()).strip()
-        limit = min(max(1, limit), 1000)
+        limit = min(max(1, limit), 500)
+        page_size = min(max(10, page_size), 500)
+        max_pages = min(max(1, max_pages), 100)
 
-        logger.debug(f"[Tool] get_user_messages: target={target}, limit={limit}")
+        logger.debug(
+            f"[Tool] get_user_messages: target={target}, limit={limit}, page_size={page_size}, max_pages={max_pages}"
+        )
 
         try:
             platform_insts = self.context.platform_manager.platform_insts
@@ -948,6 +961,8 @@ class SelfEvolutionPlugin(Star):
                 logger.warning("[Tool] get_user_messages: 无法获取 bot 实例")
                 return "无法获取 bot 实例"
 
+            from .engine.context_injection import parse_message_chain
+
             group_id = event.get_group_id()
 
             if not group_id:
@@ -957,24 +972,51 @@ class SelfEvolutionPlugin(Star):
                     return "私聊场景仅支持查询当前会话用户的历史消息。"
                 logger.debug(f"[Tool] get_user_messages: 私聊={sender_id}, 获取{limit}条消息")
                 result = await bot.call_action("get_friend_msg_history", user_id=int(sender_id), count=limit)
+                messages = result.get("messages", [])
+                user_messages = []
+                for msg in reversed(messages):
+                    sender = msg.get("sender", {})
+                    if str(sender.get("user_id", "")) == str(target):
+                        msg_text = await parse_message_chain(msg, self)
+                        if msg_text:
+                            user_messages.append(msg_text)
+                        if len(user_messages) >= limit:
+                            break
             else:
-                logger.debug(f"[Tool] get_user_messages: 群={group_id}, 获取{limit}条消息")
-                result = await bot.call_action("get_group_msg_history", group_id=int(group_id), count=limit)
-            messages = result.get("messages", [])
+                logger.debug(
+                    f"[Tool] get_user_messages: 群={group_id}, limit={limit}, page_size={page_size}, max_pages={max_pages}"
+                )
+                user_messages = []
+                end_seq = None
 
-            if not messages:
-                return f"{'私聊' if not group_id else f'群 {group_id}'} 无消息记录"
+                for _ in range(max_pages):
+                    if end_seq is not None:
+                        result = await bot.call_action(
+                            "get_group_msg_history", group_id=int(group_id), count=page_size, end_seq=end_seq
+                        )
+                    else:
+                        result = await bot.call_action("get_group_msg_history", group_id=int(group_id), count=page_size)
+                    page_msgs = result.get("messages", [])
+                    if not page_msgs:
+                        break
 
-            from .engine.context_injection import parse_message_chain
+                    for msg in reversed(page_msgs):
+                        sender = msg.get("sender", {})
+                        sender_id = str(sender.get("user_id", ""))
+                        if sender_id == str(target):
+                            msg_text = await parse_message_chain(msg, self)
+                            if msg_text:
+                                user_messages.append(msg_text)
+                            if len(user_messages) >= limit:
+                                break
+                        end_seq = msg.get("seq", None)
 
-            user_messages = []
-            for msg in messages:
-                sender = msg.get("sender", {})
-                sender_id = str(sender.get("user_id", ""))
-                if sender_id == str(target):
-                    msg_text = await parse_message_chain(msg, self)
-                    if msg_text:
-                        user_messages.append(msg_text)
+                    if len(user_messages) >= limit:
+                        break
+                    if len(page_msgs) < page_size:
+                        break
+
+                user_messages.reverse()
 
             if not user_messages:
                 if group_id:
@@ -982,9 +1024,7 @@ class SelfEvolutionPlugin(Star):
                 return f"用户 {target} 在私聊中无消息记录"
 
             location = f"群 {group_id}" if group_id else "私聊"
-            return f"用户 {target} 在{location}的历史消息（共 {len(user_messages)} 条）：\n" + "\n".join(
-                user_messages[:20]
-            )
+            return f"用户 {target} 在{location}的历史消息（共 {len(user_messages)} 条）：\n" + "\n".join(user_messages)
 
         except Exception as e:
             logger.warning(f"[SelfEvolution] 获取用户消息失败: {e}")

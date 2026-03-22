@@ -24,8 +24,6 @@ async def handle_view(event, plugin):
     if deny:
         return deny
 
-    if raw_user_id and ctx.is_admin and ctx.group_id:
-        await plugin.profile.build_profile(target_user, ctx.scope_id, mode="update", umo=ctx.umo)
     return await plugin.profile.view_profile(ctx.scope_id, target_user)
 
 

@@ -7,6 +7,7 @@ import logging
 logger = logging.getLogger("astrbot")
 
 from .tasks import (
+    scheduled_affinity_recovery,
     scheduled_interject,
     scheduled_memory_summary,
     scheduled_profile_build,
@@ -63,10 +64,29 @@ async def register_tasks(plugin):
             name="SelfEvolution_DailyReflection",
             cron_expression=plugin.reflection_schedule,
             handler=lambda: scheduled_reflection(plugin),
-            description="自我进化插件：每日批量生成会话日报并刷新画像/好感度。",
+            description="自我进化插件：每日批量生成会话日报并刷新画像。",
             persistent=True,
         )
         logger.info(f"[SelfEvolution] 已注册每日批处理任务: {plugin.reflection_schedule}")
+
+        # 注册好感度恢复任务（在批处理之后独立运行）
+        try:
+            parts = plugin.reflection_schedule.split()
+            minute = int(parts[0])
+            hour = int(parts[1])
+            new_minute = (minute + 5) % 60
+            new_hour = (hour + (minute + 5) // 60) % 24
+            recovery_cron = f"{new_minute} {new_hour} * * *"
+        except Exception:
+            recovery_cron = "5 3 * * *"
+        await cron_mgr.add_basic_job(
+            name="SelfEvolution_AffinityRecovery",
+            cron_expression=recovery_cron,
+            handler=lambda: scheduled_affinity_recovery(plugin),
+            description="自我进化插件：每日恢复用户好感度。",
+            persistent=True,
+        )
+        logger.info(f"[SelfEvolution] 已注册好感度恢复任务: {recovery_cron}")
 
         # 注册 SAN 分析任务
         if plugin.cfg.san_enabled and plugin.cfg.san_auto_analyze_enabled:

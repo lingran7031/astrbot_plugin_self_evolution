@@ -11,6 +11,16 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `/view` 命令改为纯只读，不再隐式触发 LLM 刷新画像（副作用移至 `/update`）
+- `get_user_messages` 工具改为真正的 `fetch_limit` 语义：群聊按目标用户消息条数精确翻页，不再硬截 20 条上限
+- `scheduled_reflection` 与好感度恢复拆分为独立任务 `scheduled_affinity_recovery`，批处理失败不再偷偷恢复好感度
+
+### Fixed
+
+- `dao.py` timeout 参数语法错误 `3.0.0` → `3.0`
+
 ## [3.0.0] - 2026-03-22
 
 > 核心记忆系统 / 调度层 / 命令层全面薄编排化

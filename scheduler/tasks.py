@@ -166,20 +166,29 @@ async def _run_task(
 
 
 async def scheduled_reflection(plugin) -> ScheduledTaskResult:
-    """每日批处理任务 - 会话摘要生成 + 活跃用户画像更新 + 好感度恢复"""
-    result = await _run_task(
+    """每日批处理任务 - 会话摘要生成 + 活跃用户画像更新"""
+    return await _run_task(
         "DailyReflection",
         _reflection_impl,
         plugin,
         swallow_errors=True,
         log_scope_count=True,
     )
-    try:
-        await plugin.dao.recover_all_affinity(recovery_amount=2)
-        logger.debug('[Scheduler] 已执行每日"大赦天下"：所有负面评分用户好感度已小幅回升。')
-    except Exception as e:
-        logger.warning(f"[Scheduler] 好感度恢复失败: {e}")
-    return result
+
+
+async def scheduled_affinity_recovery(plugin) -> ScheduledTaskResult:
+    """每日好感度恢复任务 - 独立于批处理运行"""
+    return await _run_task(
+        "AffinityRecovery",
+        _affinity_recovery_impl,
+        plugin,
+        swallow_errors=True,
+    )
+
+
+async def _affinity_recovery_impl(plugin):
+    await plugin.dao.recover_all_affinity(recovery_amount=2)
+    logger.debug('[Scheduler] 已执行每日"大赦天下"：所有负面评分用户好感度已小幅回升。')
 
 
 async def _reflection_impl(plugin):
