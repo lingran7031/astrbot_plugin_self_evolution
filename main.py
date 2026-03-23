@@ -1317,6 +1317,7 @@ class SelfEvolutionPlugin(Star):
         max_retries = 3
         last_error = None
 
+        skipped = 0
         for attempt in range(max_retries):
             sticker = await self.sticker_store.get_random_sticker()
             if not sticker:
@@ -1329,28 +1330,26 @@ class SelfEvolutionPlugin(Star):
 
                 file_path = self.sticker_store.get_sticker_path(sticker)
                 if not file_path or not Path(file_path).exists():
-                    logger.warning(f"[Sticker] 表情包文件不存在，自动换下一张: {sticker['filename']}")
+                    logger.warning(f"[Sticker] 表情包文件不存在，禁用: {sticker['filename']}")
                     await self.sticker_store.disable_sticker(sticker["uuid"])
+                    skipped += 1
                     continue
 
                 with open(file_path, "rb") as f:
                     data = f.read()
-                logger.info(f"[Sticker] 读取文件成功: path={file_path}, size={len(data)} bytes")
                 bs64 = base64.b64encode(data).decode()
-                logger.info(f"[Sticker] base64编码成功: bs64_length={len(bs64)}")
                 from astrbot.core.message.components import Image
 
-                img = Image(f"base64://{bs64}")
-                logger.info(f"[Sticker] Image对象创建成功: file={img.file[:50]}...")
-                yield event.chain_result([img])
-                logger.info(f"[Sticker] chain_result已发送")
+                yield event.chain_result([Image(f"base64://{bs64}")])
                 return
             except Exception as e:
                 last_error = e
                 logger.warning(f"[Sticker] 发送表情包失败(尝试 {attempt + 1}/{max_retries}): {e}")
-                await self.sticker_store.disable_sticker(sticker["uuid"])
+                skipped += 1
+                continue
 
-        yield event.plain_result(f"发送失败，已跳过 {max_retries} 张问题表情包")
+        if skipped > 0:
+            yield event.plain_result(f"发送失败，已跳过 {skipped} 张问题表情包")
 
     @filter.command_group("sticker")
     def sticker_group(self):
