@@ -1331,7 +1331,7 @@ class SelfEvolutionPlugin(Star):
                     await self.sticker_store.disable_sticker(sticker["uuid"])
                     continue
 
-                yield event.chain_result([Image.fromFile(str(file_path))])
+                yield event.chain_result([Image.fromFileSystem(str(file_path))])
                 return
             except Exception as e:
                 last_error = e
@@ -1372,7 +1372,7 @@ class SelfEvolutionPlugin(Star):
                     yield event.plain_result(f"表情包文件不存在: {result['image_path']}")
                     return
 
-                yield event.chain_result([Image.fromFile(str(file_path))])
+                yield event.chain_result([Image.fromFileSystem(str(file_path))])
                 return
             except Exception as e:
                 logger.warning(f"[Sticker] 预览表情包失败: {e}")
