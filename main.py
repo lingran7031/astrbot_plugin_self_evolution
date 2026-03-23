@@ -73,7 +73,7 @@ class PromptContext:
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "CognitionCore 7.0 数字生命。",
-    "Ver 3.0",
+    "Ver 3.1",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -958,11 +958,16 @@ class SelfEvolutionPlugin(Star):
         page_size: int = 100,
         max_pages: int = 20,
     ) -> str:
-        """获取指定用户的历史消息记录。
+        """获取指定用户的历史消息记录，用于画像分析或明确查询某个用户说过的话。
 
         触发场景：
-        - 需要了解用户最近的发言历史时
-        - 分析用户在群聊或私聊中的行为模式时
+        - 了解某个用户长期是什么风格（画像分析）
+        - 明确查询某用户具体说过什么
+
+        不适合回答：
+        - "群里刚刚/昨天聊了什么" → 用 get_group_recent_context
+        - "这个群最近在讨论什么" → 用 get_group_recent_context
+        - "昨天这个群聊了什么" → 用知识库长期记忆
 
         Args:
             target_user_id(string): 目标用户ID，不填则获取当前用户（可选）
@@ -1023,6 +1028,7 @@ class SelfEvolutionPlugin(Star):
                     f"[Tool] get_user_messages: 群={group_id}, limit={limit}, page_size={page_size}, max_pages={max_pages}"
                 )
                 user_messages = []
+                seen_keys = set()
                 end_seq = None
 
                 for _ in range(max_pages):
@@ -1040,17 +1046,31 @@ class SelfEvolutionPlugin(Star):
                         sender = msg.get("sender", {})
                         sender_id = str(sender.get("user_id", ""))
                         if sender_id == str(target):
+                            msg_key = f"{msg.get('message_id', '')}:{msg.get('seq', '')}:{msg.get('time', '')}"
+                            if msg_key in seen_keys:
+                                continue
+                            seen_keys.add(msg_key)
                             msg_text = await parse_message_chain(msg, self)
                             if msg_text:
                                 user_messages.append(msg_text)
                             if len(user_messages) >= limit:
                                 break
-                        end_seq = msg.get("seq", None)
 
                     if len(user_messages) >= limit:
                         break
                     if len(page_msgs) < page_size:
                         break
+
+                    oldest_msg = page_msgs[0]
+                    for field in ("message_seq", "message_id"):
+                        if field in oldest_msg and oldest_msg[field] not in (None, ""):
+                            try:
+                                end_seq = int(oldest_msg[field])
+                            except (TypeError, ValueError):
+                                end_seq = None
+                            break
+                    else:
+                        end_seq = None
 
                 user_messages.reverse()
 
@@ -1065,6 +1085,82 @@ class SelfEvolutionPlugin(Star):
         except Exception as e:
             logger.warning(f"[SelfEvolution] 获取用户消息失败: {e}")
             return f"获取历史消息失败: {e!s}"
+
+    @filter.llm_tool(name="get_group_recent_context")
+    async def get_group_recent_context(
+        self,
+        event: AstrMessageEvent,
+        limit: int = 30,
+    ) -> str:
+        """获取群聊最近消息上下文，用于回答"群里刚刚在聊什么"类问题。
+
+        触发场景：
+        - 群里刚刚/最近在聊什么
+        - 你看看上下文
+        - 这个群最近讨论了什么话题
+
+        注意：
+        - 仅限群聊使用
+        - 不按用户筛选，返回整个群的最近消息
+        - 适合回答"群里刚刚/最近"类问题
+        - 不适合回答"某个人以前都说过什么"（用 get_user_messages）
+
+        Args:
+            limit(int): 最多返回的消息条数，默认30（可选）
+        """
+        group_id = event.get_group_id()
+        if not group_id:
+            return "此工具仅限群聊使用"
+
+        limit = min(max(1, limit), 200)
+
+        logger.debug(f"[Tool] get_group_recent_context: group={group_id}, limit={limit}")
+
+        try:
+            platform_insts = self.context.platform_manager.platform_insts
+            if not platform_insts:
+                logger.warning("[Tool] get_group_recent_context: 无法获取平台实例")
+                return "无法获取平台实例"
+
+            platform = platform_insts[0]
+            if not hasattr(platform, "get_client"):
+                logger.warning("[Tool] get_group_recent_context: 平台不支持获取 bot")
+                return "平台不支持获取 bot"
+
+            bot = platform.get_client()
+            if not bot:
+                logger.warning("[Tool] get_group_recent_context: 无法获取 bot 实例")
+                return "无法获取 bot 实例"
+
+            from .engine.context_injection import parse_message_chain
+
+            result = await bot.call_action("get_group_msg_history", group_id=int(group_id), count=limit)
+            messages = result.get("messages", [])
+            if not messages:
+                return f"群 {group_id} 暂无消息记录"
+
+            seen_keys = set()
+            formatted_messages = []
+            for msg in reversed(messages):
+                msg_key = f"{msg.get('message_id', '')}:{msg.get('seq', '')}:{msg.get('time', '')}"
+                if msg_key in seen_keys:
+                    continue
+                seen_keys.add(msg_key)
+
+                sender = msg.get("sender", {})
+                sender_nickname = sender.get("nickname", "未知")
+                msg_text = await parse_message_chain(msg, self)
+                if msg_text:
+                    formatted_messages.append(f"{sender_nickname}: {msg_text}")
+
+            if not formatted_messages:
+                return f"群 {group_id} 暂无可显示的消息"
+
+            return f"群 {group_id} 最近消息（共 {len(formatted_messages)} 条）：\n" + "\n".join(formatted_messages)
+
+        except Exception as e:
+            logger.warning(f"[SelfEvolution] 获取群上下文失败: {e}")
+            return f"获取群上下文失败: {e!s}"
 
     @filter.command_group("profile")
     def profile_group(self):
