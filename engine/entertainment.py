@@ -52,9 +52,9 @@ class EntertainmentEngine:
 
             logger.debug(f"[Entertainment] 今日老婆抽取结果: {nickname} ({user_id})")
 
-            avatar_url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=640"
+            avatar_url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=256"
 
-            return [f"今日老婆是：{nickname}！", avatar_url]
+            return [f"你今日的群友老婆是：{nickname}！", avatar_url]
 
         except Exception as e:
             logger.warning(f"[Entertainment] 今日老婆功能异常: {e}")

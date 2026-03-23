@@ -587,16 +587,20 @@ class SelfEvolutionPlugin(Star):
         logger.info("[SelfEvolution] on_loaded 开始执行")
         await register_tasks(self)
 
-    @filter.command("version")
-    async def show_version(self, event: AstrMessageEvent):
-        """显示插件版本"""
-        result = await commands.handle_version(event, self)
+    @filter.command_group("system")
+    def system_group(self):
+        """系统命令"""
+
+    @system_group.command("help")
+    async def show_help(self, event: AstrMessageEvent):
+        """查看插件帮助"""
+        result = await commands.handle_help(event, self)
         yield event.plain_result(result)
 
-    @filter.command("sehelp")
-    async def show_help(self, event: AstrMessageEvent):
-        """显示 Self-Evolution 插件指令帮助"""
-        result = await commands.handle_help(event, self)
+    @system_group.command("version")
+    async def show_version(self, event: AstrMessageEvent):
+        """查看插件版本"""
+        result = await commands.handle_version(event, self)
         yield event.plain_result(result)
 
     @filter.command("今日老婆")
@@ -696,9 +700,19 @@ class SelfEvolutionPlugin(Star):
         logger.warning(f"[SelfEvolution] 管理员 {event.get_sender_id()} 强制重置了用户 {user_id} 的好感度为 {score}。")
         yield event.plain_result(f"已成功将用户 {user_id} 的情感评分修正为: {score}")
 
-    @filter.command("set_san")
+    @filter.command_group("san")
+    def san_group(self):
+        """SAN 状态管理"""
+
+    @san_group.command("show")
+    async def show_san(self, event: AstrMessageEvent):
+        """查看当前 SAN 状态"""
+        result = await commands.handle_san_show(event, self)
+        yield event.plain_result(result)
+
+    @san_group.command("set")
     async def set_san(self, event: AstrMessageEvent, value: str = ""):
-        """[管理员] 查看或手动设置当前精力值。"""
+        """设置当前 SAN 值"""
         result = await commands.handle_set_san(event, self, value)
         yield event.plain_result(result)
 
@@ -718,33 +732,37 @@ class SelfEvolutionPlugin(Star):
         logger.warning(f"[CognitionCore] 用户 {user_id} 积分变动 {delta}，原因: {reason}")
         return f"用户情感积分已更新。当前调整理由：{reason}"
 
-    @filter.command("review_evolutions")
+    @filter.command_group("evolution")
+    def evolution_group(self):
+        """人格进化管理"""
+
+    @evolution_group.command("review")
     async def review_evolutions(self, event: AstrMessageEvent, page: int = 1):
-        """【管理员接口】列出待审核的人格进化请求，支持分页查询。"""
+        """查看待审核的人格进化"""
         if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
             yield event.plain_result("权限拒绝：此操作仅限系统管理员执行。")
             return
         yield event.plain_result(await self.persona.review_evolutions(event, page))
 
-    @filter.command("approve_evolution")
+    @evolution_group.command("approve")
     async def approve_evolution(self, event: AstrMessageEvent, request_id: int):
-        """【管理员接口】批准指定 ID 的人格进化请求。"""
+        """批准人格进化"""
         if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
             yield event.plain_result("权限拒绝：此操作仅限系统管理员执行。")
             return
         yield event.plain_result(await self.persona.approve_evolution(event, request_id))
 
-    @filter.command("reject_evolution")
+    @evolution_group.command("reject")
     async def reject_evolution(self, event: AstrMessageEvent, request_id: int):
-        """【管理员接口】拒绝指定 ID 的人格进化请求。"""
+        """拒绝人格进化"""
         if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
             yield event.plain_result("权限拒绝：此操作仅限系统管理员执行。")
             return
         yield event.plain_result(await self.persona.reject_evolution(event, request_id))
 
-    @filter.command("clear_evolutions")
+    @evolution_group.command("clear")
     async def clear_evolutions(self, event: AstrMessageEvent):
-        """【管理员接口】一键清空所有待审核的进化请求。"""
+        """清空待审核人格进化"""
         if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
             yield event.plain_result("权限拒绝：此操作仅限系统管理员执行。")
             return
@@ -1048,9 +1066,13 @@ class SelfEvolutionPlugin(Star):
             logger.warning(f"[SelfEvolution] 获取用户消息失败: {e}")
             return f"获取历史消息失败: {e!s}"
 
-    @filter.command("view")
+    @filter.command_group("profile")
+    def profile_group(self):
+        """用户画像命令"""
+
+    @profile_group.command("view")
     async def view_profile_cmd(self, event: AstrMessageEvent, user_id: str = ""):
-        """查看用户画像。普通用户只能看自己，管理员可以指定用户。"""
+        """查看用户画像"""
         if not commands.check_profile_admin(event, self):
             if user_id:
                 yield event.plain_result("权限拒绝：普通用户无法查看他人画像。")
@@ -1058,9 +1080,9 @@ class SelfEvolutionPlugin(Star):
         result = await commands.handle_view(event, self)
         yield event.plain_result(result)
 
-    @filter.command("create")
+    @profile_group.command("create")
     async def create_profile_cmd(self, event: AstrMessageEvent, user_id: str = ""):
-        """手动创建用户画像。普通用户只能给自己创建，管理员可以指定用户。"""
+        """手动创建画像"""
         if not commands.check_profile_admin(event, self):
             if user_id:
                 yield event.plain_result("权限拒绝：普通用户无法给他人创建画像。")
@@ -1068,9 +1090,9 @@ class SelfEvolutionPlugin(Star):
         result = await commands.handle_create(event, self)
         yield event.plain_result(result)
 
-    @filter.command("update")
+    @profile_group.command("update")
     async def update_profile_cmd(self, event: AstrMessageEvent, user_id: str = ""):
-        """手动更新用户画像。普通用户只能更新自己，管理员可以指定用户。"""
+        """手动更新画像"""
         if not commands.check_profile_admin(event, self):
             if user_id:
                 yield event.plain_result("权限拒绝：普通用户无法更新他人画像。")
@@ -1078,18 +1100,18 @@ class SelfEvolutionPlugin(Star):
         result = await commands.handle_update(event, self)
         yield event.plain_result(result)
 
-    @filter.command("delete_profile")
+    @profile_group.command("delete")
     async def delete_profile_cmd(self, event: AstrMessageEvent, user_id: str):
-        """【管理员】删除指定用户的画像。"""
+        """删除指定用户画像"""
         if not commands.check_profile_admin(event, self):
             yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
             return
         result = await commands.handle_delete(event, self)
         yield event.plain_result(result)
 
-    @filter.command("profile_stats")
+    @profile_group.command("stats")
     async def profile_stats_cmd(self, event: AstrMessageEvent):
-        """【管理员】查看画像统计信息。"""
+        """查看画像统计"""
         if not commands.check_profile_admin(event, self):
             yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
             return
@@ -1173,13 +1195,44 @@ class SelfEvolutionPlugin(Star):
             logger.warning(f"[Sticker] 发送表情包失败: {e}")
             yield event.plain_result(f"发送失败: {e}")
 
-    @filter.command("sticker")
-    async def sticker_cmd(self, event: AstrMessageEvent, action: str = "list", param: str = ""):
-        """表情包管理命令（全局）"""
+    @filter.command_group("sticker")
+    def sticker_group(self):
+        """表情包管理"""
+
+    @sticker_group.command("list")
+    async def sticker_list_cmd(self, event: AstrMessageEvent, page: str = ""):
+        """分页查看表情包"""
         if not commands.check_sticker_admin(event, self):
             yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
             return
-        result = await commands.handle_sticker(event, self, action, param)
+        result = await commands.handle_sticker(event, self, "list", page)
+        yield event.plain_result(result)
+
+    @sticker_group.command("delete")
+    async def sticker_delete_cmd(self, event: AstrMessageEvent, sticker_uuid: str = ""):
+        """删除指定表情包"""
+        if not commands.check_sticker_admin(event, self):
+            yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
+            return
+        result = await commands.handle_sticker(event, self, "delete", sticker_uuid)
+        yield event.plain_result(result)
+
+    @sticker_group.command("clear")
+    async def sticker_clear_cmd(self, event: AstrMessageEvent):
+        """清空表情包"""
+        if not commands.check_sticker_admin(event, self):
+            yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
+            return
+        result = await commands.handle_sticker(event, self, "clear", "")
+        yield event.plain_result(result)
+
+    @sticker_group.command("stats")
+    async def sticker_stats_cmd(self, event: AstrMessageEvent):
+        """查看表情包统计"""
+        if not commands.check_sticker_admin(event, self):
+            yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
+            return
+        result = await commands.handle_sticker(event, self, "stats", "")
         yield event.plain_result(result)
 
     @filter.command("shut")

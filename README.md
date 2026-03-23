@@ -177,36 +177,42 @@
 
 ### 用户命令
 
-- `/sehelp`
-- `/version`
+- `/system help`
+- `/system version`
 - `/reflect`
 - `/affinity`
+- `/san show`
 - `/今日老婆`
-- `/view [用户ID]`
-- `/create [用户ID]`
-- `/update [用户ID]`
+- `/profile view [用户ID]`
+- `/profile create [用户ID]`
+- `/profile update [用户ID]`
 - `/shut [分钟]`
 
 说明：
-- `/view` 现在是只读操作，不会隐式刷新画像
+- `/profile view` 现在是只读操作，不会隐式刷新画像
 - 普通用户在私聊里只能操作自己
 - 普通用户在群聊里也只能操作自己的画像
 
 ### 管理员命令
 
 - `/set_affinity <用户ID> <分数>`
-- `/set_san [值]`
-- `/delete_profile <用户ID>`
-- `/profile_stats`
-- `/review_evolutions [页码]`
-- `/approve_evolution <ID>`
-- `/reject_evolution <ID>`
-- `/clear_evolutions`
-- `/sticker <操作>`
+- `/san set [值]`
+- `/profile delete <用户ID>`
+- `/profile stats`
+- `/evolution review [页码]`
+- `/evolution approve <ID>`
+- `/evolution reject <ID>`
+- `/evolution clear`
+- `/sticker list [页码]`
+- `/sticker delete <UUID>`
+- `/sticker clear`
+- `/sticker stats`
 - `/db <操作>`
 
 说明：
-- `/set_san` 不带参数时显示当前精力值和状态，带参数时设置为指定值
+- `/san show` 所有人可用，用于查看当前 SAN 状态
+- `/san set` 仅管理员可用；不带参数时显示当前精力值和状态，带参数时设置为指定值
+- `/sticker list [页码]` 支持分页查看
 
 ## LLM 工具
 

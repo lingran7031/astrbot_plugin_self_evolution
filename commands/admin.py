@@ -8,6 +8,19 @@ import time
 from .common import CommandContext, RESP_MESSAGES, ensure_admin, ensure_group
 
 
+def _format_san_status(san_system) -> str:
+    if not san_system.enabled:
+        return "SAN 精力系统未启用"
+    current = san_system.value
+    status = san_system.get_status()
+    return f"当前精力值：{current}/{san_system.max_value}（{status}）"
+
+
+async def handle_san_show(event, plugin):
+    """查看当前 SAN 状态"""
+    return _format_san_status(plugin.san_system)
+
+
 async def handle_shut(event, plugin, minutes: str = ""):
     """闭嘴命令"""
     ctx = CommandContext.from_event(event, plugin)
@@ -115,13 +128,11 @@ async def handle_set_san(event, plugin, value: str = ""):
     if deny:
         return deny
 
+    if not value:
+        return _format_san_status(plugin.san_system)
+
     if not plugin.san_system.enabled:
         return "SAN 精力系统未启用"
-
-    if not value:
-        current = plugin.san_system.value
-        status = plugin.san_system.get_status()
-        return f"当前精力值：{current}/{plugin.san_system.max_value}（{status}）"
 
     try:
         new_val = int(value)

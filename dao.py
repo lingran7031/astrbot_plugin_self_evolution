@@ -582,13 +582,13 @@ class SelfEvolutionDAO:
             }
 
     @with_db_retry()
-    async def get_stickers(self, limit: int = 10) -> list:
+    async def get_stickers(self, limit: int = 10, offset: int = 0) -> list:
         """获取表情包列表（全局）"""
         db = await self.get_conn()
         async with self._db_lock:
             cursor = await db.execute(
-                "SELECT id, uuid, group_id, user_id, url, created_at FROM stickers ORDER BY id DESC LIMIT ?",
-                (limit,),
+                "SELECT id, uuid, group_id, user_id, url, created_at FROM stickers ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
             )
             rows = await cursor.fetchall()
             return [

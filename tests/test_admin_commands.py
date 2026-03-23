@@ -173,6 +173,31 @@ class HandleDbTests(IsolatedAsyncioTestCase):
 
 
 class HandleSetSanTests(IsolatedAsyncioTestCase):
+    async def test_san_show_available_to_non_admin(self):
+        plugin = SimpleNamespace(
+            admin_users=[],
+            san_system=SimpleNamespace(
+                enabled=True,
+                value=75,
+                max_value=100,
+                get_status=lambda: "精力充沛",
+            ),
+        )
+        event = _FakeEvent(is_admin=False)
+        result = await admin_commands.handle_san_show(event, plugin)
+        self.assertIn("75", result)
+        self.assertIn("100", result)
+        self.assertIn("精力充沛", result)
+
+    async def test_san_show_returns_disabled_when_san_off(self):
+        plugin = SimpleNamespace(
+            admin_users=[],
+            san_system=SimpleNamespace(enabled=False),
+        )
+        event = _FakeEvent(is_admin=False)
+        result = await admin_commands.handle_san_show(event, plugin)
+        self.assertEqual(result, "SAN 精力系统未启用")
+
     async def test_show_san_value(self):
         plugin = SimpleNamespace(
             admin_users=["1001"],
