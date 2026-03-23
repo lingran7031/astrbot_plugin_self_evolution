@@ -1,26 +1,67 @@
 # 自我进化
 
-`astrbot_plugin_self_evolution` 是一个给 AstrBot 用的认知增强插件。
+`astrbot_plugin_self_evolution` 是一个给 AstrBot 使用的认知增强插件。
 
 它的重点不是多几个命令，而是给机器人补上几层长期能力：
 - 结构化人物记忆
 - 长期会话记忆
 - 会话反思与自我校准
-- 群聊上下文注入
+- 群聊/私聊上下文注入
 - 主动/被动互动策略
 
-当前版本已经同时支持群聊和私聊，并针对 NapCat 的消息结构做了适配。
+当前版本同时支持群聊和私聊，并已适配 NapCat 消息结构。
 
 ## 交流
 
 - QQ 交流群：`1087272376`
 - 群名称：`self_evolution插件交流反馈群`
 
+## 功能分层
+
+### 核心模块
+
+- Prompt 注入
+- 人物画像
+- 长期记忆
+- 会话反思
+- 调度任务
+- 基础命令
+
+### 可选模块
+
+- 主动插嘴
+- SAN 精力系统
+- 管理辅助能力
+
+### 实验模块
+
+- 表情包与娱乐能力
+- 元编程
+- 人格进化
+
+## 先看总开关
+
+如果你觉得配置多，建议先只看这几个模块总开关：
+
+- `memory_enabled`：是否启用长期记忆模块
+- `reflection_enabled`：是否启用反思与日报模块
+- `entertainment_enabled`：是否启用娱乐与表情包模块
+- `meta_enabled`：是否启用元编程相关模块
+- `interject_enabled`：是否启用主动插嘴
+- `san_enabled`：是否启用 SAN 精力系统
+
+推荐的使用顺序是：
+
+1. 先决定哪些模块要开
+2. 再调对应模块的细参数
+3. 没用到的模块先关掉，不要一开始全调
+
 ## 核心能力
 
 ### 1. Prompt 注入
 
 每次进入 LLM 前，插件会按需注入这些内容：
+
 - 发送者和会话来源
 - 引用、`@`、回复关系
 - 群聊短期历史
@@ -34,13 +75,14 @@
 ### 2. 结构化人物记忆
 
 插件会为用户维护结构化画像，记录：
+
 - 身份信息
 - 偏好
 - 行为特征
 - 最近变化
 - 长期备注
 
-支持群聊和私聊两种 scope。
+支持群聊和私聊两种 `scope`。
 
 相关文件：
 - [engine/profile.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/profile.py)
@@ -50,7 +92,8 @@
 
 插件会按前一自然日汇总会话消息，写入 AstrBot 知识库，供后续召回。
 
-现在的总结不是混写到一个库里，而是按 scope 隔离：
+现在的总结不是混写到一个库里，而是按 `scope` 隔离：
+
 - 群聊：`<memory_kb_name>__scope__g_<group_id>`
 - 私聊：`<memory_kb_name>__scope__p_<user_id>`
 
@@ -63,6 +106,7 @@
 ### 4. 会话反思
 
 插件支持会话反思和每日批处理，主要负责：
+
 - 自我校准
 - 提取明确事实
 - 刷新活跃用户画像
@@ -71,16 +115,17 @@
 相关文件：
 - [engine/reflection.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/reflection.py)
 
-### 5. 主动和被动互动
+### 5. 主动与被动互动
 
 插件支持两类互动：
+
 - 被动互动：监听消息，根据关键词、引用、`@`、意愿积分决定是否接话
 - 主动插嘴：定时检查群消息，在满足条件时主动参与
 
 相关文件：
 - [engine/eavesdropping.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/eavesdropping.py)
 
-## 可选能力
+## 可选与实验能力
 
 ### SAN 系统
 
@@ -109,7 +154,7 @@
 
 1. 在 AstrBot 后台安装 `astrbot_plugin_self_evolution`
 2. 创建一个基础知识库，并把名字设置为 `memory_kb_name`
-3. 确保 AstrBot 已经配置好可用模型
+3. 确保 AstrBot 已配置可用模型
 4. 使用 NapCat 作为消息协议后端
 5. 重载插件或重启 AstrBot
 
@@ -118,6 +163,7 @@
 ### 为什么还需要先建基础知识库
 
 `memory_kb_name` 指向的知识库会作为基础入口使用：
+
 - 作为长期记忆功能的锚点
 - 作为后续自动创建 scope 隔离知识库的基础名
 
@@ -125,7 +171,7 @@
 
 ### AstrBot 怎么用到这些总结
 
-如果当前会话已经启用知识库召回，插件会把当前 scope 自动绑定到对应的隔离知识库，让 AstrBot 优先召回当前群或当前私聊自己的总结。
+如果当前会话已经启用知识库召回，插件会把当前 `scope` 自动绑定到对应的隔离知识库，让 AstrBot 优先召回当前群或当前私聊自己的总结。
 
 ## 命令
 
@@ -178,31 +224,66 @@
 
 其中 `get_user_messages` 现在会尽量按目标用户消息条数返回结果，而不是只从最近一小段群消息里做浅筛。
 
-## 主要配置
+## 配置分层
 
-下面只列当前仍在使用的主配置项。
+下面按配置面板的分组来说明。
 
-### 记忆与画像
+### 基础
+
+这一组是最先该看的配置。
+
+- `review_mode`
+- `persona_name`
+- `admin_users`
+- `critical_keywords`
+- `target_scopes`
+- `debug_log_enabled`
+
+### 核心开关
+
+先决定模块要不要开，再去调细参数。
+
+- `memory_enabled`
+- `reflection_enabled`
+- `interject_enabled`
+- `san_enabled`
+- `entertainment_enabled`
+- `meta_enabled`
+
+### 记忆
+
+负责长期会话记忆和知识库召回。
 
 - `memory_kb_name`
 - `memory_fetch_page_size`
 - `memory_summary_chunk_size`
 - `memory_summary_schedule`
-- `reflection_schedule`
+- `enable_kb_memory_recall`
+
+### 画像
+
+负责人物记忆和自动建档。
+
 - `profile_msg_count`
 - `profile_cooldown_minutes`
 - `enable_profile_injection`
 - `enable_profile_fact_writeback`
-- `enable_kb_memory_recall`
-- `target_scopes`
 - `auto_profile_enabled`
 - `auto_profile_schedule`
 - `auto_profile_batch_size`
 - `auto_profile_batch_interval`
+- `core_info_keywords`
 
-### 主动互动
+### 反思
 
-- `interject_enabled`
+负责每日反思、日报和画像刷新。
+
+- `reflection_schedule`
+
+### 互动
+
+这组控制主动插嘴和被动互动判定。
+
 - `interject_interval`
 - `interject_cooldown`
 - `interject_min_msg_count`
@@ -213,10 +294,14 @@
 - `interject_dry_run`
 - `interject_trigger_probability`
 - `interject_analyze_count`
+- `eavesdrop_message_threshold`
+- `eavesdrop_threshold_min`
+- `eavesdrop_threshold_max`
 
-### SAN
+### 行为
 
-- `san_enabled`
+这组控制 SAN、漏斗积分和行为倾向。
+
 - `san_max`
 - `san_cost_per_message`
 - `san_recovery_per_hour`
@@ -228,6 +313,53 @@
 - `san_low_activity_drain`
 - `san_positive_vibe_bonus`
 - `san_negative_vibe_penalty`
+- `leaky_integrator_enabled`
+- `leaky_decay_factor`
+- `leaky_trigger_threshold`
+- `interest_boost`
+- `daily_chat_boost`
+- `desire_cooldown_messages`
+- `desire_cooldown_seconds`
+- `dropout_enabled`
+- `dropout_edge_rate`
+- `surprise_enabled`
+- `surprise_boost_keywords`
+- `inner_monologue_enabled`
+- `boredom_enabled`
+- `boredom_consecutive_count`
+
+### 实验
+
+这组建议按需开启，不建议一开始全开。
+
+- `debate_enabled`
+- `debate_rounds`
+- `debate_system_prompt`
+- `debate_criteria`
+- `debate_agents`
+- `allow_meta_programming`
+
+### 娱乐
+
+这组负责表情包和轻量娱乐能力。
+
+- `sticker_learning_enabled`
+- `sticker_target_qq`
+- `sticker_daily_limit`
+- `sticker_total_limit`
+- `sticker_send_cooldown`
+- `sticker_send_threshold`
+- `sticker_freq_threshold`
+
+### 提示
+
+这组直接影响 prompt 注入行为。
+
+- `disable_framework_contexts`
+- `inject_group_history`
+- `group_history_count`
+- `max_prompt_injection_length`
+- `prompt_meltdown_message`
 
 ## 数据存储
 
@@ -246,5 +378,5 @@
 
 - 想让机器人记住用户长期偏好和身份信息
 - 想让机器人对群聊和私聊有跨天记忆
-- 想把短期上下文、结构化画像和长期知识库记忆组合起来用
+- 想把短期上下文、结构化画像和长期知识库记忆组合起来使用
 - 想让机器人在群里更像一个持续参与的角色，而不是纯问答接口

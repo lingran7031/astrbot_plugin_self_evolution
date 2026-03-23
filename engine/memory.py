@@ -87,6 +87,9 @@ class MemoryManager:
         logger.debug("[Memory] 开始每日会话总结...")
 
         try:
+            if not getattr(getattr(self.plugin, "cfg", None), "memory_enabled", True):
+                logger.debug("[Memory] memory_enabled=False, skip daily summary")
+                return
             scopes = await self._get_target_scopes()
             if not scopes:
                 logger.debug("[Memory] 无目标会话，跳过总结")
@@ -321,6 +324,8 @@ class MemoryManager:
         if not scope_id or not umo:
             return
 
+        if not getattr(getattr(self.plugin, "cfg", None), "memory_enabled", True):
+            return ""
         try:
             kb_manager = getattr(self.plugin.context, "kb_manager", None)
             if not kb_manager:

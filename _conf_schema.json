@@ -1,551 +1,592 @@
 {
     "review_mode": {
-        "title": "管理员审核模式",
-        "description": "开启后，进化操作需要管理员确认。",
+        "title": "?? / ????",
+        "description": "???????",
         "type": "bool",
-        "default": true
+        "default": true,
+        "hint": "?????????????????????"
     },
     "persona_name": {
-        "title": "人设名称",
-        "description": "机器人的名称。",
+        "title": "?? / ????",
+        "description": "??????",
         "type": "string",
-        "default": "黑塔"
+        "default": "黑塔",
+        "hint": "???????????????"
     },
     "admin_users": {
-        "title": "管理员 ID 列表",
-        "description": "额外允许执行敏感操作的用户。",
-        "hint": "系统全局管理员外的白名单，可执行审批进化等指令。",
+        "title": "?? / ?????",
+        "description": "???????",
+        "hint": "??????????????????????",
         "type": "list",
         "default": []
     },
     "critical_keywords": {
-        "title": "意图预扫描关键词",
-        "description": "命中时立即触发互动意愿评估。",
-        "hint": "正则格式，用 | 分隔，如：黑塔|空间站|物理",
+        "title": "?? / ?????",
+        "description": "???????",
+        "hint": "???????????????????????",
         "type": "string",
-        "default": "黑塔|空间站|人偶|天才|模拟宇宙|研究|论文|技术|算力|数据"
+        "default": "黑塔|空间站人偶|天才|模拟宇宙|研究|论文|技术|算力|数据"
     },
-    "allow_meta_programming": {
-        "title": "开启元编程 (危险)",
-        "description": "允许 AI 阅读和修改源码。",
-        "hint": "请谨慎开启！",
-        "type": "bool",
-        "default": false
-    },
-    "reflection_schedule": {
-        "title": "每日批处理计划 (Cron)",
-        "description": "前一自然日批处理",
-        "hint": "按前一自然日生成会话日报、刷新画像并恢复好感度。Cron 表达式，默认每天凌晨 2 点：0 2 * * *",
-        "type": "string",
-        "default": "0 2 * * *"
-    },
-
-    "memory_kb_name": {
-        "title": "记忆知识库名称",
-        "description": "用于存储长期记忆的知识库。",
-        "type": "string",
-        "default": "self_evolution_memory"
-    },
-    "memory_fetch_page_size": {
-        "title": "记忆分页拉取大小",
-        "description": "每日总结时分页从 NapCat 拉取消息的数量",
-        "hint": "决定每次 API 调用拉取的消息条数，默认 500",
-        "type": "int",
-        "default": 500
-    },
-    "memory_summary_chunk_size": {
-        "title": "记忆总结分段大小",
-        "description": "LLM 分段总结时每个 chunk 的最大消息条数",
-        "hint": "控制单次 LLM 上下文窗口的消息密度，默认 200",
-        "type": "int",
-        "default": 200
-    },
-    "memory_summary_schedule": {
-        "title": "每日总结计划 (Cron)",
-        "description": "前一自然日总结",
-        "hint": "定时执行前一自然日会话总结。Cron 表达式，默认每天凌晨 3 点：0 3 * * *",
-        "type": "string",
-        "default": "0 3 * * *"
-    },
-
-    "profile_msg_count": {
-        "title": "画像构建消息数",
-        "description": "构建用户画像时获取的消息数量。",
-        "hint": "默认 500 条",
-        "type": "int",
-        "default": 500
-    },
-    "profile_cooldown_minutes": {
-        "title": "画像冷却时间",
-        "description": "创建/更新用户画像的冷却时间。",
-        "hint": "默认 10 分钟",
-        "type": "int",
-        "default": 10
-    },
-    "enable_profile_injection": {
-        "title": "启用画像内容注入",
-        "description": "AI回复时注入用户画像摘要内容",
+    "memory_enabled": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????????????????",
         "type": "bool",
         "default": true
     },
-    "enable_profile_fact_writeback": {
-        "title": "启用画像事实写入",
-        "description": "对话中发现的偏好/身份信息是否回写到用户画像",
+    "reflection_enabled": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????? reflect ???????",
         "type": "bool",
         "default": true
     },
-    "enable_kb_memory_recall": {
-        "title": "启用知识库记忆召回",
-        "description": "AI回复时从知识库召回长期记忆上下文",
+    "entertainment_enabled": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????????????",
+        "type": "bool",
+        "default": true
+    },
+    "meta_enabled": {
+        "title": "?? / ?????",
+        "description": "?????",
+        "hint": "???????????????",
         "type": "bool",
         "default": true
     },
     "target_scopes": {
-        "title": "后台任务目标范围",
-        "description": "统一指定画像、记忆、插嘴等后台任务的处理范围",
-        "hint": "群号列表，留空则自动发现",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????????????????????",
         "type": "list",
         "default": []
     },
+    "debug_log_enabled": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????????",
+        "type": "bool",
+        "default": false
+    },
+    "memory_kb_name": {
+        "title": "?? / ?????",
+        "description": "???????",
+        "type": "string",
+        "default": "self_evolution_memory",
+        "hint": "???????????????? scope ???????"
+    },
+    "memory_fetch_page_size": {
+        "title": "?? / ????",
+        "description": "???????",
+        "hint": "??????? NapCat ????????????",
+        "type": "int",
+        "default": 500
+    },
+    "memory_summary_chunk_size": {
+        "title": "?? / ????",
+        "description": "???????",
+        "hint": "LLM ???????? chunk ????????",
+        "type": "int",
+        "default": 200
+    },
+    "memory_summary_schedule": {
+        "title": "?? / ????",
+        "description": "???????",
+        "hint": "??????????????Cron ???? 03:00?",
+        "type": "string",
+        "default": "0 3 * * *"
+    },
+    "enable_kb_memory_recall": {
+        "title": "?? / ?????",
+        "description": "???????",
+        "type": "bool",
+        "default": true,
+        "hint": "AI ???????????????????"
+    },
+    "profile_msg_count": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????????",
+        "type": "int",
+        "default": 500
+    },
+    "profile_cooldown_minutes": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????????????",
+        "type": "int",
+        "default": 10
+    },
+    "enable_profile_injection": {
+        "title": "?? / ????",
+        "description": "??????",
+        "type": "bool",
+        "default": true,
+        "hint": "AI ???????????????"
+    },
+    "enable_profile_fact_writeback": {
+        "title": "?? / ????",
+        "description": "?????",
+        "type": "bool",
+        "default": true,
+        "hint": "?????????????????????"
+    },
     "auto_profile_enabled": {
-        "title": "启用自动画像构建",
-        "description": "定时自动构建画像",
-        "hint": "定时批量分析群消息并构建用户画像。",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????????????",
         "type": "bool",
         "default": true
     },
     "auto_profile_schedule": {
-        "title": "自动画像构建计划 (Cron)",
-        "description": "定时批量构建用户画像的时间表。",
-        "hint": "Cron 表达式，默认每天凌晨 0 点：0 0 * * *",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????? Cron ????",
         "type": "string",
         "default": "0 0 * * *"
     },
     "auto_profile_batch_size": {
-        "title": "批量处理群数量",
-        "description": "每次定时任务处理的群数量。",
-        "hint": "默认 3 个群",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????",
         "type": "int",
         "default": 3
     },
     "auto_profile_batch_interval": {
-        "title": "批次间隔时间(分钟)",
-        "description": "批次间隔时长",
-        "hint": "处理完一批群后等待多久处理下一批。默认 30 分钟",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????????",
         "type": "int",
         "default": 30
     },
     "core_info_keywords": {
-        "title": "核心信息关键词",
-        "description": "核心信息提示词",
-        "hint": "在画像摘要里永不丢失的关键信息提示词。用逗号分隔，如：我是谁,我的名字,我的身份",
+        "title": "?? / ?????",
+        "description": "???????",
+        "hint": "??????????????????????????",
         "type": "string",
         "default": "我是谁,我的名字,我的身份,我的职责"
     },
-
+    "reflection_schedule": {
+        "title": "?? / ?????",
+        "description": "??????",
+        "hint": "??????????????????",
+        "type": "string",
+        "default": "0 2 * * *"
+    },
     "interject_enabled": {
-        "title": "启用主动插嘴",
-        "description": "定时检查是否插嘴",
+        "title": "?? / ????",
+        "description": "??????",
         "type": "bool",
-        "default": false
+        "default": false,
+        "hint": "?????????????????"
     },
     "interject_interval": {
-        "title": "插嘴检查间隔",
-        "description": "每隔多久检查一次是否需要插嘴。",
-        "hint": "单位：分钟，默认 30",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????????????",
         "type": "int",
         "default": 30
     },
     "interject_cooldown": {
-        "title": "插嘴冷却时间",
-        "description": "插嘴后再次插嘴的冷却时间",
-        "hint": "单位：分钟，默认 30",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????????",
         "type": "int",
         "default": 30
     },
     "interject_min_msg_count": {
-        "title": "插嘴最小消息数",
-        "description": "触发插嘴判断的最小消息数",
-        "hint": "消息数不足时跳过，默认 10",
+        "title": "?? / ?????",
+        "description": "??????",
+        "hint": "???????????????????",
         "type": "int",
         "default": 10
     },
     "interject_silence_timeout": {
-        "title": "留白检测时间",
-        "description": "留白检测阈值",
-        "hint": "单位：秒，默认 15秒，避免在热聊中插嘴",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????????????????",
         "type": "int",
         "default": 15
     },
     "interject_local_filter_enabled": {
-        "title": "启用本地轻量级过滤",
-        "description": "启用本地预过滤",
-        "hint": "在调用 LLM 前先用本地规则过滤，减少 LLM 调用次数",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??? LLM ??????????",
         "type": "bool",
         "default": true
     },
     "interject_require_at": {
-        "title": "插嘴需@门槛",
-        "description": "最新消息需@",
-        "hint": "开启后仅当最新消息提到机器人或 @all 时才继续主动插嘴分析。默认 true 以保持兼容；关闭后机器人会更主动参与。",
+        "title": "?? / ????",
+        "description": "??????@?",
+        "hint": "????????????????????????",
         "type": "bool",
         "default": true
     },
     "interject_urgency_threshold": {
-        "title": "插嘴紧迫度阈值",
-        "description": "插嘴执行阈值",
-        "hint": "默认 80，越高越保守",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "LLM ??????????????????",
         "type": "int",
         "default": 80
     },
     "interject_dry_run": {
-        "title": "影子模式（Dry Run）",
-        "description": "只记录不发送",
-        "hint": "建议开启1-2天调优参数后关闭",
+        "title": "?? / ???",
+        "description": "??????",
+        "hint": "???????????????",
         "type": "bool",
         "default": false
     },
     "interject_trigger_probability": {
-        "title": "插嘴执行概率",
-        "description": "LLM判定满足条件后，最终执行的概率阈值",
-        "hint": "默认 0.5，设为 1 则每次必触发",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????????",
         "type": "float",
         "default": 0.5
     },
     "interject_analyze_count": {
-        "title": "LLM分析消息数",
-        "description": "发送给LLM分析的消息条数",
-        "hint": "默认 15 条",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????????",
         "type": "int",
         "default": 15
     },
-
     "eavesdrop_message_threshold": {
-        "title": "互动意愿消息数阈值",
-        "description": "互动意愿阈值",
-        "hint": "超过20条消息时检查，建议 15-30",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????????",
         "type": "int",
         "default": 20
     },
     "eavesdrop_threshold_min": {
-        "title": "有趣判定阈值下限",
-        "description": "有趣对话时的最低触发阈值。",
-        "hint": "有趣判定后阈值降至此值，建议 5-15",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????",
         "type": "int",
         "default": 10
     },
     "eavesdrop_threshold_max": {
-        "title": "无聊判定阈值上限",
-        "description": "无聊对话时的最高触发阈值。",
-        "hint": "无聊判定后阈值升至此值，建议 30-50",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????",
         "type": "int",
         "default": 50
     },
-
     "san_enabled": {
-        "title": "启用SAN值系统",
-        "description": "启用精力系统",
+        "title": "?? / SAN ??",
+        "description": "??SAN??",
         "type": "bool",
-        "default": true
+        "default": true,
+        "hint": "?????????????????"
     },
     "san_max": {
-        "title": "SAN最大值",
-        "description": "AI 的最大精力值。",
+        "title": "?? / SAN ??",
+        "description": "SAN???",
         "type": "int",
-        "default": 100
+        "default": 100,
+        "hint": "SAN ???????"
     },
     "san_cost_per_message": {
-        "title": "每条消息消耗SAN",
-        "description": "处理一条消息消耗的精力值。",
+        "title": "?? / SAN ??",
+        "description": "?????SAN",
         "type": "float",
-        "default": 2.0
+        "default": 2.0,
+        "hint": "????????? SAN ??"
     },
     "san_recovery_per_hour": {
-        "title": "每小时恢复SAN",
-        "description": "每小时恢复的精力值。",
+        "title": "?? / SAN ??",
+        "description": "?????SAN",
         "type": "int",
-        "default": 10
+        "default": 10,
+        "hint": "???????? SAN ??"
     },
     "san_low_threshold": {
-        "title": "低SAN阈值",
-        "description": "低于此值时 AI 会表现出疲惫。",
+        "title": "?? / SAN ???",
+        "description": "?SAN??",
         "type": "int",
-        "default": 20
+        "default": 20,
+        "hint": "???????????????"
     },
     "san_auto_analyze_enabled": {
-        "title": "启用自动SAN分析",
-        "description": "定时分析群状态",
-        "hint": "开启后会定时分析群聊状态并动态调整 SAN。",
+        "title": "?? / SAN ??",
+        "description": "??SAN??",
+        "hint": "?????????? SAN?",
         "type": "bool",
         "default": true
     },
     "san_analyze_interval": {
-        "title": "SAN分析间隔",
-        "description": "每隔多久分析一次群聊状态。",
-        "hint": "单位：分钟，默认 30",
+        "title": "?? / SAN ??",
+        "description": "SAN????",
+        "hint": "?????????????????",
         "type": "int",
         "default": 30
     },
     "san_msg_count_per_group": {
-        "title": "SAN分析消息数",
-        "description": "每个群分析时获取的消息条数。",
+        "title": "?? / SAN ??",
+        "description": "??????",
         "type": "int",
-        "default": 50
+        "default": 50,
+        "hint": "???????????????"
     },
     "san_high_activity_boost": {
-        "title": "高活跃加成",
-        "description": "高活跃加成值",
-        "hint": "高活跃且状态良好时增加的 SAN。",
+        "title": "?? / SAN ???",
+        "description": "?????",
+        "hint": "????? SAN ????????",
         "type": "int",
         "default": 5
     },
     "san_low_activity_drain": {
-        "title": "低活跃消耗",
-        "description": "低活跃时减少的 SAN。",
+        "title": "?? / SAN ???",
+        "description": "?????",
         "type": "int",
-        "default": -3
+        "default": -3,
+        "hint": "????? SAN ????????"
     },
     "san_positive_vibe_bonus": {
-        "title": "正面情绪加成",
-        "description": "检测到积极氛围时增加的 SAN。",
+        "title": "?? / SAN ???",
+        "description": "?????",
         "type": "int",
-        "default": 3
+        "default": 3,
+        "hint": "?????? SAN ??????"
     },
     "san_negative_vibe_penalty": {
-        "title": "负面情绪惩罚",
-        "description": "检测到负面氛围时减少的 SAN。",
+        "title": "?? / SAN ???",
+        "description": "?????",
         "type": "int",
-        "default": -5
+        "default": -5,
+        "hint": "?????? SAN ??????"
     },
-
     "leaky_integrator_enabled": {
-        "title": "启用欲望积分器",
-        "description": "启用欲望积分器",
-        "hint": "替代传统计数器的动态触发机制",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????",
         "type": "bool",
         "default": true
     },
     "leaky_decay_factor": {
-        "title": "欲望衰减系数",
-        "description": "欲望随时间的自然衰减系数。",
-        "hint": "0-1 之间，建议 0.85-0.95，越小衰减越快",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????????",
         "type": "float",
         "default": 0.9
     },
     "leaky_trigger_threshold": {
-        "title": "欲望触发阈值",
-        "description": "欲望值突破此值时触发互动意愿。",
-        "hint": "建议 3-5，欲望初始值 2.0",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????????",
         "type": "int",
         "default": 5
     },
     "interest_boost": {
-        "title": "兴趣话题增益",
-        "description": "命中兴趣关键词时的欲望增益。",
-        "hint": "高价值话题的权重加成，默认 2.0",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????????",
         "type": "float",
         "default": 2.0
     },
     "daily_chat_boost": {
-        "title": "日常话题增益",
-        "description": "日常对话的欲望增益。",
-        "hint": "日常话题的权重，默认 1.0",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????",
         "type": "float",
         "default": 1.0
     },
     "desire_cooldown_messages": {
-        "title": "欲望冷却消息数",
-        "description": "贤者时间消息阈值",
-        "hint": "触发后不立即冷却，连续回复N条后才休息，默认5条",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????????????",
         "type": "int",
         "default": 5
     },
     "desire_cooldown_seconds": {
-        "title": "贤者时间冷却时长",
-        "description": "进入贤者时间后的冷却秒数",
-        "hint": "连续回复触发后，AI需要等待多少秒才能恢复，默认60秒",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????????",
         "type": "int",
         "default": 60
     },
-
     "dropout_enabled": {
-        "title": "启用分层失活",
-        "description": "启用分层失活机制",
-        "hint": "关闭则每次精确注入，开启则随机丢失部分边缘信息",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????????",
         "type": "bool",
         "default": true
     },
     "dropout_edge_rate": {
-        "title": "边缘信息失活概率",
-        "description": "边缘兴趣标签被随机屏蔽的概率。",
-        "hint": "0-1 之间，建议 0.1-0.2",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????????",
         "type": "float",
         "default": 0.2
     },
-
-    "debate_enabled": {
-        "title": "启用多智能体对抗",
-        "description": "启用代码审查机制",
-        "hint": "主控 Agent 提案后，审查 Agent 进行对抗辩论",
-        "type": "bool",
-        "default": true
-    },
-    "debate_rounds": {
-        "title": "对抗辩论轮次",
-        "description": "多智能体轮次",
-        "hint": "建议 1-3 轮",
-        "type": "int",
-        "default": 3
-    },
-    "debate_system_prompt": {
-        "title": "审查 Agent 系统提示词",
-        "description": "审查提示词",
-        "hint": "设定为一个无情的安全审查员",
-        "type": "string",
-        "default": "你是一个无情的安全审查员，代号螺丝咕姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。"
-    },
-    "debate_criteria": {
-        "title": "审查标准",
-        "description": "审查标准列表",
-        "hint": "用 | 分隔多个检查项",
-        "type": "string",
-        "default": "安全漏洞|逻辑错误|性能问题|代码规范|潜在Bug"
-    },
-    "debate_agents": {
-        "title": "审查智能体列表",
-        "description": "审查智能体列表",
-        "hint": "参与代码审查的智能体配置，支持多智能体共同参与讨论。JSON 数组格式，每个元素包含 name 和 system_prompt",
-        "type": "string",
-        "default": "[{\"name\": \"螺丝咕姆\", \"system_prompt\": \"你是一个无情的安全审查员，代号螺丝咕姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。\"}, {\"name\": \"阮梅\", \"system_prompt\": \"你是一个天才的生物学博士，代号阮梅。你的职责是从生物学和复杂系统角度审查代码提案，评估其自洽性、涌现行为和演化潜力。你说话温柔但一针见血。\"}]"
-    },
-
     "surprise_enabled": {
-        "title": "启用惊奇驱动学习",
-        "description": "记忆出乎意料的事",
-        "hint": "关闭则处理所有对话，开启则只处理高惊奇度对话",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????",
         "type": "bool",
         "default": true
     },
     "surprise_boost_keywords": {
-        "title": "惊奇关键词",
-        "description": "触发高惊奇度的关键词列表。",
-        "hint": "用 | 分隔，如：我错了|原来如此|没想到",
+        "title": "?? / ?????",
+        "description": "??????",
+        "hint": "???????????????",
         "type": "string",
         "default": "突然|惊讶|没想到|居然"
     },
     "inner_monologue_enabled": {
-        "title": "启用内心独白",
-        "description": "启用内心独白",
-        "hint": "启用潜意识缓存，让 AI 在沉默时产生内心独白，下次发言时注入。",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????????",
         "type": "bool",
         "default": true
     },
     "boredom_enabled": {
-        "title": "启用主动无聊机制",
-        "description": "启用信息熵检测",
-        "hint": "当群聊内容持续低信息量时触发无聊状态。",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????????",
         "type": "bool",
         "default": true
     },
     "boredom_consecutive_count": {
-        "title": "连续无聊计数",
-        "description": "无聊触发计数",
-        "hint": "连续多少条低信息量消息后触发无聊状态。",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????????",
         "type": "int",
         "default": 10
     },
-
+    "debate_enabled": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????????????",
+        "type": "bool",
+        "default": true
+    },
+    "debate_rounds": {
+        "title": "?? / ????",
+        "description": "????",
+        "hint": "?????????",
+        "type": "int",
+        "default": 3
+    },
+    "debate_system_prompt": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????",
+        "type": "string",
+        "default": "你是一个无情的安全审查员，代号螺丝咔姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。"
+    },
+    "debate_criteria": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????????",
+        "type": "string",
+        "default": "安全漏洞|逻辑错误|性能问题|代码规范|潜在Bug"
+    },
+    "debate_agents": {
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????",
+        "type": "string",
+        "default": [
+            {
+                "name": "螺丝咔姆",
+                "system_prompt": "你是一个无情的安全审查员，代号螺丝咔姆。你的职责是严格审查代码提案，找出所有潜在的安全漏洞、逻辑错误和最佳实践违背。你必须用毒舌且刻薄的语气批评，但必须基于技术事实。"
+            },
+            {
+                "name": "阮梅",
+                "system_prompt": "你是一个天才的生物学博士，代号阮梅。你的职责是从生物学和复杂系统视角审查代码提案，评估其自洽性、涌现行为和演化潜力。你说话温柔但一针见血。"
+            }
+        ]
+    },
+    "allow_meta_programming": {
+        "title": "?? / ?????",
+        "description": "??????",
+        "hint": "??????????????????????",
+        "type": "bool",
+        "default": false
+    },
     "sticker_learning_enabled": {
-        "title": "启用表情包学习",
-        "description": "自动学习表情包",
-        "hint": "需要配置学习对象 QQ 号",
+        "title": "?? / ?????",
+        "description": "???????",
+        "hint": "???????????????????",
         "type": "bool",
         "default": false
     },
     "sticker_target_qq": {
-        "title": "表情包学习对象QQ号",
-        "description": "表情包学习对象",
-        "hint": "如：123456789,987654321",
+        "title": "?? / ??QQ",
+        "description": "????QQ",
+        "hint": "?????????? QQ ??",
         "type": "string",
         "default": ""
     },
     "sticker_daily_limit": {
-        "title": "每日存储上限",
-        "description": "每天最多存储多少张表情包",
-        "hint": "默认 50 张",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????",
         "type": "int",
         "default": 50
     },
     "sticker_total_limit": {
-        "title": "总存储上限",
-        "description": "表情包库最多存储多少张",
-        "hint": "默认 100 张，超出后删除最旧的",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????",
         "type": "int",
         "default": 100
     },
     "sticker_send_cooldown": {
-        "title": "发表情包冷却时间(分钟)",
-        "description": "发表情包冷却",
-        "hint": "默认 30 分钟",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????????",
         "type": "int",
         "default": 30
     },
     "sticker_send_threshold": {
-        "title": "发表情包触发阈值",
-        "description": "控制表情包发送概率",
-        "hint": "默认 50，设为 0 则禁用发送",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "??????????????????",
         "type": "int",
         "default": 50
     },
     "sticker_freq_threshold": {
-        "title": "表情包频率阈值",
-        "description": "表情包判定频率阈值",
-        "hint": "默认 2 次，设为 0 则禁用频率判定",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "?????????????????",
         "type": "int",
         "default": 2
     },
-
-    "debug_log_enabled": {
-        "title": "Debug 日志模式",
-        "description": "输出调试日志",
-        "hint": "生产环境建议关闭，否则日志量较大",
-        "type": "bool",
-        "default": false
-    },
     "disable_framework_contexts": {
-        "title": "禁用框架上下文",
-        "description": "禁用框架上下文",
-        "hint": "开启后需要手动注入历史，否则AI没有对话上下文",
+        "title": "?? / ?????",
+        "description": "???????",
+        "hint": "??????? AstrBot ????????",
         "type": "bool",
         "default": false
     },
     "inject_group_history": {
-        "title": "注入群消息历史",
-        "description": "将群消息历史注入到Prompt中",
-        "hint": "开启后会将群消息历史注入到system_prompt中，供AI参考",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "AI ????????????",
         "type": "bool",
         "default": true
     },
     "group_history_count": {
-        "title": "群消息历史数量",
-        "description": "注入群消息历史的条数",
-        "hint": "默认10条，过多会增加Prompt长度",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????????",
         "type": "int",
         "default": 10
     },
     "max_prompt_injection_length": {
-        "title": "Prompt 注入最大长度",
-        "description": "注入最大字符数",
-        "hint": "用于防止 prompt 超出 LLM context 限制，默认 2000",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "???????????????",
         "type": "int",
         "default": 2000
     },
     "prompt_meltdown_message": {
-        "title": "熔断回复文本",
-        "description": "熔断固定回复",
-        "hint": "当用户好感度降到 0 时强制返回的固定回复。",
+        "title": "?? / ????",
+        "description": "??????",
+        "hint": "????????????????",
         "type": "string",
         "default": "远程人偶自动应答模式：你好，你好，大家好，祝你拥有愉快的一天，再见。"
     }
 }
-

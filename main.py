@@ -387,12 +387,16 @@ class SelfEvolutionPlugin(Star):
         return f"\n\n[用户印象]\n{profile_summary}\n"
 
     async def _build_kb_memory_injection(self, ctx: PromptContext) -> str:
+        if not getattr(self.cfg, "memory_enabled", True):
+            return ""
         kb_memory = await self.memory.smart_retrieve(scope_id=ctx.scope_id, query=ctx.msg_text, max_results=3)
         if not kb_memory:
             return ""
         return f"\n\n{kb_memory}\n"
 
     async def _build_reflection_injection(self, ctx: PromptContext) -> tuple[str, list[str]]:
+        if not getattr(self.cfg, "reflection_enabled", True):
+            return "", []
         if ctx.event is None:
             return "", []
         reflection = await self.session_reflection.get_and_consume_session_reflection(
@@ -600,6 +604,10 @@ class SelfEvolutionPlugin(Star):
         """今日老婆功能 - 随机抽取一名群友"""
         from astrbot.core.message.components import Image
 
+        if not getattr(self.cfg, "entertainment_enabled", True):
+            yield event.plain_result("娱乐模块当前已关闭。")
+            return
+
         result = await self.entertainment.today_waifu(event)
         if isinstance(result, list) and len(result) == 2:
             yield event.chain_result([Image.fromURL(result[1]), Plain(result[0])])
@@ -610,6 +618,10 @@ class SelfEvolutionPlugin(Star):
         手动触发一次自我反省。
         反思结果会在下次对话时注入到AI的思考中。
         """
+        if not getattr(self.cfg, "reflection_enabled", True):
+            yield event.plain_result("反思模块当前已关闭。")
+            return
+
         session_id = event.session_id
         group_id = event.get_group_id()
         user_id = event.get_sender_id()
@@ -1093,6 +1105,9 @@ class SelfEvolutionPlugin(Star):
         Args:
             limit(int): 返回数量，默认10，最大50
         """
+        if not getattr(self.cfg, "entertainment_enabled", True):
+            return "娱乐模块当前已关闭"
+
         if limit > 50:
             limit = 50
 
@@ -1119,6 +1134,10 @@ class SelfEvolutionPlugin(Star):
             logger.info(f"[Sticker] 发送表情包: UUID={sticker_uuid}")
         else:
             logger.info("[Sticker] 发送表情包: 随机")
+        if not getattr(self.cfg, "entertainment_enabled", True):
+            yield event.plain_result("娱乐模块当前已关闭。")
+            return
+
         group_id = event.get_group_id()
         if not group_id:
             yield event.plain_result("此功能仅限群聊使用")
