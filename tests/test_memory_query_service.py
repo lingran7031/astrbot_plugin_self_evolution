@@ -16,6 +16,10 @@ MemoryQueryService = qs_module.MemoryQueryService
 
 class TestQueryServiceDispatch(IsolatedAsyncioTestCase):
     def _make_plugin(self):
+        cfg = SimpleNamespace(
+            memory_debug_enabled=False,
+            memory_query_fallback_enabled=True,
+        )
         return SimpleNamespace(
             profile=SimpleNamespace(
                 get_structured_summary=AsyncMock(return_value="用户画像摘要"),
@@ -26,6 +30,7 @@ class TestQueryServiceDispatch(IsolatedAsyncioTestCase):
                 smart_retrieve=AsyncMock(return_value="KB检索结果"),
             ),
             get_user_messages_for_tool=AsyncMock(return_value=[{"text": "消息1"}, {"text": "消息2"}]),
+            cfg=cfg,
         )
 
     async def test_dispatch_recent_context(self):
@@ -469,8 +474,10 @@ class TestQueryFallbackKB(IsolatedAsyncioTestCase):
 
     async def test_delegates_to_memory_smart_retrieve(self):
         mock_smart = AsyncMock(return_value="知识库检索到的相关内容")
+        cfg = SimpleNamespace(memory_query_fallback_enabled=True)
         plugin = SimpleNamespace(
             memory=SimpleNamespace(smart_retrieve=mock_smart),
+            cfg=cfg,
         )
         service = MemoryQueryService(plugin)
 
@@ -490,8 +497,10 @@ class TestQueryFallbackKB(IsolatedAsyncioTestCase):
 
     async def test_zero_hit_count_when_retrieve_returns_empty(self):
         mock_smart = AsyncMock(return_value="")
+        cfg = SimpleNamespace(memory_query_fallback_enabled=True)
         plugin = SimpleNamespace(
             memory=SimpleNamespace(smart_retrieve=mock_smart),
+            cfg=cfg,
         )
         service = MemoryQueryService(plugin)
 

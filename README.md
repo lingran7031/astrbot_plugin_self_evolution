@@ -41,24 +41,41 @@
 - 元编程
 - 人格进化
 
-## 先看总开关
+## 配置分组（5 层）
 
-如果你觉得配置多，建议先只看这些模块总开关：
+配置分为 5 组，按需查看：
 
-- `memory_enabled`
-- `reflection_enabled`
-- `interject_enabled`
-- `san_enabled`
-- `entertainment_enabled`
-- `meta_enabled`
-- `affinity_auto_enabled`
-- `affinity_recovery_enabled`
+| 分组 | 说明 | 典型配置 |
+|------|------|----------|
+| 基础 | 最常用，影响整体行为 | `persona_name`、`target_scopes`、`review_mode` |
+| 记忆 | 记忆读写、画像、反思 | `memory_enabled`、`enable_profile_injection`、`reflection_enabled` |
+| 行为 | 机器人表现，不影响数据 | `interject_enabled`、`affinity_auto_enabled`、`san_enabled` |
+| 实验 | 不稳定功能，默认可关 | `meta_enabled`、`allow_meta_programming` |
+| 调试 | 按模块开关日志，不用全局大开 | `memory_debug_enabled`、`engagement_debug_enabled`、`affinity_debug_enabled` |
 
-推荐顺序：
+## 推荐先看的配置
 
-1. 先决定哪些模块要开
-2. 再调对应模块的细参数
-3. 没用到的模块先关掉，不要一开始全开
+如果觉得配置多，按这个顺序看：
+
+1. 先决定哪些**分组**要开（基础/记忆/行为/实验各有总开关）
+2. 再调对应分组的细参数
+3. 排障时先开对应**调试**分组开关，不要全局开 `debug_log_enabled`
+
+## 日志前缀速查
+
+排障时看这些前缀定位模块：
+
+| 前缀 | 模块 |
+|------|------|
+| `[MemoryWrite]` | 记忆写入路由决策 |
+| `[MemoryQuery]` | 记忆查询分派与命中 |
+| `[MemorySummary]` | 每日总结任务 |
+| `[MemoryStore]` | 知识库存取 |
+| `[MemoryInject]` | Prompt 注入命中 |
+| `[Engagement]` | 场景判断、eligibility、plan |
+| `[Affinity]` | 信号命中、积分变更 |
+
+正常跳过（如 profile 未命中、summary 无消息）只打 `debug`，不打 `warning`。
 
 ## 核心能力
 
@@ -456,8 +473,6 @@
 - `interject_urgency_threshold`
 - `engagement_new_system_enabled`
 - `engagement_react_probability`
-- `engagement_brief_probability`
-- `engagement_full_probability`
 
 ### 行为
 

@@ -290,6 +290,18 @@ class SelfEvolutionPlugin(Star):
 
         self._apply_prompt_injections(req, parts)
 
+        if self.cfg.memory_debug_enabled:
+            profile_hit = self._should_inject_profile(ctx)
+            kb_hit = self._should_inject_kb_memory(ctx)
+            history_hit = self._should_inject_group_history(ctx)
+            total_len = sum(len(p) for p in parts if isinstance(p, str))
+            truncated = "yes" if total_len > self.cfg.max_prompt_injection_length else "no"
+            logger.debug(
+                f"[MemoryInject] profile={'hit' if profile_hit else 'miss'} "
+                f"kb={'hit' if kb_hit else 'miss'} history={'hit' if history_hit else 'miss'} "
+                f"reflection={'hit' if reflection_hint else 'miss'} truncated={truncated}"
+            )
+
     async def _prepare_request_context(self, event: AstrMessageEvent, req: ProviderRequest) -> PromptContext | None:
         """收集基础运行时上下文，返回 None 表示拦截请求"""
         user_id = event.get_sender_id()

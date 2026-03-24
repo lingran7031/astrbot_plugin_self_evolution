@@ -41,13 +41,6 @@ class PluginConfig:
         return self._config.get("admin_users", [])
 
     @property
-    def critical_keywords(self):
-        return self._config.get(
-            "critical_keywords",
-            "黑塔|空间站人偶|天才|模拟宇宙|研究|论文|技术|算力|数据",
-        )
-
-    @property
     def reflection_schedule(self):
         return self._config.get("reflection_schedule", "0 2 * * *")
 
@@ -115,13 +108,6 @@ class PluginConfig:
     @property
     def auto_profile_batch_interval(self):
         return int(self._config.get("auto_profile_batch_interval", 30))
-
-    @property
-    def core_info_keywords(self):
-        return self._config.get(
-            "core_info_keywords",
-            "我是谁,我的名字,我的身份,我的职责",
-        )
 
     # Reflection
     @property
@@ -423,6 +409,22 @@ class PluginConfig:
     @property
     def debug_log_enabled(self):
         return self._parse_bool(self._config.get("debug_log_enabled"), False)
+
+    @property
+    def memory_debug_enabled(self):
+        return self._parse_bool(self._config.get("memory_debug_enabled"), False)
+
+    @property
+    def engagement_debug_enabled(self):
+        return self._parse_bool(self._config.get("engagement_debug_enabled"), False)
+
+    @property
+    def affinity_debug_enabled(self):
+        return self._parse_bool(self._config.get("affinity_debug_enabled"), False)
+
+    @property
+    def memory_query_fallback_enabled(self):
+        return self._parse_bool(self._config.get("memory_query_fallback_enabled"), True)
 
     @property
     def disable_framework_contexts(self):

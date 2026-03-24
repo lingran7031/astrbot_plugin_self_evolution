@@ -42,8 +42,15 @@ class EngagementExecutor:
         self.planner = planner
         self.cfg = plugin.cfg
 
+    def _debug(self, msg: str):
+        if getattr(self.cfg, "engagement_debug_enabled", False):
+            logger.debug(msg)
+
     async def execute(self, plan: EngagementPlan, state: GroupSocialState) -> EngagementExecutionResult:
         if plan.level == EngagementLevel.IGNORE:
+            self._debug(
+                f"[Engagement] execute=yes group={getattr(state, 'group_id', '?')} level=IGNORE action=none reason={plan.reason}"
+            )
             return EngagementExecutionResult(
                 executed=False,
                 level=plan.level,
@@ -52,13 +59,25 @@ class EngagementExecutor:
             )
 
         if plan.level == EngagementLevel.REACT:
-            return await self._execute_react(plan, state)
+            result = await self._execute_react(plan, state)
+            self._debug(
+                f"[Engagement] execute=yes group={getattr(state, 'group_id', '?')} level=REACT action={result.action}"
+            )
+            return result
 
         if plan.level == EngagementLevel.BRIEF:
-            return await self._execute_brief(plan, state)
+            result = await self._execute_brief(plan, state)
+            self._debug(
+                f"[Engagement] execute=yes group={getattr(state, 'group_id', '?')} level=BRIEF action={result.action}"
+            )
+            return result
 
         if plan.level == EngagementLevel.FULL:
-            return await self._execute_full(plan, state)
+            result = await self._execute_full(plan, state)
+            self._debug(
+                f"[Engagement] execute=yes group={getattr(state, 'group_id', '?')} level=FULL action={result.action}"
+            )
+            return result
 
         return EngagementExecutionResult(
             executed=False,

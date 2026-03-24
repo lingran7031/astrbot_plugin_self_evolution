@@ -43,6 +43,10 @@ class EngagementPlanner:
         self.plugin = plugin
         self.cfg = plugin.cfg
 
+    def _debug(self, msg: str):
+        if getattr(self.cfg, "engagement_debug_enabled", False):
+            logger.debug(msg)
+
     def classify_scene(self, messages: list[dict], state: GroupSocialState) -> SceneType:
         if not messages:
             return SceneType.IDLE
@@ -145,6 +149,9 @@ class EngagementPlanner:
         if state.last_bot_message_time > 0:
             bot_silence = now - state.last_bot_message_time
             if bot_silence < cooldown_seconds:
+                self._debug(
+                    f"[Engagement] eligible=no group={getattr(state, 'group_id', '?')} reason=cooldown remaining={int(cooldown_seconds - bot_silence)}s"
+                )
                 return EngagementEligibility(
                     allowed=False,
                     reason_code="E_COOLDOWN",
@@ -153,6 +160,9 @@ class EngagementPlanner:
                 )
 
         if silence_seconds < 5:
+            self._debug(
+                f"[Engagement] eligible=no group={getattr(state, 'group_id', '?')} reason=silence_too_short {int(silence_seconds)}s"
+            )
             return EngagementEligibility(
                 allowed=False,
                 reason_code="E_SILENCE",
@@ -161,6 +171,9 @@ class EngagementPlanner:
             )
 
         if state.consecutive_bot_replies >= 2:
+            self._debug(
+                f"[Engagement] eligible=no group={getattr(state, 'group_id', '?')} reason=bot_flood count={state.consecutive_bot_replies}"
+            )
             return EngagementEligibility(
                 allowed=False,
                 reason_code="E_BOT_FLOOD",
@@ -169,6 +182,9 @@ class EngagementPlanner:
             )
 
         if state.message_count_window < min_new_messages:
+            self._debug(
+                f"[Engagement] eligible=no group={getattr(state, 'group_id', '?')} reason=msg_count {state.message_count_window}/{min_new_messages}"
+            )
             return EngagementEligibility(
                 allowed=False,
                 reason_code="E_MSG_COUNT",
@@ -177,6 +193,9 @@ class EngagementPlanner:
                 silence_seconds=silence_seconds,
             )
 
+        self._debug(
+            f"[Engagement] eligible=yes group={getattr(state, 'group_id', '?')} msgs={state.message_count_window} silence={int(silence_seconds)}s"
+        )
         return EngagementEligibility(
             allowed=True,
             reason_code="OK",
@@ -197,89 +216,112 @@ class EngagementPlanner:
 
         if scene == SceneType.IDLE:
             if has_mention or has_reply_to_bot:
-                return EngagementPlan(
+                plan = EngagementPlan(
                     level=EngagementLevel.BRIEF,
                     reason="idle场景但被明确唤醒",
                     confidence=0.7,
                     scene=scene,
                 )
-            return EngagementPlan(
-                level=EngagementLevel.IGNORE,
-                reason="idle场景且无明确唤醒",
-                confidence=0.8,
-                scene=scene,
+            else:
+                plan = EngagementPlan(
+                    level=EngagementLevel.IGNORE,
+                    reason="idle场景且无明确唤醒",
+                    confidence=0.8,
+                    scene=scene,
+                )
+            self._debug(
+                f"[Engagement] scene=idle eligible={'yes' if eligibility.allowed else 'no'} level={plan.level.value} reason={plan.reason}"
             )
+            return plan
 
         if scene == SceneType.HELP:
             if has_mention or has_reply_to_bot:
                 confidence = min(confidence + 0.2, 1.0)
-                return EngagementPlan(
+                plan = EngagementPlan(
                     level=EngagementLevel.FULL,
                     reason="help场景且被明确唤醒",
                     confidence=confidence,
                     scene=scene,
                 )
-            if self._high_relevance_check(state):
-                return EngagementPlan(
+            elif self._high_relevance_check(state):
+                plan = EngagementPlan(
                     level=EngagementLevel.BRIEF,
                     reason="help场景且高相关",
                     confidence=0.5,
                     scene=scene,
                 )
-            return EngagementPlan(
-                level=EngagementLevel.REACT,
-                reason="help场景低相关",
-                confidence=0.4,
-                scene=scene,
+            else:
+                plan = EngagementPlan(
+                    level=EngagementLevel.REACT,
+                    reason="help场景低相关",
+                    confidence=0.4,
+                    scene=scene,
+                )
+            self._debug(
+                f"[Engagement] scene=help eligible={'yes' if eligibility.allowed else 'no'} level={plan.level.value} reason={plan.reason}"
             )
+            return plan
 
         if scene == SceneType.DEBATE:
             if has_mention or has_reply_to_bot:
                 confidence = min(confidence + 0.15, 1.0)
-                return EngagementPlan(
+                plan = EngagementPlan(
                     level=EngagementLevel.REACT,
                     reason="debate场景但被明确唤醒",
                     confidence=confidence,
                     scene=scene,
                 )
-            return EngagementPlan(
-                level=EngagementLevel.IGNORE,
-                reason="debate场景且无唤醒",
-                confidence=0.6,
-                scene=scene,
+            else:
+                plan = EngagementPlan(
+                    level=EngagementLevel.IGNORE,
+                    reason="debate场景且无唤醒",
+                    confidence=0.6,
+                    scene=scene,
+                )
+            self._debug(
+                f"[Engagement] scene=debate eligible={'yes' if eligibility.allowed else 'no'} level={plan.level.value} reason={plan.reason}"
             )
+            return plan
 
         if scene == SceneType.CASUAL:
             if has_mention or has_reply_to_bot:
-                return EngagementPlan(
+                plan = EngagementPlan(
                     level=EngagementLevel.BRIEF,
                     reason="casual场景且被明确唤醒",
                     confidence=0.7,
                     scene=scene,
                 )
-            react_prob = getattr(self.cfg, "engagement_react_probability", 0.15)
-            import random as _random
+            else:
+                react_prob = getattr(self.cfg, "engagement_react_probability", 0.15)
+                import random as _random
 
-            if _random.random() < react_prob:
-                return EngagementPlan(
-                    level=EngagementLevel.REACT,
-                    reason="casual场景随机react",
-                    confidence=0.5,
-                    scene=scene,
-                )
-            return EngagementPlan(
-                level=EngagementLevel.IGNORE,
-                reason="casual场景不参与",
-                confidence=0.7,
-                scene=scene,
+                if _random.random() < react_prob:
+                    plan = EngagementPlan(
+                        level=EngagementLevel.REACT,
+                        reason="casual场景随机react",
+                        confidence=0.5,
+                        scene=scene,
+                    )
+                else:
+                    plan = EngagementPlan(
+                        level=EngagementLevel.IGNORE,
+                        reason="casual场景不参与",
+                        confidence=0.7,
+                        scene=scene,
+                    )
+            self._debug(
+                f"[Engagement] scene=casual eligible={'yes' if eligibility.allowed else 'no'} level={plan.level.value} reason={plan.reason}"
             )
+            return plan
 
-        return EngagementPlan(
+        plan = EngagementPlan(
             level=EngagementLevel.IGNORE,
             reason="默认忽略",
             confidence=1.0,
             scene=scene,
         )
+        self._debug(f"[Engagement] scene=unknown level=IGNORE reason=default")
+        return plan
 
     def classify_scene_from_state(self, state: GroupSocialState) -> SceneType:
         if state.scene != SceneType.CASUAL:

@@ -31,6 +31,10 @@ class AffinityEngine:
         self.cfg = plugin.cfg
         self.dao = plugin.dao
 
+    def _debug(self, msg: str):
+        if getattr(self.cfg, "affinity_debug_enabled", False):
+            logger.debug(msg)
+
     def _get_param(self, name: str, default):
         return getattr(self.cfg, name, default)
 
@@ -127,7 +131,13 @@ class AffinityEngine:
                 delta = self.direct_engagement_delta
                 await self.dao.record_affinity_signal(user_id, scope_id, self.DIRECT_ENGAGEMENT, delta)
                 signals.append(AffinitySignal(self.DIRECT_ENGAGEMENT, delta, reason))
-                logger.debug(f"[Affinity] user={user_id} signal={self.DIRECT_ENGAGEMENT} delta={delta} reason={reason}")
+                self._debug(
+                    f"[Affinity] user={user_id} signal={self.DIRECT_ENGAGEMENT} delta={delta} applied=yes reason={reason}"
+                )
+            else:
+                self._debug(
+                    f"[Affinity] user={user_id} signal={self.DIRECT_ENGAGEMENT} delta={self.direct_engagement_delta} applied=no reason={reason}"
+                )
 
         if self._detect_friendly(msg_text):
             can_friendly, reason = await self.dao.can_apply_affinity_signal(
@@ -137,7 +147,13 @@ class AffinityEngine:
                 delta = self.friendly_delta
                 await self.dao.record_affinity_signal(user_id, scope_id, self.FRIENDLY_LANGUAGE, delta)
                 signals.append(AffinitySignal(self.FRIENDLY_LANGUAGE, delta, reason))
-                logger.debug(f"[Affinity] user={user_id} signal={self.FRIENDLY_LANGUAGE} delta={delta} reason={reason}")
+                self._debug(
+                    f"[Affinity] user={user_id} signal={self.FRIENDLY_LANGUAGE} delta={delta} applied=yes reason={reason}"
+                )
+            else:
+                self._debug(
+                    f"[Affinity] user={user_id} signal={self.FRIENDLY_LANGUAGE} delta={self.friendly_delta} applied=no reason={reason}"
+                )
 
         if self._detect_hostile(msg_text):
             can_hostile, reason = await self.dao.can_apply_affinity_signal(
@@ -147,7 +163,13 @@ class AffinityEngine:
                 delta = self.hostile_delta
                 await self.dao.record_affinity_signal(user_id, scope_id, self.HOSTILE_LANGUAGE, delta)
                 signals.append(AffinitySignal(self.HOSTILE_LANGUAGE, delta, reason))
-                logger.debug(f"[Affinity] user={user_id} signal={self.HOSTILE_LANGUAGE} delta={delta} reason={reason}")
+                self._debug(
+                    f"[Affinity] user={user_id} signal={self.HOSTILE_LANGUAGE} delta={delta} applied=yes reason={reason}"
+                )
+            else:
+                self._debug(
+                    f"[Affinity] user={user_id} signal={self.HOSTILE_LANGUAGE} delta={self.hostile_delta} applied=no reason={reason}"
+                )
 
         can_returning, reason = await self.dao.can_apply_affinity_signal(
             user_id, self.RETURNING_USER, 1440, daily_limit=self.returning_user_daily_limit
@@ -158,7 +180,13 @@ class AffinityEngine:
                 delta = self.returning_user_delta
                 await self.dao.record_affinity_signal(user_id, scope_id, self.RETURNING_USER, delta)
                 signals.append(AffinitySignal(self.RETURNING_USER, delta, reason))
-                logger.debug(f"[Affinity] user={user_id} signal={self.RETURNING_USER} delta={delta} reason={reason}")
+                self._debug(
+                    f"[Affinity] user={user_id} signal={self.RETURNING_USER} delta={delta} applied=yes reason={reason}"
+                )
+            else:
+                self._debug(
+                    f"[Affinity] user={user_id} signal={self.RETURNING_USER} delta={self.returning_user_delta} applied=no reason=not_returning"
+                )
 
         for sig in signals:
             await self.dao.update_affinity(user_id, sig.delta)

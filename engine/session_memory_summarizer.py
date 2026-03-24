@@ -63,6 +63,10 @@ class SessionMemorySummarizer:
         self.store = SessionMemoryStore(plugin)
         self.memory_fetch_page_size = 100
 
+    def _debug(self, msg: str):
+        if getattr(self.plugin, "cfg", None) and self.plugin.cfg.memory_debug_enabled:
+            logger.debug(msg)
+
     def _is_private_scope(self, scope_id: str) -> bool:
         return scope_id.startswith("private_")
 
@@ -162,7 +166,7 @@ class SessionMemorySummarizer:
                 messages = await self._get_scope_history_page(bot, scope_id, page_size, cursor=cursor)
                 if not messages:
                     if page_index == 1:
-                        logger.debug(f"[Memory] 会话 {scope_id}: 无历史消息")
+                        self._debug(f"[MemorySummary] scope={scope_id} no_messages=true")
                     break
 
                 oldest_message = messages[-1]
@@ -180,8 +184,8 @@ class SessionMemorySummarizer:
                         selected_messages.append(msg)
                         page_hit_count += 1
 
-                logger.debug(
-                    f"[Memory] 会话 {scope_id}: 第 {page_index} 页获取 {len(messages)} 条，命中 {page_hit_count} 条 {summary_date} 消息"
+                self._debug(
+                    f"[MemorySummary] scope={scope_id} page={page_index} fetched={len(messages)} hit={page_hit_count} date={summary_date}"
                 )
 
                 if oldest_time < start_ts:
@@ -192,16 +196,17 @@ class SessionMemorySummarizer:
                     break
 
                 if cursor is not None and next_cursor == cursor and page_hit_count == 0:
-                    logger.debug(f"[Memory] 会话 {scope_id}: 历史游标未推进，停止继续翻页")
+                    self._debug(f"[MemorySummary] scope={scope_id} cursor_stall=true aborting")
                     break
 
                 cursor = next_cursor
 
             if not selected_messages:
-                logger.debug(f"[Memory] 会话 {scope_id}: {summary_date} 无可总结消息")
+                self._debug(f"[MemorySummary] scope={scope_id} date={summary_date} no_messages_for_window=true")
                 return []
 
             selected_messages.sort(key=self._get_message_sort_key)
+            self._debug(f"[MemorySummary] scope={scope_id} date={summary_date} messages={len(selected_messages)}")
             return selected_messages
 
         except Exception as e:
@@ -435,9 +440,10 @@ class SessionMemorySummarizer:
 
         for scope_id in all_scopes:
             try:
-                logger.debug(f"[Memory] 正在总结 scope={scope_id}")
+                self._debug(f"[MemorySummary] scope={scope_id} task=starting")
                 memory = await self._summarize_scope(scope_id, reference_dt)
                 if not memory:
+                    self._debug(f"[MemorySummary] scope={scope_id} result=skipped no_memory")
                     result["skipped_scopes"].append(scope_id)
                     continue
 
@@ -448,8 +454,10 @@ class SessionMemorySummarizer:
 
                 save_result = await self.store.save_daily_summary(scope_id, memory, summary_date)
                 if "失败" in save_result or "不可用" in save_result:
+                    self._debug(f"[MemorySummary] scope={scope_id} date={summary_date} saved=failed")
                     result["failed_scopes"].append(scope_id)
                 else:
+                    self._debug(f"[MemorySummary] scope={scope_id} date={summary_date} saved=yes")
                     result["success_scopes"].append(scope_id)
 
                 await asyncio.sleep(0.5)

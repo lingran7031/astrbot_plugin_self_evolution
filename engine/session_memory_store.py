@@ -14,6 +14,10 @@ class SessionMemoryStore:
     def __init__(self, plugin):
         self.plugin = plugin
 
+    def _debug(self, msg: str):
+        if hasattr(self.plugin, "cfg") and self.plugin.cfg.memory_debug_enabled:
+            logger.debug(msg)
+
     def _is_private_scope(self, scope_id: str) -> bool:
         return scope_id.startswith(PRIVATE_SCOPE_PREFIX)
 
@@ -92,10 +96,10 @@ class SessionMemoryStore:
                     umo=umo,
                 )
             except Exception as e:
-                logger.debug(f"[Memory] sync_scope_kb_binding: {e}")
+                self._debug(f"[MemoryStore] scope={scope_id} kb_bind=e: {e}")
 
         except Exception as e:
-            logger.debug(f"[Memory] sync_scope_kb_binding 出错: {e}")
+            self._debug(f"[MemoryStore] scope={scope_id} kb_bind=error: {e}")
 
     async def save_daily_summary(
         self,
@@ -165,7 +169,7 @@ class SessionMemoryStore:
                 file_type="txt",
                 pre_chunked_text=content_for_upload,
             )
-            logger.debug(f"[Memory] 总结已保存: scope={scope_id}, date={summary_date}")
+            self._debug(f"[MemoryStore] scope={scope_id} date={summary_date} saved=yes")
             return f"总结已保存: {summary_date}"
 
         except Exception as e:
