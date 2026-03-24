@@ -415,6 +415,10 @@ class PluginConfig:
     def engagement_react_probability(self) -> float:
         return float(self._config.get("engagement_react_probability", 0.15))
 
+    @property
+    def engagement_new_system_enabled(self) -> bool:
+        return self._parse_bool(self._config.get("engagement_new_system_enabled"), False)
+
     # Misc
     @property
     def debug_log_enabled(self):

@@ -349,6 +349,13 @@
         "default": 0.15,
         "hint": "casual场景下随机触发轻反应(表情包/短句)的概率。"
     },
+    "engagement_new_system_enabled": {
+        "title": "互动 / 使用新版社交引擎",
+        "description": "启用新版分级参与引擎",
+        "type": "bool",
+        "default": false,
+        "hint": "启用后将使用新的IGNORE/REACT/BRIEF/FULL分级参与系统。"
+    },
     "san_enabled": {
         "title": "行为 / SAN 模块",
         "description": "启用SAN系统",

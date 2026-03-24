@@ -289,8 +289,12 @@ async def scheduled_interject(plugin) -> ScheduledTaskResult:
 
 async def _interject_impl(plugin):
     scopes, _ = await _resolve_target_scopes(plugin, "Interject", include_private=False, include_groups=True)
+    new_system = getattr(plugin.cfg, "engagement_new_system_enabled", False)
     for group_id in scopes:
-        await plugin.eavesdropping.interject_check_group(group_id)
+        if new_system:
+            await plugin.eavesdropping.check_engagement(group_id)
+        else:
+            await plugin.eavesdropping.interject_check_group(group_id)
 
 
 async def scheduled_profile_cleanup(plugin) -> ScheduledTaskResult:
