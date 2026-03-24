@@ -259,9 +259,9 @@ class SchedulerTasksTests(IsolatedAsyncioTestCase):
                 auto_profile_batch_interval=0,
             ),
             get_group_umo=lambda group_id: "qq:group:3001",
-            profile=SimpleNamespace(analyze_and_build_profiles=AsyncMock()),
+            profile_builder=SimpleNamespace(analyze_and_build_profiles=AsyncMock()),
         )
 
         await tasks.scheduled_profile_build(plugin)
 
-        plugin.profile.analyze_and_build_profiles.assert_awaited_once_with("3001", umo="qq:group:3001")
+        plugin.profile_builder.analyze_and_build_profiles.assert_awaited_once_with("3001", umo="qq:group:3001")

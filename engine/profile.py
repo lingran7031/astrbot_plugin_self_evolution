@@ -897,24 +897,14 @@ class ProfileManager:
         return result
 
     async def cleanup_expired_profiles(self, days: int = 90):
-        """清理过期画像 - 根据文件修改时间删除长时间未更新的画像"""
+        """清理过期画像（兼容门面，转发到 ProfileStore）"""
         try:
-            cutoff_time = time.time() - (days * 86400)
-            deleted_count = 0
-
-            for profile_path in self.profile_dir.glob("*.yaml"):
-                try:
-                    if profile_path.stat().st_mtime < cutoff_time:
-                        profile_path.unlink()
-                        deleted_count += 1
-                        logger.debug(f"[Profile] 已删除过期画像: {profile_path.name}")
-                except Exception as e:
-                    logger.warning(f"[Profile] 删除画像失败 {profile_path.name}: {e}")
-
-            logger.debug(f"[Profile] 清理完成，共删除 {deleted_count} 个过期画像")
-            return deleted_count
+            store = getattr(self.plugin, "profile_store", None)
+            if store:
+                return await store.cleanup_expired_profiles(days)
+            return 0
         except Exception as e:
-            logger.warning(f"[Profile] 清理过期画像失败: {e}")
+            logger.warning(f"[Profile] cleanup_expired_profiles 转发失败: {e}")
             return 0
 
     async def view_profile(self, group_id: str, user_id: str) -> str:

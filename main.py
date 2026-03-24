@@ -33,6 +33,11 @@ from .engine.memory_types import MemoryQueryIntent, MemoryQueryRequest
 from .engine.meta_infra import MetaInfra
 from .engine.persona import PersonaManager
 from .engine.profile import ProfileManager
+from .engine.profile_builder import ProfileBuilder
+from .engine.profile_store import ProfileStore
+from .engine.profile_summary_service import ProfileSummaryService
+from .engine.session_memory_store import SessionMemoryStore
+from .engine.session_memory_summarizer import SessionMemorySummarizer
 from .engine.sticker_store import StickerStore
 from .scheduler.register import register_tasks
 
@@ -131,6 +136,12 @@ class SelfEvolutionPlugin(Star):
             self.memory = MemoryManager(self)
             self.persona = PersonaManager(self)
             self.profile = ProfileManager(self)
+            # 正式服务对象（facade 背后）
+            self.session_memory_store = SessionMemoryStore(self)
+            self.session_memory_summarizer = SessionMemorySummarizer(self)
+            self.profile_store = ProfileStore(self)
+            self.profile_builder = ProfileBuilder(self)
+            self.profile_summary_service = ProfileSummaryService(self)
             # 娱乐功能模块
             self.entertainment = EntertainmentEngine(self)
             # 关系温度引擎
@@ -145,7 +156,7 @@ class SelfEvolutionPlugin(Star):
             self.memory_router = MemoryRouter(self)
             self.memory_tools = MemoryTools(self)
             logger.info(
-                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, Entertainment, ImageCache, MetaInfra, Memory, Persona, Profile, SAN, Reflection) 初始化完成。"
+                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, Entertainment, ImageCache, MetaInfra, Memory, Persona, Profile, SAN, Reflection, SessionMemory*, Profile*) 初始化完成。"
             )
         except Exception as e:
             logger.error(f"[SelfEvolution] 核心组件初始化失败: {e}")

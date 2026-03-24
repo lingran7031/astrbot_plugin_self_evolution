@@ -400,17 +400,28 @@ class SessionMemoryStore:
             if not results:
                 return ""
 
-            parts = []
-            for r in results:
-                content = ""
-                if isinstance(r, dict):
-                    content = r.get("content", "") or r.get("text", "")
-                elif isinstance(r, str):
-                    content = r
-                if content:
-                    parts.append(content)
+            chunks = results.get("results", []) if isinstance(results, dict) else results
+            if not chunks:
+                return ""
 
-            return "\n\n".join(parts)
+            lines = ["【相关记忆】"]
+            shown = 0
+            for chunk in chunks:
+                if shown >= max_results:
+                    break
+                text = chunk.get("text", "") or chunk.get("content", "") or ""
+                if not text:
+                    continue
+                if len(text) > 500:
+                    text = text[:500] + "..."
+                lines.append(f"- {text}")
+                shown += 1
+
+            result_text = "\n".join(lines)
+            logger.debug(
+                f"[MemoryStore] retrieve_summary: scope={scope_id}, query={query[:30]}..., returned {shown} results"
+            )
+            return result_text
 
         except Exception as e:
             logger.warning(f"[Memory] retrieve_summary failed: {e}")

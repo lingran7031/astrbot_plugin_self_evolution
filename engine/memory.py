@@ -83,23 +83,14 @@ class MemoryManager:
         return self.plugin.cfg.memory_summary_chunk_size
 
     async def daily_summary(self, reference_dt: datetime | None = None):
-        """执行每日会话总结"""
-        logger.debug("[Memory] 开始每日会话总结...")
-
+        """执行每日会话总结（兼容门面，实际转发到 SessionMemorySummarizer）"""
         try:
             if not getattr(getattr(self.plugin, "cfg", None), "memory_enabled", True):
                 logger.debug("[Memory] memory_enabled=False, skip daily summary")
                 return
-            scopes = await self._get_target_scopes()
-            if not scopes:
-                logger.debug("[Memory] 无目标会话，跳过总结")
-                return
-
-            for scope_id in scopes:
-                await self._summarize_scope(scope_id, reference_dt=reference_dt)
-
-            logger.debug("[Memory] 每日会话总结完成")
-
+            summarizer = getattr(self.plugin, "session_memory_summarizer", None)
+            if summarizer:
+                await summarizer.daily_summary(reference_dt)
         except Exception as e:
             logger.error(f"[Memory] 每日会话总结异常: {e}", exc_info=True)
 
