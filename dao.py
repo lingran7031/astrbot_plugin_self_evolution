@@ -156,6 +156,20 @@ class SelfEvolutionDAO:
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS engagement_state (
+                scope_id TEXT PRIMARY KEY,
+                last_bot_engagement_at TEXT,
+                last_bot_engagement_level TEXT,
+                last_seen_message_seq INTEGER,
+                scene_type TEXT DEFAULT 'casual',
+                message_count_window INTEGER DEFAULT 0,
+                question_count_window INTEGER DEFAULT 0,
+                emotion_count_window INTEGER DEFAULT 0,
+                consecutive_bot_replies INTEGER DEFAULT 0,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS pending_evolutions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
@@ -733,3 +747,42 @@ class SelfEvolutionDAO:
             "rebuilt": True,
             "db_path": str(db_file),
         }
+
+    @with_db_retry()
+    async def get_engagement_state(self, scope_id: str) -> Optional[dict]:
+        db = await self.get_conn()
+        async with self._db_lock:
+            cursor = await db.execute(
+                "SELECT * FROM engagement_state WHERE scope_id = ?",
+                (scope_id,),
+            )
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
+    @with_db_retry()
+    async def save_engagement_state(self, scope_id: str, state: dict):
+        db = await self.get_conn()
+        now = datetime.now().isoformat()
+        async with self._write_lock:
+            await db.execute(
+                """INSERT OR REPLACE INTO engagement_state 
+                   (scope_id, last_bot_engagement_at, last_bot_engagement_level, 
+                    last_seen_message_seq, scene_type, message_count_window,
+                    question_count_window, emotion_count_window, consecutive_bot_replies, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    scope_id,
+                    state.get("last_bot_engagement_at"),
+                    state.get("last_bot_engagement_level"),
+                    state.get("last_seen_message_seq"),
+                    state.get("scene_type", "casual"),
+                    state.get("message_count_window", 0),
+                    state.get("question_count_window", 0),
+                    state.get("emotion_count_window", 0),
+                    state.get("consecutive_bot_replies", 0),
+                    now,
+                ),
+            )
+            await db.commit()

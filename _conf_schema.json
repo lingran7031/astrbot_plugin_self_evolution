@@ -342,6 +342,13 @@
         "default": true,
         "hint": "每日自动恢复低于50的用户好感度，每天最多+2。独立于反思模块运行。"
     },
+    "engagement_react_probability": {
+        "title": "互动 / 轻反应概率",
+        "description": "casual场景下随机轻反应概率",
+        "type": "float",
+        "default": 0.15,
+        "hint": "casual场景下随机触发轻反应(表情包/短句)的概率。"
+    },
     "san_enabled": {
         "title": "行为 / SAN 模块",
         "description": "启用SAN系统",

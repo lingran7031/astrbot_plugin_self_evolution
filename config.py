@@ -411,6 +411,10 @@ class PluginConfig:
     def affinity_recovery_enabled(self) -> bool:
         return self._parse_bool(self._config.get("affinity_recovery_enabled"), True)
 
+    @property
+    def engagement_react_probability(self) -> float:
+        return float(self._config.get("engagement_react_probability", 0.15))
+
     # Misc
     @property
     def debug_log_enabled(self):
