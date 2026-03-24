@@ -370,6 +370,43 @@ class PluginConfig:
     def sticker_freq_threshold(self):
         return int(self._config.get("sticker_freq_threshold", 2))
 
+    # Affinity
+    @property
+    def affinity_auto_enabled(self):
+        return self._parse_bool(self._config.get("affinity_auto_enabled"), True)
+
+    @property
+    def affinity_direct_engagement_delta(self):
+        return int(self._config.get("affinity_direct_engagement_delta", 1))
+
+    @property
+    def affinity_friendly_language_delta(self):
+        return int(self._config.get("affinity_friendly_language_delta", 1))
+
+    @property
+    def affinity_hostile_language_delta(self):
+        return int(self._config.get("affinity_hostile_language_delta", -2))
+
+    @property
+    def affinity_returning_user_delta(self):
+        return int(self._config.get("affinity_returning_user_delta", 1))
+
+    @property
+    def affinity_direct_engagement_cooldown_minutes(self):
+        return int(self._config.get("affinity_direct_engagement_cooldown_minutes", 360))
+
+    @property
+    def affinity_friendly_daily_limit(self):
+        return int(self._config.get("affinity_friendly_daily_limit", 2))
+
+    @property
+    def affinity_hostile_cooldown_minutes(self):
+        return int(self._config.get("affinity_hostile_cooldown_minutes", 60))
+
+    @property
+    def affinity_returning_user_daily_limit(self):
+        return int(self._config.get("affinity_returning_user_daily_limit", 1))
+
     # Misc
     @property
     def debug_log_enabled(self):

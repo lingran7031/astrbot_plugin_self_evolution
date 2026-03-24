@@ -22,6 +22,7 @@ from .config import PluginConfig
 from .dao import SelfEvolutionDAO
 from .engine.context_injection import build_identity_context, get_group_history, parse_message_chain
 from .engine.eavesdropping import EavesdroppingEngine
+from .engine.affinity import AffinityEngine
 from .engine.entertainment import EntertainmentEngine
 from .engine.event_context import extract_interaction_context
 from .engine.message_normalization import ensure_event_message_text
@@ -130,6 +131,8 @@ class SelfEvolutionPlugin(Star):
             self.profile = ProfileManager(self)
             # 娱乐功能模块
             self.entertainment = EntertainmentEngine(self)
+            # 关系温度引擎
+            self.affinity = AffinityEngine(self)
             # 认知系统模块
             self.san_system = SANSystem(self)
             # 反思模块
@@ -571,6 +574,9 @@ class SelfEvolutionPlugin(Star):
         group_id = event.get_group_id()
         msg_text = await ensure_event_message_text(event, self.dao)
 
+        # 关系温度自动积累（弱信号）
+        asyncio.create_task(self.affinity.process_message(event))
+
         # 表情包学习：检测指定人的图片
         if group_id and self.cfg.sticker_learning_enabled:
             asyncio.create_task(self.entertainment.learn_sticker_from_event(event))
@@ -682,7 +688,11 @@ class SelfEvolutionPlugin(Star):
         """
         return await self.persona.evolve_persona(event, new_system_prompt, reason)
 
-    @filter.command("affinity")
+    @filter.command_group("affinity")
+    def affinity_group(self):
+        """好感度管理"""
+
+    @affinity_group.command("show")
     async def check_affinity(self, event: AstrMessageEvent):
         """查询机器人对你的当前好感度。"""
         user_id = event.get_sender_id()
@@ -693,6 +703,33 @@ class SelfEvolutionPlugin(Star):
             status = "【已熔断/彻底拉黑】"
 
         yield event.plain_result(f"UID: {user_id}\n{self.persona_name} 的情感矩阵评分: {score}/100\n分类状态: {status}")
+
+    @affinity_group.command("debug")
+    async def affinity_debug(self, event: AstrMessageEvent, user_id: str = ""):
+        """[管理员] 查看指定用户的详细好感度状态。"""
+        if not event.is_admin():
+            yield event.plain_result("错误：权限不足。")
+            return
+
+        target_user = user_id if user_id else event.get_sender_id()
+        info = await self.dao.get_affinity_debug_info(target_user)
+
+        signals_lines = []
+        for s in info["recent_signals"]:
+            signals_lines.append(f"  - {s['signal_type']}: {s['delta']:+d} @ {s['triggered_at'][:19]}")
+
+        returning_info = ""
+        if info["returning_user"]:
+            r = info["returning_user"]
+            returning_info = f"\n连续活跃: {r['consecutive_days']} 天（上次: {r['last_date']}）"
+
+        result = f"""=== UID {target_user} 好感度详情 ===
+当前评分: {info["affinity_score"]}/100
+最近互动: {info["last_interaction"] or "无记录"}
+最近信号:
+{chr(10).join(signals_lines) if signals_lines else "  (无)"}{returning_info}
+"""
+        yield event.plain_result(result)
 
     @filter.command("set_affinity")
     async def set_affinity(self, event: AstrMessageEvent, user_id: str, score: int):

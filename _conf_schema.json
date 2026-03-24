@@ -132,6 +132,69 @@
         "default": true,
         "hint": "对话中识别到的偏好或身份信息是否写回画像。"
     },
+    "affinity_auto_enabled": {
+        "title": "关系 / 自动积分",
+        "description": "启用自动好感度",
+        "type": "bool",
+        "default": true,
+        "hint": "自动根据弱信号调整好感度，无需LLM调用。"
+    },
+    "affinity_direct_engagement_delta": {
+        "title": "关系 / 互动加分",
+        "description": "主动互动加分值",
+        "type": "int",
+        "default": 1,
+        "hint": "@bot、回复bot、私聊消息的自动加分。"
+    },
+    "affinity_friendly_language_delta": {
+        "title": "关系 / 礼貌加分",
+        "description": "礼貌语言加分值",
+        "type": "int",
+        "default": 1,
+        "hint": "检测到谢谢、厉害等礼貌词时的自动加分。"
+    },
+    "affinity_hostile_language_delta": {
+        "title": "关系 / 攻击扣分",
+        "description": "攻击语言扣分值",
+        "type": "int",
+        "default": -2,
+        "hint": "检测到滚、傻等攻击词时的自动扣分。"
+    },
+    "affinity_returning_user_delta": {
+        "title": "关系 / 回访加分",
+        "description": "回访用户加分值",
+        "type": "int",
+        "default": 1,
+        "hint": "连续多日回访的用户自动加分。"
+    },
+    "affinity_direct_engagement_cooldown_minutes": {
+        "title": "关系 / 互动冷却",
+        "description": "互动冷却分钟",
+        "type": "int",
+        "default": 360,
+        "hint": "direct_engagement信号的重试间隔（分钟）。"
+    },
+    "affinity_friendly_daily_limit": {
+        "title": "关系 / 礼貌上限",
+        "description": "礼貌词每日上限",
+        "type": "int",
+        "default": 2,
+        "hint": "friendly_language信号每天最多触发次数。"
+    },
+    "affinity_hostile_cooldown_minutes": {
+        "title": "关系 / 攻击冷却",
+        "description": "攻击冷却分钟",
+        "type": "int",
+        "default": 60,
+        "hint": "hostile_language信号的重试间隔（分钟）。"
+    },
+    "affinity_returning_user_daily_limit": {
+        "title": "关系 / 回访上限",
+        "description": "回访每日上限",
+        "type": "int",
+        "default": 1,
+        "hint": "returning_user信号每天最多触发次数。"
+    },
     "auto_profile_enabled": {
         "title": "画像 / 自动建档",
         "description": "启用自动建档",
