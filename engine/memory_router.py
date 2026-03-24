@@ -12,6 +12,11 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
+try:
+    from .memory_types import MemoryWriteDecision, MemoryWriteRequest, MemoryWriteTarget
+except ImportError:
+    from memory_types import MemoryWriteDecision, MemoryWriteRequest, MemoryWriteTarget
+
 logger = logging.getLogger("astrbot")
 
 
@@ -245,6 +250,31 @@ class MemoryRouter:
             return "trait"
 
         return "recent_update"
+
+    def route_write(self, request: MemoryWriteRequest) -> MemoryWriteDecision:
+        """路由写入请求，返回 MemoryWriteDecision
+
+        统一入口，不再直接决策。
+        """
+        decision = self.classify(
+            content=request.content,
+            category=request.category,
+            fact_type=request.fact_type,
+        )
+
+        target_map = {
+            MemoryTarget.PROFILE: MemoryWriteTarget.PROFILE,
+            MemoryTarget.KNOWLEDGE_BASE: MemoryWriteTarget.SESSION_EVENT,
+            MemoryTarget.REFLECTION_HINT: MemoryWriteTarget.REFLECTION_HINT,
+            MemoryTarget.DROP: MemoryWriteTarget.DROP,
+        }
+
+        return MemoryWriteDecision(
+            target=target_map.get(decision.target, MemoryWriteTarget.DROP),
+            fact_type=decision.fact_type,
+            reason=decision.reason,
+            confidence=decision.confidence,
+        )
 
     async def write(
         self,
