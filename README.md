@@ -351,6 +351,11 @@
 - `desire_cooldown_seconds`
 - `dropout_enabled`
 - `dropout_edge_rate`
+- `surprise_enabled`
+- `surprise_boost_keywords`
+- `inner_monologue_enabled`
+- `boredom_enabled`
+- `boredom_consecutive_count`
 
 ## 数据库维护
 
@@ -397,16 +402,11 @@
    - `/db show`
    - `/profile view`
 
-额外提醒：
+  额外提醒：
 
-- 当前版本的长期总结是按 scope 写入知识库的，所以“重装插件”和“删除知识库总结”不是同一件事。
+- 当前版本的长期总结是按 scope 写入知识库的，所以"重装插件"和"删除知识库总结"不是同一件事。
 - 如果你只删了数据库文件，没有清知识库，AstrBot 仍可能召回旧的会话总结。
 - 如果你只重装插件但保留画像文件，机器人依然会沿用旧画像。
-- `surprise_enabled`
-- `surprise_boost_keywords`
-- `inner_monologue_enabled`
-- `boredom_enabled`
-- `boredom_consecutive_count`
 
 ### 实验
 
