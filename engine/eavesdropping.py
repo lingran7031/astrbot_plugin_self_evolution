@@ -1534,6 +1534,12 @@ class EavesdroppingEngine:
             state.last_message_time = latest_time
             state.message_count_window = len(messages)
 
+            computed = planner.compute_scene_windows(messages, state)
+            state.question_count_window = computed["question_count_window"]
+            state.emotion_count_window = computed["emotion_count_window"]
+            state.mention_bot_recently = computed["mention_bot_recently"]
+            state.scene = planner.classify_scene(messages, state)
+
             has_mention = self._latest_message_mentions_bot(messages[0], bot_id)
 
             eligibility = planner.check_eligibility(

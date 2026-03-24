@@ -94,6 +94,47 @@ class EngagementPlanner:
 
         return SceneType.CASUAL
 
+    def compute_scene_windows(self, messages: list[dict], state: GroupSocialState) -> dict:
+        if not messages:
+            return {
+                "question_count_window": 0,
+                "emotion_count_window": 0,
+                "mention_bot_recently": False,
+            }
+
+        recent_msgs = messages[:10] if len(messages) > 10 else messages
+        bot_id = str(self.plugin._get_bot_id()) if hasattr(self.plugin, "_get_bot_id") else ""
+
+        question_count = 0
+        emotion_count = 0
+        mention_bot_recently = False
+
+        for msg in recent_msgs:
+            text = msg.get("text", "") or ""
+
+            for qw in QUESTION_WORDS:
+                if qw in text:
+                    question_count += 1
+                    break
+
+            for ew in EMOTION_WORDS:
+                if ew in text:
+                    emotion_count += 1
+                    break
+
+            if bot_id:
+                for seg in msg.get("message", []):
+                    if isinstance(seg, dict) and seg.get("type") == "at":
+                        at_qq = str(seg.get("data", {}).get("qq", ""))
+                        if at_qq == bot_id or at_qq == "all":
+                            mention_bot_recently = True
+
+        return {
+            "question_count_window": question_count,
+            "emotion_count_window": emotion_count,
+            "mention_bot_recently": mention_bot_recently,
+        }
+
     def check_eligibility(
         self, state: GroupSocialState, cooldown_seconds: int = 30, min_new_messages: int = 3
     ) -> EngagementEligibility:

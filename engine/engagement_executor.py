@@ -128,10 +128,9 @@ class EngagementExecutor:
         from .context_injection import build_identity_context
 
         group_id = state.scope_id
-        bot_id = str(self.plugin._get_bot_id()) if hasattr(self.plugin, "_get_bot_id") else ""
         persona = self.cfg.persona_name or "黑塔"
 
-        identity_ctx = await build_identity_context(group_id, self.plugin)
+        identity_ctx = build_identity_context(group_id, self.plugin)
 
         prompt = (
             f"你是{persona}。\n"
@@ -157,8 +156,9 @@ class EngagementExecutor:
             san_ctx = san.get_injection_context()
             prompt = f"{prompt}\n{san_ctx}"
 
-            resp = await group_umo.chat(prompt, max_tokens=100)
-            text = resp.strip()[:100]
+            llm_provider = self.plugin.context.get_using_provider(umo=group_umo)
+            resp = await llm_provider.text_chat(prompt=prompt, contexts=[])
+            text = resp.completion_text.strip()[:100] if hasattr(resp, "completion_text") else str(resp).strip()[:100]
 
             success = await self._send_message(group_id, text)
             if success:
