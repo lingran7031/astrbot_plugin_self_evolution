@@ -125,12 +125,10 @@ class EngagementExecutor:
                 reason=f"概率门未通过({final_prob})",
             )
 
-        from .context_injection import build_identity_context
-
         group_id = state.scope_id
         persona = self.cfg.persona_name or "黑塔"
 
-        identity_ctx = build_identity_context(group_id, self.plugin)
+        identity_ctx = f"[身份] 你是在群聊中的{persona}，以自然的方式参与讨论。"
 
         prompt = (
             f"你是{persona}。\n"
