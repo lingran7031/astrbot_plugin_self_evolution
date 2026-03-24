@@ -29,6 +29,7 @@
 - `scheduled_reflection` 与好感度恢复拆分为独立任务 `scheduled_affinity_recovery`，批处理失败不再偷偷恢复好感度
 - `build_profile()` 和 `analyze_and_build_profiles()` 的 prompt 统一改为输出 `## identity / preferences / traits / recent_updates / long_term_notes` 结构化 Markdown
 - `parse_target_user()` 改为识别 `/profile <subcommand> [user_id]` 命令组格式，不再错误把子命令当用户 ID
+- 互动系统重构为社交行为引擎，支持 IGNORE/REACT/BRIEF/FULL 四级参与策略和 IDLE/CASUAL/HELP/DEBATE 群态识别（可通过 `engagement_new_system_enabled` 开关切换）
 
 ### Fixed
 
@@ -51,12 +52,15 @@
 | `affinity_hostile_cooldown_minutes` | 攻击冷却（分钟） |
 | `affinity_returning_user_daily_limit` | 回访每日上限 |
 | `affinity_recovery_enabled` | 每日好感度恢复开关 |
+| `engagement_react_probability` | casual场景轻反应概率 |
+| `engagement_new_system_enabled` | 启用新版社交行为引擎 |
 
 ### Tests
 
 - 新增 `tests/test_affinity.py`（14 tests）
 - 新增 `ParseTargetUserTests`（7 tests）
-- **总计：214 tests**
+- 新增 `tests/test_engagement.py`（17 tests）
+- **总计：231 tests**
 
 ### 2026-03-23 补充记录
 
