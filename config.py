@@ -41,6 +41,13 @@ class PluginConfig:
         return self._config.get("admin_users", [])
 
     @property
+    def critical_keywords(self):
+        return self._config.get(
+            "critical_keywords",
+            "黑塔|空间站人偶|天才|模拟宇宙|研究|论文|技术|算力|数据",
+        )
+
+    @property
     def reflection_schedule(self):
         return self._config.get("reflection_schedule", "0 2 * * *")
 

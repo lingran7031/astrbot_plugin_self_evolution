@@ -58,6 +58,7 @@ class ConfigContractTests(TestCase):
         schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
 
         expected_types = {
+            "critical_keywords": "string",
             "prompt_meltdown_message": "string",
             "san_auto_analyze_enabled": "bool",
             "san_analyze_interval": "int",

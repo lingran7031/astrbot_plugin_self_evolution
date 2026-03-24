@@ -20,6 +20,13 @@
         "type": "list",
         "default": []
     },
+    "critical_keywords": {
+        "title": "行为 / 关键触发词",
+        "description": "高优先级关键词",
+        "hint": "命中这些关键词时，更积极触发互动意愿评估。",
+        "type": "string",
+        "default": "黑塔|空间站人偶|天才|模拟宇宙|研究|论文|技术|算力|数据"
+    },
     "memory_enabled": {
         "title": "记忆 / 总开关",
         "description": "启用长期记忆",
