@@ -33,6 +33,21 @@ class ConfigContractTests(TestCase):
             "enable_context_recall",
             "sticker_fetch_interval",
             "boredom_sarcastic_reply",
+            "critical_keywords",
+            "eavesdrop_message_threshold",
+            "eavesdrop_threshold_min",
+            "eavesdrop_threshold_max",
+            "leaky_integrator_enabled",
+            "leaky_decay_factor",
+            "leaky_trigger_threshold",
+            "interest_boost",
+            "daily_chat_boost",
+            "desire_cooldown_messages",
+            "desire_cooldown_seconds",
+            "inner_monologue_enabled",
+            "boredom_enabled",
+            "boredom_consecutive_count",
+            "engagement_new_system_enabled",
         }
 
         for key in removed_keys:
@@ -58,7 +73,6 @@ class ConfigContractTests(TestCase):
         schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
 
         expected_types = {
-            "critical_keywords": "string",
             "prompt_meltdown_message": "string",
             "san_auto_analyze_enabled": "bool",
             "san_analyze_interval": "int",
