@@ -42,7 +42,7 @@
         "default": true
     },
     "entertainment_enabled": {
-        "title": "实验 / 娱乐模块",
+        "title": "可选 / 娱乐模块",
         "description": "启用娱乐模块",
         "hint": "控制今日老婆、表情包提示和表情包发送。",
         "type": "bool",
@@ -233,7 +233,7 @@
     "reflection_schedule": {
         "title": "反思 / 批处理计划",
         "description": "每日反思计划",
-        "hint": "执行前一自然日反思、日报和画像刷新。",
+        "hint": "执行前一自然日反思、日报、画像刷新和好感度恢复。关闭反思模块会连带停止每日好感度恢复。",
         "type": "string",
         "default": "0 2 * * *"
     },
