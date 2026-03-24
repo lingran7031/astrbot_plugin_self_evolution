@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime
@@ -108,7 +109,7 @@ class SessionMemoryStore:
             if not kb_helper:
                 return f"知识库不可用，无法保存总结"
 
-            file_name = f"summary_{scope_id}_{summary_date}_{int(time.time() * 1000)}.txt"
+            file_prefix = f"memory_{scope_id}_{summary_date}_"
 
             scope_label = (
                 f"用户ID: {self._get_private_scope_user_id(scope_id)}"
@@ -116,13 +117,53 @@ class SessionMemoryStore:
                 else f"群号: {scope_id}"
             )
 
-            content = f"【每日会话总结】\n日期: {summary_date}\n范围: {scope_label}\n---\n{memory}"
+            if hasattr(kb_helper, "list_documents"):
+                docs = await kb_helper.list_documents()
+                for doc in docs:
+                    doc_id = getattr(doc, "doc_id", None)
+                    doc_name = getattr(doc, "doc_name", "")
+                    if doc_id and doc_name.startswith(file_prefix):
+                        await kb_helper.delete_document(doc_id)
+
+            try:
+                memory_data = None
+                try:
+                    memory_data = json.loads(memory)
+                except Exception:
+                    pass
+
+                if memory_data:
+                    key_facts = memory_data.get("key_facts", [])
+                    key_entities = memory_data.get("key_entities", [])
+                    tags = memory_data.get("tags", [])
+                    overview = memory_data.get("overview", "")
+
+                    chunks = []
+                    chunks.append(
+                        f"【会话记忆】\n"
+                        f"类型: session_memory\n"
+                        f"范围ID: {scope_id}\n"
+                        f"{scope_label}\n"
+                        f"日期: {summary_date}\n"
+                        f"标签: {', '.join(tags) if tags else '无'}"
+                    )
+                    if overview:
+                        chunks.append(f"【总摘要】\n{overview}")
+                    if key_facts:
+                        chunks.append("【关键事实】\n" + "\n".join(f"- {f}" for f in key_facts))
+                    if key_entities:
+                        chunks.append("【关键人物/对象】\n" + "\n".join(f"- {e}" for e in key_entities))
+                    content_for_upload = chunks
+                else:
+                    content_for_upload = [f"【每日会话总结】\n日期: {summary_date}\n范围: {scope_label}\n---\n{memory}"]
+            except Exception:
+                content_for_upload = [f"【每日会话总结】\n日期: {summary_date}\n范围: {scope_label}\n---\n{memory}"]
 
             await kb_helper.upload_document(
-                file_name=file_name,
+                file_name=f"{file_prefix}{int(time.time() * 1000)}.txt",
                 file_content=b"",
                 file_type="txt",
-                pre_chunked_text=[content],
+                pre_chunked_text=content_for_upload,
             )
             logger.debug(f"[Memory] 总结已保存: scope={scope_id}, date={summary_date}")
             return f"总结已保存: {summary_date}"
@@ -176,7 +217,7 @@ class SessionMemoryStore:
             return False
 
     async def get_summary_by_date(self, scope_id: str, summary_date: str) -> str:
-        """按日期精确获取某天的会话总结"""
+        """按日期精确获取某天的会话总结 - 使用稳定的doc_id/chunks方式"""
         from datetime import datetime, timedelta
 
         try:
@@ -205,27 +246,49 @@ class SessionMemoryStore:
             if not kb_helper:
                 return ""
 
-            try:
-                if hasattr(kb_helper, "list_documents"):
-                    docs = await kb_helper.list_documents()
-                else:
-                    return ""
-            except Exception:
+            if not hasattr(kb_helper, "list_documents"):
                 return ""
 
-            target_prefix = f"summary_{scope_id}_{resolved_date}_"
-            matching = [d for d in docs if isinstance(d, str) and d.startswith(target_prefix)]
+            docs = await kb_helper.list_documents()
+            target_prefix = f"memory_{scope_id}_{resolved_date}_"
+            matching_docs = []
 
-            if not matching:
+            for doc in docs:
+                doc_name = getattr(doc, "doc_name", "")
+                if doc_name.startswith(target_prefix):
+                    matching_docs.append(doc)
+
+            if not matching_docs:
                 return ""
 
-            try:
-                doc_content = await kb_helper.get_document(matching[0])
-                if isinstance(doc_content, dict):
-                    return doc_content.get("content", "")
-                return str(doc_content)
-            except Exception:
+            matching_docs.sort(key=lambda d: getattr(d, "doc_name", ""), reverse=True)
+            latest_doc = matching_docs[0]
+
+            doc_id = getattr(latest_doc, "doc_id", None)
+            if not doc_id:
                 return ""
+
+            chunks = []
+            if hasattr(kb_helper, "get_chunks_by_doc_id"):
+                chunks = await asyncio.wait_for(
+                    kb_helper.get_chunks_by_doc_id(doc_id),
+                    timeout=5.0,
+                )
+
+            if not chunks:
+                return ""
+
+            content_parts = []
+            for chunk in chunks:
+                chunk_text = chunk.get("content", "") if isinstance(chunk, dict) else ""
+                if chunk_text:
+                    content_parts.append(chunk_text)
+
+            content = "\n".join(content_parts)
+            if not content:
+                return ""
+
+            return content
 
         except Exception as e:
             logger.warning(f"[Memory] get_summary_by_date failed: {e}")

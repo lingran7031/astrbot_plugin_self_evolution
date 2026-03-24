@@ -28,7 +28,7 @@ class MemoryTools:
         )
         return result.text
 
-    async def get_group_recent_context(self, scope_id: str) -> str:
+    async def get_group_recent_context(self, scope_id: str, limit: int = 30) -> str:
         """获取群最近上下文
 
         对应意图：RECENT_CONTEXT
@@ -39,7 +39,7 @@ class MemoryTools:
                 user_id="",
                 query="",
                 intent=MemoryQueryIntent.RECENT_CONTEXT,
-                limit=10,
+                limit=limit,
             )
         )
         return result.text

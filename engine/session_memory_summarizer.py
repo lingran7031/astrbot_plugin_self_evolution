@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import time
+import re
 from datetime import datetime, timedelta
 
 from astrbot.api import logger
@@ -61,6 +61,7 @@ class SessionMemorySummarizer:
     def __init__(self, plugin):
         self.plugin = plugin
         self.store = SessionMemoryStore(plugin)
+        self.memory_fetch_page_size = 100
 
     def _is_private_scope(self, scope_id: str) -> bool:
         return scope_id.startswith("private_")
@@ -70,65 +71,141 @@ class SessionMemorySummarizer:
             return scope_id[len("private_") :]
         return ""
 
-    async def _fetch_scope_messages(self, scope_id: str, msg_count: int = 500):
-        """从 NapCat 拉取指定 scope 的消息"""
+    def _get_daily_summary_window(self, reference_dt: datetime | None = None) -> tuple[datetime, datetime, str]:
+        current_dt = reference_dt or datetime.now()
+        end_dt = current_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_dt = end_dt - timedelta(days=1)
+        return start_dt, end_dt, start_dt.strftime("%Y-%m-%d")
+
+    @staticmethod
+    def _safe_int(value, default: int = 0) -> int:
         try:
-            if not self.plugin.context.platform_manager.platform_insts:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _extract_message_seq(self, msg: dict) -> int | None:
+        for field in ("message_seq", "message_id"):
+            if field in msg and msg.get(field) not in (None, ""):
+                return self._safe_int(msg.get(field), default=0) or 0
+        return None
+
+    def _get_message_key(self, msg: dict) -> str:
+        message_id = msg.get("message_id")
+        if message_id not in (None, ""):
+            return f"message_id:{message_id}"
+        message_seq = self._extract_message_seq(msg)
+        if message_seq is not None:
+            return f"message_seq:{message_seq}"
+        sender_id = msg.get("sender", {}).get("user_id", "")
+        msg_time = self._safe_int(msg.get("time"), default=0)
+        content = str(msg.get("message", ""))[:200]
+        return f"fallback:{sender_id}:{msg_time}:{content}"
+
+    def _get_message_sort_key(self, msg: dict) -> tuple[int, int]:
+        return (
+            self._safe_int(msg.get("time"), default=0),
+            self._safe_int(self._extract_message_seq(msg), default=0),
+        )
+
+    async def _get_scope_history_page(self, bot, scope_id: str, count: int, cursor: int | None = None) -> list[dict]:
+        kwargs = {"count": count}
+        if cursor is not None:
+            kwargs["message_seq"] = cursor
+
+        if self._is_private_scope(scope_id):
+            private_user_id = self._get_private_scope_user_id(scope_id)
+            if not private_user_id:
+                return []
+            result = await bot.call_action(
+                "get_friend_msg_history",
+                user_id=int(private_user_id),
+                **kwargs,
+            )
+        else:
+            result = await bot.call_action(
+                "get_group_msg_history",
+                group_id=int(scope_id),
+                **kwargs,
+            )
+        if not isinstance(result, dict):
+            return []
+        return result.get("messages", [])
+
+    async def _fetch_scope_messages(self, scope_id: str, reference_dt: datetime | None = None) -> list[dict]:
+        """通过 NapCat API 获取前一自然日的群聊/私聊消息（按时间窗口过滤）。"""
+        try:
+            platform_insts = self.plugin.context.platform_manager.platform_insts
+            if not platform_insts:
                 return []
 
-            platform = self.plugin.context.platform_manager.platform_insts[0]
+            platform = platform_insts[0]
             if not hasattr(platform, "get_client"):
                 return []
 
-            client = platform.get_client()
-            if not client:
+            bot = platform.get_client()
+            if not bot:
                 return []
 
-            bot = client
-            group_id = None if self._is_private_scope(scope_id) else scope_id
-            user_id = self._get_private_scope_user_id(scope_id) if self._is_private_scope(scope_id) else None
+            window_start, window_end, summary_date = self._get_daily_summary_window(reference_dt)
+            start_ts = int(window_start.timestamp())
+            end_ts = int(window_end.timestamp())
+            page_size = max(1, self.memory_fetch_page_size)
 
-            all_messages = []
-            latest_seq = None
-            retry_count = 0
-            max_retries = 3
+            selected_messages = []
+            seen_keys = set()
+            cursor = None
+            page_index = 0
 
-            while len(all_messages) < msg_count and retry_count < max_retries:
-                try:
-                    params = {"group_id": int(group_id)} if group_id else {"user_id": int(user_id)}
-                    if latest_seq:
-                        params["self_id"] = int(user_id) if user_id else 0
+            while True:
+                page_index += 1
+                messages = await self._get_scope_history_page(bot, scope_id, page_size, cursor=cursor)
+                if not messages:
+                    if page_index == 1:
+                        logger.debug(f"[Memory] 会话 {scope_id}: 无历史消息")
+                    break
 
-                    result = await bot.call_action("get_group_msg_history", **params)
-                    if not result or not isinstance(result, dict):
-                        break
+                oldest_message = messages[-1]
+                oldest_time = self._safe_int(oldest_message.get("time"), default=0)
+                page_hit_count = 0
 
-                    messages = result.get("messages", [])
-                    if not messages:
-                        break
+                for msg in messages:
+                    msg_key = self._get_message_key(msg)
+                    if msg_key in seen_keys:
+                        continue
+                    seen_keys.add(msg_key)
 
-                    for msg in messages:
-                        sender_id = str(msg.get("sender", {}).get("user_id", ""))
-                        if sender_id == str(user_id) or not user_id:
-                            all_messages.append(msg)
+                    msg_time = self._safe_int(msg.get("time"), default=0)
+                    if start_ts <= msg_time < end_ts:
+                        selected_messages.append(msg)
+                        page_hit_count += 1
 
-                    if len(messages) < 50:
-                        break
+                logger.debug(
+                    f"[Memory] 会话 {scope_id}: 第 {page_index} 页获取 {len(messages)} 条，命中 {page_hit_count} 条 {summary_date} 消息"
+                )
 
-                    latest_seq = messages[0].get("seq", None) if messages else None
-                    if not latest_seq:
-                        break
+                if oldest_time < start_ts:
+                    break
 
-                except Exception as e:
-                    logger.debug(f"[NapCat] 获取消息失败: {e}")
-                    retry_count += 1
-                    await asyncio.sleep(0.5)
+                next_cursor = self._extract_message_seq(oldest_message)
+                if next_cursor is None:
+                    break
 
-            all_messages.sort(key=lambda m: m.get("time", 0), reverse=True)
-            return all_messages[:msg_count]
+                if cursor is not None and next_cursor == cursor and page_hit_count == 0:
+                    logger.debug(f"[Memory] 会话 {scope_id}: 历史游标未推进，停止继续翻页")
+                    break
+
+                cursor = next_cursor
+
+            if not selected_messages:
+                logger.debug(f"[Memory] 会话 {scope_id}: {summary_date} 无可总结消息")
+                return []
+
+            selected_messages.sort(key=self._get_message_sort_key)
+            return selected_messages
 
         except Exception as e:
-            logger.warning(f"[Memory] _fetch_scope_messages failed: {e}")
+            logger.warning(f"[Memory] 获取会话消息失败: {e}")
             return []
 
     def _format_scope_messages(self, messages: list[dict]) -> str:
@@ -200,10 +277,23 @@ class SessionMemorySummarizer:
         text = "".join(text_parts).strip()
         return f"[{time_str}] {sender}: {text}" if text else ""
 
-    async def _request_summary(self, prompt: str, umo: str) -> str:
+    def _parse_json_response(self, text: str) -> dict | None:
+        """从 LLM 输出中提取 JSON"""
+        text = text.strip()
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+        return None
+
+    async def _request_summary(self, prompt: str, umo: str | None) -> str:
         """调用 LLM 生成总结"""
         try:
             llm_provider = self.plugin.context.get_using_provider(umo=umo)
+            if not llm_provider:
+                return ""
             res = await llm_provider.text_chat(prompt=prompt, contexts=[])
             return res.completion_text.strip() if hasattr(res, "completion_text") else str(res).strip()
         except Exception as e:
@@ -213,18 +303,20 @@ class SessionMemorySummarizer:
     async def _summarize_scope(self, scope_id: str, reference_dt: datetime | None = None) -> str:
         """对指定 scope 执行每日总结"""
         try:
-            now = reference_dt or datetime.now()
-            end_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            start_dt = end_dt - timedelta(days=1)
-            summary_date = start_dt.strftime("%Y-%m-%d")
-
-            messages = await self._fetch_scope_messages(scope_id, msg_count=500)
+            _, _, summary_date = self._get_daily_summary_window(reference_dt)
+            messages = await self._fetch_scope_messages(scope_id, reference_dt=reference_dt)
             if not messages:
                 return ""
 
             formatted = self._format_scope_messages(messages)
             if not formatted.strip():
                 return ""
+
+            scope_umo = None
+            if hasattr(self.plugin, "get_scope_umo"):
+                scope_umo = self.plugin.get_scope_umo(scope_id)
+            if not scope_umo and hasattr(self.plugin, "get_group_umo") and not self._is_private_scope(scope_id):
+                scope_umo = self.plugin.get_group_umo(scope_id)
 
             chunks = self._split_messages_for_summary(messages, summary_date)
 
@@ -233,7 +325,12 @@ class SessionMemorySummarizer:
                     summary_date=summary_date,
                     messages=formatted,
                 )
-                return await self._request_summary(prompt, umo="")
+                text = await self._request_summary(prompt, umo=scope_umo)
+                if text:
+                    parsed = self._parse_json_response(text)
+                    if parsed:
+                        return json.dumps(parsed, ensure_ascii=False)
+                return text
 
             partial_results = []
             for chunk in chunks:
@@ -243,19 +340,23 @@ class SessionMemorySummarizer:
                     total=chunk["total"],
                     messages=chunk["messages"],
                 )
-                result = await self._request_summary(prompt, umo="")
-                if result:
-                    try:
-                        partial_results.append(json.loads(result))
-                    except Exception:
-                        pass
+                text = await self._request_summary(prompt, umo=scope_umo)
+                if text:
+                    parsed = self._parse_json_response(text)
+                    if parsed:
+                        partial_results.append(parsed)
 
             if not partial_results:
                 prompt = SESSION_MEMORY_PROMPT.format(
                     summary_date=summary_date,
                     messages=formatted[:SUMMARY_CHUNK_CHAR_LIMIT],
                 )
-                return await self._request_summary(prompt, umo="")
+                text = await self._request_summary(prompt, umo=scope_umo)
+                if text:
+                    parsed = self._parse_json_response(text)
+                    if parsed:
+                        return json.dumps(parsed, ensure_ascii=False)
+                return text
 
             merged_overview = " ".join([p.get("overview", "") for p in partial_results])
             merged_facts = []
@@ -279,13 +380,15 @@ class SessionMemorySummarizer:
                 summary_date=summary_date,
                 partials=json.dumps(merged, ensure_ascii=False),
             )
-            final_result = await self._request_summary(merge_prompt, umo="")
+            final_result = await self._request_summary(merge_prompt, umo=scope_umo)
             if final_result:
                 try:
-                    parsed = json.loads(final_result)
-                    return json.dumps(parsed, ensure_ascii=False)
+                    parsed = self._parse_json_response(final_result)
+                    if parsed:
+                        return json.dumps(parsed, ensure_ascii=False)
                 except Exception:
-                    return final_result
+                    pass
+                return final_result
 
             return json.dumps(merged, ensure_ascii=False)
 

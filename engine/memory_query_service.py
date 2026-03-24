@@ -45,32 +45,16 @@ class MemoryQueryService:
 
             from .context_injection import get_group_history
 
-            messages = await get_group_history(
+            history_text = await get_group_history(
+                self.plugin,
                 group_id,
-                self.plugin.context.platform_manager,
-                count=10,
+                count=request.limit,
             )
-            if not messages:
-                return MemoryQueryResult(
-                    intent=request.intent,
-                    text="",
-                    source="recent_context",
-                    hit_count=0,
-                )
-
-            lines = []
-            for msg in messages[-10:]:
-                sender = msg.get("sender_nickname", "unknown")
-                text = msg.get("text", "")
-                if text:
-                    lines.append(f"{sender}: {text}")
-
-            text = "\n".join(lines) if lines else ""
             return MemoryQueryResult(
                 intent=request.intent,
-                text=text,
+                text=history_text,
                 source="recent_context",
-                hit_count=len(lines),
+                hit_count=1 if history_text else 0,
             )
         except Exception as e:
             logger.warning(f"[MemoryQuery] RECENT_CONTEXT failed: {e}")
