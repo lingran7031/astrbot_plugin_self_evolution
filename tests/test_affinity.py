@@ -56,6 +56,7 @@ class AffinityEngineTests(IsolatedAsyncioTestCase):
                 affinity_hostile_cooldown_minutes=60,
                 affinity_returning_user_daily_limit=1,
             ),
+            _get_bot_id=lambda: "99999",
         )
         self.engine = AffinityEngine(self.plugin)
 
@@ -113,6 +114,11 @@ class AffinityEngineTests(IsolatedAsyncioTestCase):
     async def test_auto_disabled_no_signals(self):
         self.plugin.cfg.affinity_auto_enabled = False
         event = FakeEvent("@bot 你好", sender_id="1001", group_id="5001", has_at=True)
+        signals = await self.engine.process_message(event)
+        self.assertEqual(len(signals), 0)
+
+    async def test_bot_self_message_no_signals(self):
+        event = FakeEvent("我自己发的一条消息", sender_id="99999", group_id="5001", has_at=True)
         signals = await self.engine.process_message(event)
         self.assertEqual(len(signals), 0)
 

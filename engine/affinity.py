@@ -70,7 +70,7 @@ class AffinityEngine:
     def returning_user_daily_limit(self) -> int:
         return self._get_param("affinity_returning_user_daily_limit", 1)
 
-    def _is_command_only(self, msg_text: str, is_at: bool) -> bool:
+    def _has_command_prefix_only(self, msg_text: str, is_at: bool) -> bool:
         command_prefixes = {"/", "！", "!", "。", ".", "?", "？"}
         stripped = msg_text.strip()
         if not stripped:
@@ -98,10 +98,14 @@ class AffinityEngine:
         group_id = event.get_group_id()
         msg_text = event.message_str or ""
 
+        bot_id = str(self.plugin._get_bot_id()) if hasattr(self.plugin, "_get_bot_id") else ""
+        if bot_id and user_id == bot_id:
+            return []
+
         is_at = event.get_extra("is_at", False)
         has_reply = event.get_extra("has_reply", False)
 
-        is_command_only = self._is_command_only(msg_text, is_at)
+        is_command_only = self._has_command_prefix_only(msg_text, is_at)
 
         if is_command_only:
             return []
