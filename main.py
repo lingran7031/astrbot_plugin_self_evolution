@@ -597,8 +597,10 @@ class SelfEvolutionPlugin(Star):
             if time.time() < self._shut_until_by_group[group_id]:
                 remaining = int(self._shut_until_by_group[group_id] - time.time())
                 logger.debug(f"[SelfEvolution] 群 {group_id} 闭嘴中，剩余 {remaining} 秒")
-                event.stop_event()
-                return
+                if not event.is_admin():
+                    event.stop_event()
+                    return
+                logger.debug(f"[SelfEvolution] 管理员跳过闭嘴拦截")
             else:
                 del self._shut_until_by_group[group_id]
 
@@ -609,8 +611,10 @@ class SelfEvolutionPlugin(Star):
         affinity = await self.dao.get_affinity(user_id)
         if affinity <= 0:
             logger.debug(f"[SelfEvolution] 用户 {user_id} 好感度已熔断，拦截")
-            event.stop_event()
-            return
+            if not event.is_admin():
+                event.stop_event()
+                return
+            logger.debug(f"[SelfEvolution] 管理员跳过好感度熔断")
 
         # 命令消息不触发互动意愿系统
         if event.is_at_or_wake_command:
