@@ -33,8 +33,7 @@ from .engine.memory_types import MemoryQueryIntent, MemoryQueryRequest
 from .engine.meta_infra import MetaInfra
 from .engine.persona import PersonaManager
 from .engine.profile import ProfileManager
-from .engine.profile_builder import ProfileBuilder
-from .engine.profile_store import ProfileStore
+
 from .engine.profile_summary_service import ProfileSummaryService
 from .engine.session_memory_store import SessionMemoryStore
 from .engine.session_memory_summarizer import SessionMemorySummarizer
@@ -140,9 +139,7 @@ class SelfEvolutionPlugin(Star):
             # 正式服务对象（facade 背后）
             self.session_memory_store = SessionMemoryStore(self)
             self.session_memory_summarizer = SessionMemorySummarizer(self)
-            self.profile_store = ProfileStore(self)
-            self.profile_builder = ProfileBuilder(self)
-            self.profile_summary_service = ProfileSummaryService(self)
+            self.profile_summary_service = ProfileSummaryService(self, self.profile)
             # 娱乐功能模块
             self.entertainment = EntertainmentEngine(self)
             # 关系温度引擎
