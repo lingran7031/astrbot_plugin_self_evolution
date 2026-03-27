@@ -201,7 +201,7 @@ async def scheduled_affinity_recovery(plugin) -> ScheduledTaskResult:
 
 async def _affinity_recovery_impl(plugin):
     await plugin.dao.recover_all_affinity(recovery_amount=2)
-    logger.debug('[Scheduler] 已执行每日"大赦天下"：所有负面评分用户好感度已小幅回升。')
+    logger.debug("[Scheduler] 已执行每日好感度恢复：所有负面评分用户好感度已小幅回升。")
 
 
 async def _reflection_impl(plugin):

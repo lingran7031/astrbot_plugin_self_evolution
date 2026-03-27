@@ -324,7 +324,7 @@ class SelfEvolutionPlugin(Star):
 
         msg_text = event.get_extra("self_evolution_message_text", event.message_str or "")
 
-        logger.debug(f"[CognitionCore] 进入 LLM 请求拦截层。用户: {user_id}")
+        logger.debug(f"[SelfEvolution] 进入 LLM 请求拦截层。用户: {user_id}")
 
         if self.cfg.disable_framework_contexts:
             req.contexts = []
@@ -827,7 +827,7 @@ class SelfEvolutionPlugin(Star):
 
         user_id = event.get_sender_id()
         await self.dao.update_affinity(user_id, delta)
-        logger.warning(f"[CognitionCore] 用户 {user_id} 积分变动 {delta}，原因: {reason}")
+        logger.warning(f"[SelfEvolution] 用户 {user_id} 积分变动 {delta}，原因: {reason}")
         return f"用户情感积分已更新。当前调整理由：{reason}"
 
     @filter.command_group("evolution")
