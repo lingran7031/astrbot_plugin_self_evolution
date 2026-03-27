@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
 from unittest import TestCase
 from unittest.mock import MagicMock
 
-from engine.text_utils import clean_result_text, should_clean_result
+_text_utils_spec = importlib.util.spec_from_file_location("_text_utils", "engine/text_utils.py")
+_text_utils = importlib.util.module_from_spec(_text_utils_spec)
+_text_utils_spec.loader.exec_module(_text_utils)
+
+clean_result_text = _text_utils.clean_result_text
+should_clean_result = _text_utils.should_clean_result
 
 
 class Plain:
