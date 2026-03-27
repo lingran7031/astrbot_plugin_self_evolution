@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock
 
-_text_utils_spec = importlib.util.spec_from_file_location("_text_utils", "engine/text_utils.py")
+_TEXT_UTILS_PATH = Path(__file__).resolve().parents[1] / "engine" / "text_utils.py"
+_text_utils_spec = importlib.util.spec_from_file_location("_text_utils", _TEXT_UTILS_PATH)
+if _text_utils_spec is None or _text_utils_spec.loader is None:
+    raise RuntimeError(f"Unable to load text_utils module from {_TEXT_UTILS_PATH}")
 _text_utils = importlib.util.module_from_spec(_text_utils_spec)
 _text_utils_spec.loader.exec_module(_text_utils)
 
