@@ -162,10 +162,12 @@ class MetaInfra:
             logger.error(f"[SelfEvolution] 建立提案隔离目录系统级 I/O 错误: {e}")
             return "文件系统异常导致隔离目录无法建立，请管理员检查权限。"
 
-        if self.plugin._lock is None:
-            self.plugin._lock = asyncio.Lock()
+        plugin_lock = getattr(self.plugin, "_lock", None)
+        if plugin_lock is None:
+            plugin_lock = asyncio.Lock()
+            self.plugin._lock = plugin_lock
 
-        async with self.plugin._lock:
+        async with plugin_lock:
             # 4. 文件轮转清理
             self._rotate_proposal_files(proposal_dir)
 
@@ -190,9 +192,7 @@ class MetaInfra:
             "⚠️【管理员须知】：请对 LLM 生成的代码进行肉眼复审后再人工覆盖。"
         )
 
-    async def _run_debate(
-        self, new_code: str, description: str, target_file: str, umo: str | None = None
-    ) -> dict:
+    async def _run_debate(self, new_code: str, description: str, target_file: str, umo: str | None = None) -> dict:
         """
         多智能体对抗辩论流程
         主控 Agent (黑塔) vs 多审查 Agent (可配置)
@@ -211,16 +211,31 @@ class MetaInfra:
             try:
                 debate_agents = json.loads(debate_agents)
             except Exception:
-                debate_agents = []
+                logger.error("[SelfEvolution] 多智能体对抗：debate_agents 解析失败，审查配置损坏，拒绝自动通过")
+                return {
+                    "passed": False,
+                    "message": "debate_agents 配置解析失败，请检查插件配置。",
+                }
+
+        if not debate_agents:
+            logger.error("[SelfEvolution] 多智能体对抗：debate_agents 配置无效，审查未执行，拒绝自动通过")
+            return {
+                "passed": False,
+                "message": "debate_agents 配置为空，请检查插件配置。",
+            }
 
         context = self.plugin.context
         provider = context.get_using_provider(umo=umo)
 
         if not provider:
-            logger.warning("[SelfEvolution] 多智能体对抗：无法获取 LLM Provider，跳过审查")
-            return {"passed": True, "message": "无法获取 Provider"}
+            logger.warning("[SelfEvolution] 多智能体对抗：无法获取 LLM Provider，审查未执行，拒绝自动通过")
+            return {
+                "passed": False,
+                "message": "无法获取 LLM Provider，审查未执行。请管理员检查 provider 配置。",
+            }
 
         all_debate_history = {}
+        executed_reviews = 0
 
         for agent in debate_agents:
             agent_name = agent.get("name", "审查员")
@@ -270,6 +285,7 @@ class MetaInfra:
                     )
                     review_result = res.completion_text.strip()
                     all_debate_history[agent_name].append(review_result)
+                    executed_reviews += 1
 
                     logger.info(f"[SelfEvolution] {agent_name} 回复: {review_result[:200]}...")
 
@@ -303,6 +319,13 @@ class MetaInfra:
                 passed_agents.append(agent_name)
             else:
                 failed_agents.append(agent_name)
+
+        if executed_reviews == 0:
+            logger.error("[SelfEvolution] 多智能体对抗：没有任何有效的审查执行记录，拒绝自动通过")
+            return {
+                "passed": False,
+                "message": "所有审查者均未产生有效审查结果，审查流程异常，请管理员检查。",
+            }
 
         if failed_agents:
             final_result_parts = []

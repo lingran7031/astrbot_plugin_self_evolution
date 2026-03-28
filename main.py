@@ -165,6 +165,7 @@ class SelfEvolutionPlugin(Star):
         self._group_umo_cache = {}  # 最近见过的群会话来源 {group_id: unified_msg_origin}
         self._private_umo_cache = {}  # 最近见过的私聊会话来源 {private_user_id: unified_msg_origin}
         self._scope_registry_touch_cache = {}  # 会话范围持久化防抖 {scope_id: last_touch_timestamp}
+        self._lock = None  # 元编程文件锁，防止并发写入
 
     def remember_group_umo(self, group_id, umo: str | None, user_id=None):
         """Remember the latest unified message origin for a group or private scope."""
