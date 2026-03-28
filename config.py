@@ -307,6 +307,14 @@ class PluginConfig:
             ["摆酒席", "开席", "整一桌", "来一桌", "上菜"],
         )
 
+    @property
+    def meal_banquet_count(self):
+        return int(self._get_nested("sticker", "meal_banquet_count", 5))
+
+    @property
+    def meal_banquet_cooldown_minutes(self):
+        return int(self._get_nested("sticker", "meal_banquet_cooldown_minutes", 5))
+
     # prompt
     @property
     def disable_framework_contexts(self):

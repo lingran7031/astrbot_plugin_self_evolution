@@ -394,6 +394,18 @@
                 "type": "list",
                 "default": ["摆酒席", "开席", "整一桌", "来一桌", "上菜"],
                 "hint": "触发随机抽取多道菜的关键词。"
+            },
+            "meal_banquet_count": {
+                "description": "摆酒席触发次数上限",
+                "type": "int",
+                "default": 5,
+                "hint": "5 分钟内最多触发多少次摆酒席。超过后冷却 meal_banquet_cooldown_minutes 分钟。"
+            },
+            "meal_banquet_cooldown_minutes": {
+                "description": "摆酒席冷却分钟数",
+                "type": "int",
+                "default": 5,
+                "hint": "触发次数超限后，冷却多少分钟。"
             }
         }
     },

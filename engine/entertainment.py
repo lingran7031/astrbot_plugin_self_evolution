@@ -21,6 +21,7 @@ class EntertainmentEngine:
         self.plugin = plugin
         self._last_send_time = {}
         self._image_freq_cache: dict[str, dict[str, int]] = {}
+        self._banquet_timestamps: dict[str, list[float]] = {}
 
     @property
     def dao(self):
@@ -365,6 +366,10 @@ class EntertainmentEngine:
 
         for pattern in self.banquet_keywords:
             if pattern in msg_text:
+                cooldown_result = await self._check_banquet_cooldown(group_id)
+                if cooldown_result:
+                    await self._send_to_group(group_id, cooldown_result)
+                    return True
                 meals = await self.plugin.meal_store.get_random_meals(group_id, count=10)
                 if meals:
                     lines = [f"第{i + 1}道菜：{meal}" for i, meal in enumerate(meals)]
@@ -375,6 +380,28 @@ class EntertainmentEngine:
                 return True
 
         return False
+
+    async def _check_banquet_cooldown(self, group_id: str) -> str | None:
+        """
+        检查摆酒席是否在冷却中。
+        Returns: 冷却提示文本 if rate-limited, None if allowed.
+        """
+        import time
+
+        now = time.time()
+        window = getattr(self.cfg, "meal_banquet_cooldown_minutes", 5) * 60
+        limit = getattr(self.cfg, "meal_banquet_count", 5)
+
+        timestamps = self._banquet_timestamps.setdefault(group_id, [])
+        cutoff = now - window
+        timestamps[:] = [t for t in timestamps if t > cutoff]
+
+        if len(timestamps) >= limit:
+            remaining = int(timestamps[0] + window - now)
+            return f"摆酒席太频繁了，请 {remaining} 秒后再试～"
+
+        timestamps.append(now)
+        return None
 
     async def _send_to_group(self, group_id: str, text: str):
         """发送消息到群，参照 engagement_executor 实现"""

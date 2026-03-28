@@ -202,3 +202,99 @@ class MealNLTriggerGuardTests(IsolatedAsyncioTestCase):
         bot.send_group_msg.assert_awaited_once()
         args = bot.send_group_msg.call_args
         self.assertIn("/addmeal", args[1]["message"][0]["data"]["text"])
+
+
+class MealBanquetCooldownTests(IsolatedAsyncioTestCase):
+    async def test_banquet_within_limit_allowed(self):
+        import time
+
+        from tests._helpers import load_engine_module
+
+        entertainment = load_engine_module("entertainment").EntertainmentEngine
+        store = MagicMock()
+        store.get_random_meals = AsyncMock(return_value=["菜A", "菜B"])
+        plugin = SimpleNamespace(
+            meal_store=store,
+            cfg=SimpleNamespace(
+                entertainment_enabled=True,
+                meal_banquet_count=5,
+                meal_banquet_cooldown_minutes=5,
+            ),
+            context=MagicMock(
+                platform_manager=MagicMock(platform_insts=[MagicMock(bot=MagicMock(send_group_msg=AsyncMock()))])
+            ),
+        )
+        event = _FakeEvent(group_id="5001", sender_id="1001")
+
+        eng = entertainment(plugin)
+        result = await eng.handle_meal_nl_trigger(event, "摆酒席")
+
+        self.assertTrue(result)
+        bot = plugin.context.platform_manager.platform_insts[0].bot
+        self.assertEqual(bot.send_group_msg.call_count, 1)
+
+    async def test_banquet_exceed_limit_rejected(self):
+        import time
+
+        from tests._helpers import load_engine_module
+
+        entertainment = load_engine_module("entertainment").EntertainmentEngine
+        store = MagicMock()
+        store.get_random_meals = AsyncMock(return_value=["菜A"])
+        plugin = SimpleNamespace(
+            meal_store=store,
+            cfg=SimpleNamespace(
+                entertainment_enabled=True,
+                meal_banquet_count=3,
+                meal_banquet_cooldown_minutes=5,
+            ),
+            context=MagicMock(
+                platform_manager=MagicMock(platform_insts=[MagicMock(bot=MagicMock(send_group_msg=AsyncMock()))])
+            ),
+        )
+        event = _FakeEvent(group_id="5001", sender_id="1001")
+
+        eng = entertainment(plugin)
+        now = time.time()
+        eng._banquet_timestamps["5001"] = [now - 60, now - 120, now - 180]
+
+        result = await eng.handle_meal_nl_trigger(event, "摆酒席")
+
+        self.assertTrue(result)
+        bot = plugin.context.platform_manager.platform_insts[0].bot
+        bot.send_group_msg.assert_awaited_once()
+        args = bot.send_group_msg.call_args
+        self.assertIn("太频繁", args[1]["message"][0]["data"]["text"])
+
+    async def test_banquet_cooldown_resets_after_window(self):
+        import time
+
+        from tests._helpers import load_engine_module
+
+        entertainment = load_engine_module("entertainment").EntertainmentEngine
+        store = MagicMock()
+        store.get_random_meals = AsyncMock(return_value=["菜A"])
+        plugin = SimpleNamespace(
+            meal_store=store,
+            cfg=SimpleNamespace(
+                entertainment_enabled=True,
+                meal_banquet_count=3,
+                meal_banquet_cooldown_minutes=5,
+            ),
+            context=MagicMock(
+                platform_manager=MagicMock(platform_insts=[MagicMock(bot=MagicMock(send_group_msg=AsyncMock()))])
+            ),
+        )
+        event = _FakeEvent(group_id="5001", sender_id="1001")
+
+        eng = entertainment(plugin)
+        now = time.time()
+        eng._banquet_timestamps["5001"] = [now - 400, now - 500, now - 600]
+
+        result = await eng.handle_meal_nl_trigger(event, "摆酒席")
+
+        self.assertTrue(result)
+        bot = plugin.context.platform_manager.platform_insts[0].bot
+        bot.send_group_msg.assert_awaited_once()
+        args = bot.send_group_msg.call_args
+        self.assertNotIn("太频繁", args[1]["message"][0]["data"]["text"])
