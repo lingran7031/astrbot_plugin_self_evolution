@@ -385,13 +385,13 @@
             },
             "meal_eat_keywords": {
                 "description": "吃啥触发关键词",
-                "type": "array",
+                "type": "list",
                 "default": ["吃啥", "吃什么", "今天吃啥", "今天吃什么", "吃点啥"],
                 "hint": "触发随机推荐单道菜的关键词。"
             },
             "meal_banquet_keywords": {
                 "description": "摆酒席触发关键词",
-                "type": "array",
+                "type": "list",
                 "default": ["摆酒席", "开席", "整一桌", "来一桌", "上菜"],
                 "hint": "触发随机抽取多道菜的关键词。"
             }
