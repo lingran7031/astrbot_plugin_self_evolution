@@ -318,11 +318,25 @@ class EntertainmentEngine:
 
     @property
     def eat_keywords(self) -> list[str]:
-        return getattr(self.cfg, "meal_eat_keywords", ["吃啥", "吃什么", "今天吃啥", "今天吃什么", "吃点啥"])
+        val = getattr(self.cfg, "meal_eat_keywords", None)
+        if val is None:
+            return ["吃啥", "吃什么", "今天吃啥", "今天吃什么", "吃点啥"]
+        if isinstance(val, list):
+            return val
+        if isinstance(val, str):
+            return [k.strip() for k in val.split("|") if k.strip()]
+        return ["吃啥", "吃什么", "今天吃啥", "今天吃什么", "吃点啥"]
 
     @property
     def banquet_keywords(self) -> list[str]:
-        return getattr(self.cfg, "meal_banquet_keywords", ["摆酒席", "开席", "整一桌", "来一桌", "上菜"])
+        val = getattr(self.cfg, "meal_banquet_keywords", None)
+        if val is None:
+            return ["摆酒席", "开席", "整一桌", "来一桌", "上菜"]
+        if isinstance(val, list):
+            return val
+        if isinstance(val, str):
+            return [k.strip() for k in val.split("|") if k.strip()]
+        return ["摆酒席", "开席", "整一桌", "来一桌", "上菜"]
 
     async def handle_meal_nl_trigger(self, event, msg_text: str) -> bool:
         """
