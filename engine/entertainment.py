@@ -313,3 +313,51 @@ class EntertainmentEngine:
         injection += "\n使用 list_stickers 工具可以查看可用的表情包。"
 
         return injection
+
+    # ========== 群菜单自然语言触发 ==========
+
+    @property
+    def eat_keywords(self) -> list[str]:
+        return getattr(self.cfg, "meal_eat_keywords", ["吃啥", "吃什么", "今天吃啥", "今天吃什么", "吃点啥"])
+
+    @property
+    def banquet_keywords(self) -> list[str]:
+        return getattr(self.cfg, "meal_banquet_keywords", ["摆酒席", "开席", "整一桌", "来一桌", "上菜"])
+
+    async def handle_meal_nl_trigger(self, event, msg_text: str) -> bool:
+        """
+        处理群菜单自然语言触发
+        Returns: True if triggered, False otherwise
+        """
+        if not getattr(self.cfg, "entertainment_enabled", True):
+            return False
+
+        group_id = event.get_group_id()
+        if not group_id:
+            return False
+
+        if event.is_at_or_wake_command:
+            return False
+
+        for pattern in self.eat_keywords:
+            if pattern in msg_text:
+                meals = await self.plugin.meal_store.get_random_meals(group_id, count=1)
+                if meals:
+                    reply_text = f"吃{meals[0]}怎么样？"
+                else:
+                    reply_text = "菜单空空如也，请先用 /addmeal <菜名> 添加菜品再问我吃啥～"
+                await event.reply(reply_text)
+                return True
+
+        for pattern in self.banquet_keywords:
+            if pattern in msg_text:
+                meals = await self.plugin.meal_store.get_random_meals(group_id, count=10)
+                if meals:
+                    lines = [f"第{i + 1}道菜：{meal}" for i, meal in enumerate(meals)]
+                    reply_text = "\n".join(lines)
+                else:
+                    reply_text = "菜单空空如也，请先用 /addmeal <菜名> 添加菜品再来摆酒席～"
+                await event.reply(reply_text)
+                return True
+
+        return False
