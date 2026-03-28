@@ -398,7 +398,7 @@ class EntertainmentEngine:
 
         if len(timestamps) >= limit:
             remaining = int(timestamps[0] + window - now)
-            return f"摆酒席太频繁了，请 {remaining} 秒后再试～"
+            return f"冷却中，请 {remaining} 秒后再试～"
 
         timestamps.append(now)
         return None
