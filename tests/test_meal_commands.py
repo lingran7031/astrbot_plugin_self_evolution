@@ -21,8 +21,13 @@ class _FakeEvent:
     def is_admin(self):
         return self._is_admin
 
+    @property
     def is_at_or_wake_command(self):
-        return False
+        return getattr(self, "_is_at_or_wake_command", False)
+
+    @is_at_or_wake_command.setter
+    def is_at_or_wake_command(self, value):
+        self._is_at_or_wake_command = value
 
     async def reply(self, text):
         pass
@@ -151,7 +156,7 @@ class MealNLTriggerGuardTests(IsolatedAsyncioTestCase):
         store.get_random_meals = AsyncMock(return_value=["dish"])
         plugin = SimpleNamespace(meal_store=store, cfg=SimpleNamespace(entertainment_enabled=True))
         event = _FakeEvent(group_id="5001", sender_id="1001")
-        event.is_at_or_wake_command = MagicMock(return_value=True)
+        event.is_at_or_wake_command = True
 
         eng = entertainment(plugin)
         result = await eng.handle_meal_nl_trigger(event, "今天吃啥")
