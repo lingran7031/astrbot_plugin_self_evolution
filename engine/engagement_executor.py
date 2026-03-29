@@ -158,19 +158,15 @@ class EngagementExecutor:
 
         try:
             sticker_engine = self.plugin.entertainment
-            if not hasattr(sticker_engine, "get_random_sticker"):
+            if not hasattr(sticker_engine, "send_sticker_for_engagement"):
                 return None
 
-            sticker_uuid = await sticker_engine.get_random_sticker()
-            if not sticker_uuid:
-                return None
-
-            if hasattr(sticker_engine, "send_sticker_by_uuid"):
-                await sticker_engine.send_sticker_by_uuid(group_id, sticker_uuid)
-                return f"[sticker:{sticker_uuid}]"
+            filename = await sticker_engine.send_sticker_for_engagement(group_id)
+            return filename
 
         except Exception as e:
             logger.debug(f"[EngagementExecutor] 表情包发送失败: {e}")
+            return None
 
         return None
 
