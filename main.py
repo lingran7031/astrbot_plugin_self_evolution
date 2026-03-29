@@ -649,6 +649,16 @@ class SelfEvolutionPlugin(Star):
             if isinstance(comp, Plain) and comp.text:
                 comp.text = clean_result_text(comp.text)
 
+    @filter.after_message_sent()
+    async def after_message_sent(self, event: AstrMessageEvent):
+        group_id = event.get_group_id()
+        if not group_id:
+            return
+        result = event.get_result()
+        if not result or not hasattr(result, "chain") or not result.chain:
+            return
+        await self.eavesdropping.sync_framework_reply_state(group_id, level="full")
+
     @filter.on_plugin_loaded()
     async def on_loaded(self, metadata):
         """插件加载完成后，注册定时任务"""

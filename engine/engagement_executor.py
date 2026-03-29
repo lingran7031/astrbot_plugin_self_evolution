@@ -14,29 +14,6 @@ from .social_state import (
 
 
 class EngagementExecutor:
-    REACT_TEMPLATES = [
-        "嗯",
-        "哦",
-        "有点意思",
-        "继续",
-        "哈",
-        "是嘛",
-        "哦对",
-        "好吧",
-        "这样啊",
-        "哦豁",
-    ]
-
-    BRIEF_TEMPLATES = [
-        "这问题有意思",
-        "确实",
-        "可以这么理解",
-        "值得想想",
-        "有道理",
-        "有点东西",
-        "怎么说呢",
-    ]
-
     def __init__(self, plugin, planner: EngagementPlanner):
         self.plugin = plugin
         self.planner = planner
@@ -66,9 +43,9 @@ class EngagementExecutor:
             return result
 
         if plan.level == EngagementLevel.BRIEF:
-            result = await self._execute_brief(plan, state)
+            result = await self._execute_full(plan, state)
             self._debug(
-                f"[Engagement] execute=yes scope={getattr(state, 'scope_id', '?')} level=BRIEF action={result.action}"
+                f"[Engagement] execute=yes scope={getattr(state, 'scope_id', '?')} level=BRIEF->FULL action={result.action}"
             )
             return result
 
@@ -97,41 +74,11 @@ class EngagementExecutor:
                 actual_text=sticker,
             )
 
-        text = random.choice(self.REACT_TEMPLATES)
-        success = await self._send_message(state.scope_id, text)
-        if success:
-            return EngagementExecutionResult(
-                executed=True,
-                level=EngagementLevel.REACT,
-                action="text",
-                reason=plan.reason,
-                actual_text=text,
-            )
-
         return EngagementExecutionResult(
             executed=False,
             level=EngagementLevel.REACT,
             action="none",
-            reason="发送失败",
-        )
-
-    async def _execute_brief(self, plan: EngagementPlan, state: GroupSocialState) -> EngagementExecutionResult:
-        text = random.choice(self.BRIEF_TEMPLATES)
-        success = await self._send_message(state.scope_id, text)
-        if success:
-            return EngagementExecutionResult(
-                executed=True,
-                level=EngagementLevel.BRIEF,
-                action="text",
-                reason=plan.reason,
-                actual_text=text,
-            )
-
-        return EngagementExecutionResult(
-            executed=False,
-            level=EngagementLevel.BRIEF,
-            action="none",
-            reason="发送失败",
+            reason="无表情包",
         )
 
     async def _execute_full(self, plan: EngagementPlan, state: GroupSocialState) -> EngagementExecutionResult:
@@ -189,15 +136,14 @@ class EngagementExecutor:
         except Exception as e:
             logger.warning(f"[EngagementExecutor] Full回复生成失败: {e}")
 
-        fallback = random.choice(self.BRIEF_TEMPLATES)
-        success = await self._send_message(state.scope_id, fallback)
-        if success:
+        sticker = await self._try_send_sticker(state.scope_id)
+        if sticker:
             return EngagementExecutionResult(
                 executed=True,
                 level=EngagementLevel.FULL,
-                action="text",
+                action="sticker",
                 reason=f"LLM失败降级: {e}",
-                actual_text=fallback,
+                actual_text=sticker,
             )
 
         return EngagementExecutionResult(
