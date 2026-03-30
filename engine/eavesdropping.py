@@ -5,7 +5,7 @@ from astrbot.api import logger
 from astrbot.api.all import AstrMessageEvent
 
 from .engagement_planner import EngagementPlanner
-from .engagement_executor import EngagementExecutor
+from .reply_executor import ReplyExecutor
 from .reply_intent import IntentSource, ReplyIntent, process_intent
 from .reply_policy import ReplyPolicy
 from .reply_recorder import ReplyRecorder
@@ -91,7 +91,7 @@ class EavesdroppingEngine:
             )
 
             planner = EngagementPlanner(self.plugin)
-            executor = EngagementExecutor(self.plugin, planner)
+            executor = ReplyExecutor(self.plugin, planner)
             policy = ReplyPolicy(self.plugin)
 
             return await process_intent(
@@ -147,7 +147,7 @@ class EavesdroppingEngine:
 
             messages_for_scene = [{"text": msg_text, "message": []}]
             planner = EngagementPlanner(self.plugin)
-            executor = EngagementExecutor(self.plugin, planner)
+            executor = ReplyExecutor(self.plugin, planner)
 
             momentum.message_count_window = max(int(momentum.message_count_window), 0) + 1
             computed = planner.compute_scene_windows(messages_for_scene, None)

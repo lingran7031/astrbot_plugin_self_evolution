@@ -7,7 +7,7 @@ from typing import Optional
 from astrbot.api import logger
 
 from .engagement_planner import EngagementPlanner
-from .engagement_executor import EngagementExecutor
+from .reply_executor import ReplyExecutor
 from .reply_policy import ReplyPolicy
 from .reply_recorder import ReplyRecorder
 from .reply_state import BotMessageKind, ConversationMomentum
@@ -54,7 +54,7 @@ async def process_intent(
     intent: ReplyIntent,
     momentum: ConversationMomentum,
     planner: EngagementPlanner,
-    executor: EngagementExecutor,
+    executor: ReplyExecutor,
     policy: ReplyPolicy,
     recorder: ReplyRecorder,
     is_active: bool = False,
