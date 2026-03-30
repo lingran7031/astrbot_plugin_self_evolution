@@ -46,12 +46,15 @@ class ConversationMomentum:
         self.last_message_time = now
         self.new_user_message_after_bot = False
 
-    def bot_spoke(self, now: float, kind: BotMessageKind) -> None:
-        """bot 发消息：占住当前 wave。"""
+    def bot_spoke(self, now: float, kind: BotMessageKind, start_new_wave: bool = False) -> None:
+        """bot 发消息：占住当前 wave，并递增连发计数。"""
         self.last_bot_message_at = now
         self.last_bot_message_kind = kind
         self.bot_has_spoken_in_current_wave = True
         self.new_user_message_after_bot = False
+        self.consecutive_bot_replies = self.consecutive_bot_replies + 1
+        if start_new_wave:
+            self.wave_started_at = now
 
     def new_user_after_bot(self) -> None:
         """用户消息到达时检测到 bot 之前已发言。"""
