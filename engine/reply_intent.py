@@ -69,22 +69,14 @@ async def process_intent(
     now = time_module.time()
     cfg = cfg or plugin.cfg
 
-    if is_active:
-        policy_decision = policy.check(
-            momentum,
-            cooldown_seconds=cfg.interject_cooldown,
-            min_new_messages=1,
-            require_new_user_after_bot=True,
-            allow_active=True,
-        )
-    else:
-        policy_decision = policy.check(
-            momentum,
-            cooldown_seconds=cfg.interject_cooldown,
-            min_new_messages=1,
-            require_new_user_after_bot=False,
-            allow_active=False,
-        )
+    require_new_user_after_bot = not is_active and momentum.consecutive_bot_replies > 0
+    policy_decision = policy.check(
+        momentum,
+        cooldown_seconds=cfg.interject_cooldown,
+        min_new_messages=1,
+        require_new_user_after_bot=require_new_user_after_bot,
+        allow_active=is_active,
+    )
 
     if not policy_decision.allow:
         logger.debug(
