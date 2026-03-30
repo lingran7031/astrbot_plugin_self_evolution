@@ -6,6 +6,7 @@ from astrbot.api.all import AstrMessageEvent
 
 from .engagement_planner import EngagementPlanner
 from .engagement_executor import EngagementExecutor
+from .reply_policy import ReplyPolicy
 from .reply_recorder import ReplyRecorder
 from .reply_state import BotMessageKind, ConversationMomentum
 from .social_state import EngagementLevel, GroupSocialState, SceneType
@@ -83,10 +84,15 @@ class EavesdroppingEngine:
             if not momentum.is_wave_active(now, _MESSAGE_WINDOW_SECONDS):
                 momentum.reset_wave(now)
 
-            if momentum.bot_has_spoken_in_current_wave:
-                return False
-
-            if momentum.new_user_message_after_bot:
+            policy = ReplyPolicy(self.plugin)
+            decision = policy.check(
+                momentum,
+                cooldown_seconds=self.plugin.cfg.interject_cooldown,
+                min_new_messages=1,
+                require_new_user_after_bot=True,
+                allow_active=True,
+            )
+            if not decision.allow:
                 return False
 
             planner = EngagementPlanner(self.plugin)
@@ -163,9 +169,6 @@ class EavesdroppingEngine:
             has_reply = event.get_extra("has_reply", False)
             has_mention = is_at or has_reply
 
-            if momentum.bot_has_spoken_in_current_wave and has_mention:
-                return
-
             msg_text = event.message_str or ""
             if not msg_text.strip():
                 msg_text = "[图片]"
@@ -203,6 +206,21 @@ class EavesdroppingEngine:
             momentum.message_count_window = state.message_count_window
             momentum.question_count_window = state.question_count_window
             momentum.emotion_count_window = state.emotion_count_window
+
+            policy = ReplyPolicy(self.plugin)
+            policy_decision = policy.check(
+                momentum,
+                cooldown_seconds=self.plugin.cfg.interject_cooldown,
+                require_new_user_after_bot=False,
+                allow_active=False,
+            )
+            if not policy_decision.allow:
+                logger.debug(
+                    f"[PassiveEngagement] scope={group_id} policy=no reason={policy_decision.reason_code} {policy_decision.reason_text}"
+                )
+                momentum.consecutive_bot_replies = 0
+                await self._recorder.record(group_id, executed=False, momentum=momentum)
+                return
 
             eligibility = planner.check_eligibility(
                 state,
