@@ -531,6 +531,11 @@ class SyncFrameworkReplyStateTests(IsolatedAsyncioTestCase):
             "question_count_window": 2,
             "emotion_count_window": 1,
             "consecutive_bot_replies": 1,
+            "last_bot_message_at": now - 10,
+            "last_bot_message_kind": "normal",
+            "wave_started_at": now - 10,
+            "bot_has_spoken_in_current_wave": 1,
+            "new_user_message_after_bot": 0,
         }
         await self.dao.save_engagement_state("5001", old_state)
 
@@ -544,6 +549,7 @@ class SyncFrameworkReplyStateTests(IsolatedAsyncioTestCase):
         self.assertEqual(saved["message_count_window"], 5)
         self.assertEqual(saved["question_count_window"], 2)
         self.assertEqual(saved["emotion_count_window"], 1)
+        self.assertEqual(saved["bot_has_spoken_in_current_wave"], 1)
 
     async def test_sync_clears_counters_on_expired_window(self):
         now = time.time()
@@ -558,6 +564,11 @@ class SyncFrameworkReplyStateTests(IsolatedAsyncioTestCase):
             "question_count_window": 2,
             "emotion_count_window": 1,
             "consecutive_bot_replies": 1,
+            "last_bot_message_at": now - 200,
+            "last_bot_message_kind": "normal",
+            "wave_started_at": now - 200,
+            "bot_has_spoken_in_current_wave": 1,
+            "new_user_message_after_bot": 0,
         }
         await self.dao.save_engagement_state("5001", old_state)
 
@@ -570,6 +581,8 @@ class SyncFrameworkReplyStateTests(IsolatedAsyncioTestCase):
         self.assertEqual(saved["emotion_count_window"], 0)
         self.assertEqual(saved["consecutive_bot_replies"], 1)
         self.assertEqual(saved["scene_type"], "casual")
+        self.assertEqual(saved["bot_has_spoken_in_current_wave"], 1)
+        self.assertGreater(float(saved["wave_started_at"]), now - 5)
 
     async def test_sync_returns_false_for_unknown_scope(self):
         result = await self.engine.sync_framework_reply_state("nonexistent", level="full")
