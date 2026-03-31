@@ -177,13 +177,6 @@ class SelfEvolutionPlugin(Star):
             logger.info(
                 "[SelfEvolution] 核心组件 (DAO, Eavesdropping, Entertainment, ImageCache, Memory, Persona, Profile, SAN, Reflection, SessionMemory*, Profile*, Moderation*) 初始化完成。"
             )
-                                logger.debug(f"[Moderation] Cached framework caption for {img_url[:40]}")
-                except Exception:
-                    pass
-
-            logger.info(
-                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, Entertainment, ImageCache, Memory, Persona, Profile, SAN, Reflection, SessionMemory*, Profile*, Moderation*) 初始化完成。"
-            )
         except Exception as e:
             logger.error(f"[SelfEvolution] 核心组件初始化失败: {e}")
             raise e
@@ -671,7 +664,7 @@ class SelfEvolutionPlugin(Star):
                     if end == -1:
                         break
                     caption_texts.append(text[start:end])
-                    text = text[end + len("</image_caption>"):]
+                    text = text[end + len("</image_caption>") :]
             for img_url in img_urls:
                 if caption_texts:
                     caption = caption_texts.pop(0) if caption_texts else ""
