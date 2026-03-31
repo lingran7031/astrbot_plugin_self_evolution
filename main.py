@@ -13,7 +13,7 @@ from astrbot.api.event import filter
 from astrbot.api.provider import ProviderRequest
 from astrbot.core.message.components import Plain, WechatEmoji
 
-from commands.common import CommandContext, ensure_admin
+from .commands.common import CommandContext, ensure_admin
 
 # 可选组件：不是所有 AstrBot 版本都有，按需 import
 try:
