@@ -494,5 +494,102 @@
                 "hint": "开启后记录信号命中、限流、积分变更原因。"
             }
         }
+    },
+    "moderation": {
+        "type": "object",
+        "description": "群聊内容治理",
+        "hint": "图片内容审核与梯度处罚。复用 AstrBot 已有图片理解模型配置。",
+        "items": {
+            "moderation_enabled": {
+                "description": "启用内容治理",
+                "type": "bool",
+                "default": true,
+                "hint": "总开关。关闭后完全不处理图片审核。"
+            },
+            "moderation_nsfw_enabled": {
+                "description": "启用NSFW审核",
+                "type": "bool",
+                "default": true,
+                "hint": "是否对群图片进行 NSFW 内容审核。"
+            },
+            "moderation_promo_enabled": {
+                "description": "启用引流审核",
+                "type": "bool",
+                "default": true,
+                "hint": "是否对群图片进行引流/宣传内容审核。"
+            },
+            "moderation_auto_punish_enabled": {
+                "description": "启用自动处罚",
+                "type": "bool",
+                "default": true,
+                "hint": "达到阈值后自动执行警告/禁言/踢出。"
+            },
+            "moderation_nsfw_delete_confidence": {
+                "description": "NSFW删除置信度",
+                "type": "float",
+                "default": 0.85,
+                "hint": "超过此置信度时自动删除并处罚。"
+            },
+            "moderation_promo_delete_confidence": {
+                "description": "引流删除置信度",
+                "type": "float",
+                "default": 0.85,
+                "hint": "超过此置信度时自动删除并处罚。"
+            },
+            "moderation_warn_threshold": {
+                "description": "NSFW警告阈值",
+                "type": "int",
+                "default": 1,
+                "hint": "NSFW：第N次违规后开始警告。"
+            },
+            "moderation_ban_threshold": {
+                "description": "NSFW禁言阈值",
+                "type": "int",
+                "default": 2,
+                "hint": "NSFW：第N次违规后开始禁言。"
+            },
+            "moderation_kick_threshold": {
+                "description": "NSFW踢出阈值",
+                "type": "int",
+                "default": 3,
+                "hint": "NSFW：第N次违规后踢出。"
+            },
+            "moderation_promo_warn_threshold": {
+                "description": "引流警告阈值",
+                "type": "int",
+                "default": 1,
+                "hint": "引流/宣传：第N次违规后开始警告。"
+            },
+            "moderation_promo_ban_threshold": {
+                "description": "引流禁言阈值",
+                "type": "int",
+                "default": 2,
+                "hint": "引流/宣传：第N次违规后开始禁言。"
+            },
+            "moderation_promo_kick_threshold": {
+                "description": "引流踢出阈值",
+                "type": "int",
+                "default": 3,
+                "hint": "引流/宣传：第N次违规后踢出。"
+            },
+            "moderation_whitelist_users": {
+                "description": "治理白名单用户",
+                "type": "list",
+                "default": [],
+                "hint": "这些用户发送的图片不会被审核。"
+            },
+            "moderation_whitelist_groups": {
+                "description": "治理白名单群组",
+                "type": "list",
+                "default": [],
+                "hint": "这些群发送的图片不会被审核。"
+            },
+            "moderation_prefer_caption_reuse": {
+                "description": "优先复用框架Caption",
+                "type": "bool",
+                "default": true,
+                "hint": "开启后优先使用框架群聊时已生成的图片描述，仅在缓存未命中时独立识图。关闭则每次都独立识图。"
+            }
+        }
     }
 }

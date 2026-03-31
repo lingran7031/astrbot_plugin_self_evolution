@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import time
@@ -10,8 +11,9 @@ from astrbot.api import logger
 from astrbot.api.all import AstrMessageEvent, Context, Star, register
 from astrbot.api.event import filter
 from astrbot.api.provider import ProviderRequest
-from astrbot.api.star import StarTools
 from astrbot.core.message.components import Plain, WechatEmoji
+
+from commands.common import CommandContext, ensure_admin
 
 # 可选组件：不是所有 AstrBot 版本都有，按需 import
 try:
@@ -22,6 +24,10 @@ try:
     from astrbot.core.message.components import Face as AstrFace
 except ImportError:
     AstrFace = None
+try:
+    from astrbot.core.message.components import Video as AstrVideo
+except ImportError:
+    AstrVideo = None
 from astrbot.core.star.star_handler import EventType, star_handlers_registry
 
 from . import commands
@@ -165,8 +171,18 @@ class SelfEvolutionPlugin(Star):
             self.daily_batch = DailyBatchProcessor(self)
             self.memory_router = MemoryRouter(self)
             self.memory_tools = MemoryTools(self)
+            from .engine.moderation import ModerationEngine
+
+            self.moderation = ModerationEngine(self)
             logger.info(
-                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, Entertainment, ImageCache, Memory, Persona, Profile, SAN, Reflection, SessionMemory*, Profile*) 初始化完成。"
+                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, Entertainment, ImageCache, Memory, Persona, Profile, SAN, Reflection, SessionMemory*, Profile*, Moderation*) 初始化完成。"
+            )
+                                logger.debug(f"[Moderation] Cached framework caption for {img_url[:40]}")
+                except Exception:
+                    pass
+
+            logger.info(
+                "[SelfEvolution] 核心组件 (DAO, Eavesdropping, Entertainment, ImageCache, Memory, Persona, Profile, SAN, Reflection, SessionMemory*, Profile*, Moderation*) 初始化完成。"
             )
         except Exception as e:
             logger.error(f"[SelfEvolution] 核心组件初始化失败: {e}")
@@ -627,6 +643,192 @@ class SelfEvolutionPlugin(Star):
         except Exception:
             pass
         return ""
+
+    @filter.on_llm_request()
+    async def on_llm_request_caption_cache(self, event: AstrMessageEvent, request: ProviderRequest):
+        """旁路缓存框架生成的图片 caption，供后续治理审核优先复用。"""
+        if not self.cfg.moderation_prefer_caption_reuse:
+            return
+        try:
+            extra_parts = getattr(request, "extra_user_content_parts", []) or []
+            if not extra_parts:
+                return
+            msg_chain = event.get_messages()
+            img_urls = []
+            for comp in msg_chain:
+                if AstrImage and isinstance(comp, AstrImage):
+                    url = getattr(comp, "url", None) or getattr(comp, "file", None)
+                    if url:
+                        img_urls.append(url)
+            if not img_urls:
+                return
+            caption_texts = []
+            for part in extra_parts:
+                text = getattr(part, "text", "") or ""
+                while "<image_caption>" in text:
+                    start = text.find("<image_caption>") + len("<image_caption>")
+                    end = text.find("</image_caption>", start)
+                    if end == -1:
+                        break
+                    caption_texts.append(text[start:end])
+                    text = text[end + len("</image_caption>"):]
+            for img_url in img_urls:
+                if caption_texts:
+                    caption = caption_texts.pop(0) if caption_texts else ""
+                    if caption:
+                        await self.dao.upsert_moderation_caption(
+                            image_url=img_url,
+                            caption=caption,
+                            provider_id=getattr(request, "model", "") or "",
+                            source="framework",
+                            ttl_seconds=3600,
+                        )
+                        logger.debug(f"[Moderation] Cached framework caption for {img_url[:40]}")
+        except Exception:
+            pass
+
+    async def on_moderation_listener(self, event: AstrMessageEvent):
+        """群图片消息治理审核入口。"""
+        if not self.cfg.moderation_enabled:
+            return
+        group_id = event.get_group_id()
+        if not group_id:
+            return
+        if not AstrImage and not AstrVideo:
+            return
+
+        user_id = str(event.get_sender_id())
+        message_id = str(event.get_id()) if hasattr(event, "get_id") else ""
+
+        wl_users = self.cfg.moderation_whitelist_users
+        wl_groups = self.cfg.moderation_whitelist_groups
+        if user_id in wl_users or group_id in wl_groups:
+            return
+
+        image_urls = []
+        msg_chain = event.get_messages()
+        for comp in msg_chain:
+            if isinstance(comp, AstrImage):
+                url = getattr(comp, "url", None) or getattr(comp, "file", None)
+                if url:
+                    image_urls.append(url)
+            elif AstrVideo and isinstance(comp, AstrVideo):
+                cover = getattr(comp, "cover", None)
+                if cover:
+                    image_urls.append(cover)
+
+        def _collect_imgs_from_chain(chain):
+            imgs = []
+            for inner in chain or []:
+                if isinstance(inner, AstrImage):
+                    url = getattr(inner, "url", None) or getattr(inner, "file", None)
+                    if url:
+                        imgs.append(url)
+                elif AstrVideo and isinstance(inner, AstrVideo):
+                    cover = getattr(inner, "cover", None)
+                    if cover:
+                        imgs.append(cover)
+            return imgs
+
+        for comp in msg_chain:
+            if getattr(comp, "type", None) == "forward":
+                nested = getattr(comp, "data", {}) or {}
+                for node in getattr(nested, "nodes", []) or []:
+                    imgs = _collect_imgs_from_chain(getattr(node, "message", []) or [])
+                    if imgs:
+                        image_urls.append(imgs[-1])
+
+        for comp in msg_chain:
+            if getattr(comp, "type", None) == "reply":
+                reply_id = str(getattr(comp, "id", "") or getattr(comp, "data", {}).get("id", "") or "")
+                if reply_id:
+                    try:
+                        platform = self.context.platform_manager.platform_insts[0]
+                        bot = platform.get_client()
+                        orig = await bot.call_action("get_msg", message_id=int(reply_id))
+                        orig_msgs = orig.get("message", [])
+                        for inner in orig_msgs:
+                            if isinstance(inner, AstrImage):
+                                url = getattr(inner, "url", None) or getattr(inner, "file", None)
+                                if url:
+                                    image_urls.append(url)
+                            elif AstrVideo and isinstance(inner, AstrVideo):
+                                cover = getattr(inner, "cover", None)
+                                if cover:
+                                    image_urls.append(cover)
+                    except Exception:
+                        pass
+
+        if not image_urls:
+            return
+
+        logger.debug(
+            f"[Moderation] 检测到群图片: group={group_id} user={user_id} msg={message_id} "
+            f"count={len(image_urls)} url={image_urls[0][:40]}"
+        )
+
+        asyncio.create_task(self._moderate_image_batch(event, image_urls, group_id, user_id, message_id))
+
+    async def _moderate_image_batch(self, event, image_urls: list, group_id: str, user_id: str, message_id: str):
+        """对多条图片执行异步治理审核流程，所有图片记录证据，按最严重结果统一处罚。"""
+        prov_id, _ = self.moderation._get_image_caption_config()
+        if not prov_id:
+            logger.warning("[Moderation] 未配置图片理解模型，跳过审核")
+            return
+
+        all_evidence = []
+        for img_url in image_urls:
+            try:
+                evidence = await self.moderation.moderate(img_url, group_id, user_id, message_id)
+                all_evidence.append(evidence)
+            except Exception as e:
+                logger.warning(f"[Moderation] 图片审核异常: {e}", exc_info=True)
+
+        if not all_evidence:
+            return
+
+        worst = None
+        worst_score = -1.0
+        for ev in all_evidence:
+            if ev.category == "uncertain":
+                continue
+            score = self.moderation._risk_score_for_escalate(ev)
+            if score >= worst_score:
+                worst_score = score
+                worst = ev
+
+        for ev in all_evidence:
+            await self.dao.insert_moderation_violation(
+                group_id=ev.group_id,
+                user_id=ev.user_id,
+                message_id=ev.message_id,
+                violation_type=ev.category,
+                category=ev.category,
+                confidence=ev.confidence,
+                risk_level=ev.risk_level,
+                reasons_json=json.dumps(ev.reasons, ensure_ascii=False),
+                action_taken=ev.suggested_action,
+                evidence_json=json.dumps(ev.to_dict(), ensure_ascii=False),
+            )
+
+        if worst and (worst.suggested_action == "delete" or self.moderation._is_high_confidence_delete(worst)):
+            await self.moderation.delete_message(group_id, message_id)
+
+        if worst and self.cfg.moderation_auto_punish_enabled and worst.category in ("nsfw", "promo"):
+            if self.moderation._direct_kick(worst.category, worst.risk_level, worst.confidence, worst.reasons):
+                await self.moderation.set_group_kick(group_id, user_id)
+            elif worst.suggested_action == "delete":
+                vtype = worst.category
+                count = await self.dao.get_violations_count_24h(group_id, user_id, vtype, action_taken="delete")
+                action_name, action_param = self.moderation._should_escalate(
+                    vtype, count, worst.risk_level, worst.confidence, worst.reasons
+                )
+                if action_name == "kick":
+                    await self.moderation.set_group_kick(group_id, user_id)
+                elif action_name == "ban":
+                    await self.moderation.set_group_ban(group_id, user_id, action_param or 300)
+                elif action_name == "warn":
+                    logger.info(f"[Moderation] 用户 {user_id} 在群 {group_id} 触发第 {count} 次{vtype}警告")
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
@@ -1158,6 +1360,143 @@ class SelfEvolutionPlugin(Star):
             return
         summary = await self.eavesdropping.get_stats_summary(target_scope)
         yield event.plain_result(summary)
+
+    @filter.command_group("mod")
+    def moderation_group(self):
+        """群聊内容治理"""
+
+    @moderation_group.command("stats")
+    async def mod_stats(self, event: AstrMessageEvent, user_id: str = ""):
+        """查看违规统计。默认当前用户，可指定 user_id。"""
+        event.set_extra("self_evolution_command_reply", True)
+        ctx = CommandContext.from_event(event, self)
+        deny = ensure_admin(ctx)
+        if deny:
+            yield event.plain_result(deny)
+            return
+
+        target_group = event.get_group_id()
+        if not target_group:
+            yield event.plain_result("[Moderation] 需要在群聊中使用")
+            return
+
+        target_user = user_id.strip() if user_id.strip() else str(event.get_sender_id())
+
+        count_24h_nsfw = await self.dao.get_violations_count_24h(target_group, target_user, "nsfw")
+        count_24h_promo = await self.dao.get_violations_count_24h(target_group, target_user, "promo")
+        violations = await self.dao.get_violations_24h(target_group, target_user)
+
+        lines = [
+            f"【违规统计】用户 {target_user} 在群 {target_group}",
+            f"  最近24h: NSFW={count_24h_nsfw} | Promo={count_24h_promo}",
+            f"  总记录: {len(violations)} 条",
+        ]
+        if violations:
+            recent = violations[:3]
+            for v in recent:
+                import json
+
+                reasons = json.loads(v.get("reasons_json", "[]"))
+                reasons_str = " / ".join(reasons[:2]) if reasons else v.get("category", "")
+                lines.append(
+                    f"  - [{v['violation_type']}] {v['risk_level']} conf={v['confidence']:.2f} "
+                    f"| {reasons_str} | {v['action_taken']} | {v['created_at'][:16]}"
+                )
+
+        yield event.plain_result("\n".join(lines))
+
+    @moderation_group.command("group_stats")
+    async def mod_group_stats(self, event: AstrMessageEvent, hours: int = 24):
+        """查看群组最近违规概览。默认24小时。"""
+        event.set_extra("self_evolution_command_reply", True)
+        ctx = CommandContext.from_event(event, self)
+        deny = ensure_admin(ctx)
+        if deny:
+            yield event.plain_result(deny)
+            return
+
+        target_group = event.get_group_id()
+        if not target_group:
+            yield event.plain_result("[Moderation] 需要在群聊中使用")
+            return
+
+        violations = await self.dao.get_violations_by_group(target_group, hours)
+        nsfw = [v for v in violations if v.get("violation_type") == "nsfw"]
+        promo = [v for v in violations if v.get("violation_type") == "promo"]
+
+        lines = [
+            f"【群组违规统计】群 {target_group} 最近 {hours}h",
+            f"  NSFW: {len(nsfw)} 条",
+            f"  Promo: {len(promo)} 条",
+            f"  合计: {len(violations)} 条",
+        ]
+
+        user_counts = {}
+        for v in violations:
+            uid = v.get("user_id", "")
+            user_counts[uid] = user_counts.get(uid, 0) + 1
+        if user_counts:
+            top_users = sorted(user_counts.items(), key=lambda x: -x[1])[:3]
+            lines.append("  累计次数 Top 用户:")
+            for uid, cnt in top_users:
+                lines.append(f"    用户 {uid}: {cnt} 次")
+
+        yield event.plain_result("\n".join(lines))
+
+    @moderation_group.command("clear")
+    async def mod_clear(self, event: AstrMessageEvent, user_id: str = ""):
+        """清空违规记录。默认当前用户，可指定 user_id（仅管理员）。"""
+        event.set_extra("self_evolution_command_reply", True)
+        ctx = CommandContext.from_event(event, self)
+        deny = ensure_admin(ctx)
+        if deny:
+            yield event.plain_result(deny)
+            return
+
+        target_group = event.get_group_id()
+        if not target_group:
+            yield event.plain_result("[Moderation] 需要在群聊中使用")
+            return
+
+        target_user = user_id.strip() if user_id.strip() else str(event.get_sender_id())
+        deleted = await self.dao.delete_violations_by_user(target_group, target_user)
+        yield event.plain_result(f"[OK] 已清空用户 {target_user} 在群 {target_group} 的 {deleted} 条违规记录")
+
+    @moderation_group.command("toggle")
+    async def mod_toggle(self, event: AstrMessageEvent, target: str = ""):
+        """开关治理子功能。target: nsfw | promo | auto"""
+        event.set_extra("self_evolution_command_reply", True)
+        ctx = CommandContext.from_event(event, self)
+        deny = ensure_admin(ctx)
+        if deny:
+            yield event.plain_result(deny)
+            return
+
+        toggles = {
+            "nsfw": ("moderation_nsfw_enabled", "NSFW 审核"),
+            "promo": ("moderation_promo_enabled", "引流审核"),
+            "auto": ("moderation_auto_punish_enabled", "自动处罚"),
+        }
+        if not target:
+            status = [
+                f"总开关: {'开启' if self.cfg.moderation_enabled else '关闭'}",
+                f"NSFW审核: {'开启' if self.cfg.moderation_nsfw_enabled else '关闭'}",
+                f"引流审核: {'开启' if self.cfg.moderation_promo_enabled else '关闭'}",
+                f"自动处罚: {'开启' if self.cfg.moderation_auto_punish_enabled else '关闭'}",
+            ]
+            yield event.plain_result("【治理开关状态】\n" + "\n".join(status))
+            return
+
+        key = toggles.get(target.lower())
+        if not key:
+            yield event.plain_result(f"[OK] 可用开关目标: nsfw / promo / auto")
+            return
+
+        attr_name, label = key
+        current = getattr(self.cfg, attr_name, False)
+        new_val = not current
+        self.config.setdefault("moderation", {})[attr_name] = new_val
+        yield event.plain_result(f"[OK] {label}已{'开启' if new_val else '关闭'}")
 
     @filter.llm_tool(name="list_tools")
     async def list_tools(self, event: AstrMessageEvent) -> str:

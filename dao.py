@@ -220,6 +220,38 @@ class SelfEvolutionDAO:
                 updated_at TEXT NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS moderation_violations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                violation_type TEXT NOT NULL,
+                category TEXT NOT NULL,
+                confidence REAL NOT NULL DEFAULT 0.0,
+                risk_level TEXT NOT NULL,
+                reasons_json TEXT NOT NULL DEFAULT '[]',
+                action_taken TEXT NOT NULL,
+                evidence_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mod_group_user ON moderation_violations(group_id, user_id)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mod_created_at ON moderation_violations(created_at)
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS moderation_captions (
+                image_url TEXT PRIMARY KEY,
+                caption TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+        """)
 
     async def get_conn(self):
         """带有存活检测的全局连接获取器，兼顾长连接性能与雪崩恢复，防阻塞分离读写锁"""
@@ -836,3 +868,186 @@ class SelfEvolutionDAO:
             cursor = await db.execute("SELECT scope_id FROM scope_stats")
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
+
+    @with_db_retry()
+    async def insert_moderation_violation(
+        self,
+        group_id: str,
+        user_id: str,
+        message_id: str,
+        violation_type: str,
+        category: str,
+        confidence: float,
+        risk_level: str,
+        reasons_json: str,
+        action_taken: str,
+        evidence_json: str,
+    ):
+        """写入一条违规记录。"""
+        db = await self.get_conn()
+        now = datetime.now().isoformat()
+        async with self._write_lock:
+            await db.execute(
+                """INSERT INTO moderation_violations
+                   (group_id, user_id, message_id, violation_type, category,
+                    confidence, risk_level, reasons_json, action_taken, evidence_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    group_id,
+                    user_id,
+                    message_id,
+                    violation_type,
+                    category,
+                    confidence,
+                    risk_level,
+                    reasons_json,
+                    action_taken,
+                    evidence_json,
+                    now,
+                ),
+            )
+            await db.commit()
+
+    @with_db_retry()
+    async def get_violations_24h(self, group_id: str, user_id: str) -> list[dict]:
+        """获取指定群组+用户在最近24小时内的违规记录。"""
+        from datetime import timedelta
+
+        db = await self.get_conn()
+        cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+        async with self._db_lock:
+            cursor = await db.execute(
+                """SELECT id, group_id, user_id, message_id, violation_type, category,
+                          confidence, risk_level, reasons_json, action_taken, evidence_json, created_at
+                   FROM moderation_violations
+                   WHERE group_id = ? AND user_id = ? AND created_at >= ?
+                   ORDER BY created_at DESC""",
+                (group_id, user_id, cutoff),
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    @with_db_retry()
+    async def get_violations_count_24h(
+        self, group_id: str, user_id: str, violation_type: str = "", action_taken: str = ""
+    ) -> int:
+        """统计最近24小时违规次数。指定 violation_type 时精确过滤，指定 action_taken 时精确过滤。"""
+        from datetime import timedelta
+
+        db = await self.get_conn()
+        cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+        async with self._db_lock:
+            conditions = ["group_id = ?", "user_id = ?", "created_at >= ?"]
+            params = [group_id, user_id, cutoff]
+            if violation_type:
+                conditions.append("violation_type = ?")
+                params.append(violation_type)
+            if action_taken:
+                conditions.append("action_taken = ?")
+                params.append(action_taken)
+            sql = f"SELECT COUNT(*) FROM moderation_violations WHERE {' AND '.join(conditions)}"
+            cursor = await db.execute(sql, tuple(params))
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+    @with_db_retry()
+    async def get_violations_by_group(self, group_id: str, hours: int = 24) -> list[dict]:
+        """获取群组最近 N 小时的违规记录（默认24h）。"""
+        from datetime import timedelta
+
+        db = await self.get_conn()
+        cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
+        async with self._db_lock:
+            cursor = await db.execute(
+                """SELECT id, group_id, user_id, message_id, violation_type, category,
+                          confidence, risk_level, reasons_json, action_taken, created_at
+                   FROM moderation_violations
+                   WHERE group_id = ? AND created_at >= ?
+                   ORDER BY created_at DESC""",
+                (group_id, cutoff),
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    @with_db_retry()
+    async def delete_violations_by_user(self, group_id: str, user_id: str) -> int:
+        """清空指定用户在指定群组的违规记录，返回删除条数。"""
+        db = await self.get_conn()
+        async with self._write_lock:
+            cursor = await db.execute(
+                "DELETE FROM moderation_violations WHERE group_id = ? AND user_id = ?",
+                (group_id, user_id),
+            )
+            await db.commit()
+            return cursor.rowcount
+
+    @with_db_retry()
+    async def delete_violations_by_group(self, group_id: str) -> int:
+        """清空指定群组所有违规记录，返回删除条数。"""
+        db = await self.get_conn()
+        async with self._write_lock:
+            cursor = await db.execute(
+                "DELETE FROM moderation_violations WHERE group_id = ?",
+                (group_id,),
+            )
+            await db.commit()
+            return cursor.rowcount
+
+    @with_db_retry()
+    async def upsert_moderation_caption(
+        self,
+        image_url: str,
+        caption: str,
+        provider_id: str,
+        source: str,
+        ttl_seconds: int = 3600,
+    ) -> None:
+        """写入/更新 caption cache（TTL 默认1小时）。"""
+        db = await self.get_conn()
+        now = datetime.now()
+        expires_at = (now + timedelta(seconds=ttl_seconds)).isoformat()
+        created_at = now.isoformat()
+        async with self._write_lock:
+            await db.execute(
+                """INSERT OR REPLACE INTO moderation_captions
+                   (image_url, caption, provider_id, source, created_at, expires_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (image_url, caption, provider_id, source, created_at, expires_at),
+            )
+            await db.commit()
+
+    @with_db_retry()
+    async def get_moderation_caption(self, image_url: str) -> Optional[dict]:
+        """查询 caption cache，未命中或已过期返回 None。"""
+        db = await self.get_conn()
+        now = datetime.now().isoformat()
+        async with self._db_lock:
+            cursor = await db.execute(
+                """SELECT caption, provider_id, source, created_at, expires_at
+                   FROM moderation_captions
+                   WHERE image_url = ? AND expires_at > ?""",
+                (image_url, now),
+            )
+            row = await cursor.fetchone()
+            if row:
+                return {
+                    "caption": row[0],
+                    "provider_id": row[1],
+                    "source": row[2],
+                    "created_at": row[3],
+                    "expires_at": row[4],
+                }
+            return None
+
+    @with_db_retry()
+    async def expire_moderation_captions(self) -> int:
+        """删除所有已过期的 caption cache 条目，返回删除数量。"""
+        db = await self.get_conn()
+        now = datetime.now().isoformat()
+        async with self._write_lock:
+            cursor = await db.execute(
+                "DELETE FROM moderation_captions WHERE expires_at <= ?",
+                (now,),
+            )
+            await db.commit()
+            return cursor.rowcount
