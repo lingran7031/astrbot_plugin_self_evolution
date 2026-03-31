@@ -32,7 +32,6 @@
 - SAN 精力系统
 - 情感积分底盘
 - 管理辅助能力
-- 群聊内容治理
 
 ### 实验模块
 
@@ -72,7 +71,6 @@
 | `[MemoryInject]` | Prompt 注入命中 |
 | `[Engagement]` | 场景判断、eligibility、plan |
 | `[Affinity]` | 信号命中、积分变更 |
-| `[Moderation]` | 图片审核、撤回、处罚决策 |
 
 正常跳过（如 profile 未命中、summary 无消息）只打 `debug`，不打 `warning`。
 
@@ -268,35 +266,6 @@
 行为统计命令：
 - `/evolution stats [scope_id]` — 查看行为统计摘要（默认当前群组，支持跨重启恢复）
 
-## 群聊内容治理
-
-治理系统复用 AstrBot 已有图片理解模型配置（`provider_ltm_settings.image_caption_provider_id` → `provider_settings.default_image_caption_provider_id`），不新增模型配置。
-
-**审核类型：**
-- NSFW：裸露、性暗示、擦边、色情广告
-- Promo：二维码、群号、引流文案、博彩/兼职/黄网导流
-
-**处理流程：**
-- 群图片消息进入治理链 → 并行跑 NSFW + Promo 两套审核 → 取风险更高侧 → 高置信度内容自动撤回 → 达阈值执行梯度处罚（警告 → 禁言 → 踢出）
-
-**证据留存：** 每次审核命中都落 `moderation_violations` 表，存 JSON 结构化 evidence，重启不丢。
-
-**Caption 复用：** 开启 `moderation_prefer_caption_reuse`（默认开启）后，治理系统在框架生成图片 caption 时自动旁路缓存（`source=framework`），审核时优先查缓存，未命中再兜底独立识图。已开启群聊图片理解的用户可减少重复识图调用；未开启者治理功能不受影响。
-
-**处罚梯度（NSFW / Promo 各有独立阈值）：**
-- 第1次：警告（记录）
-- 第2次：禁言（NSFW 5分钟 / Promo 10分钟）
-- 第3次：踢出
-
-**相关文件：**
-- [engine/moderation.py](engine/moderation.py)
-
-**治理命令：**
-- `/mod stats [用户ID]` — 查看用户违规统计
-- `/mod group_stats [小时数]` — 查看群组违规概览
-- `/mod clear [用户ID]` — 清空用户在当前群的违规记录
-- `/mod toggle [nsfw|promo|auto]` — 查看或切换治理开关
-
 ## 情感积分
 
 情感积分现在不再只依赖 LLM 主动调用工具。
@@ -423,10 +392,6 @@
 - `/sticker add`
 - `/sticker migrate`
 - `/db <操作>`
-- `/mod stats [用户ID]` — 查看用户违规统计（24h + 累计）
-- `/mod group_stats [小时数]` — 查看群组最近违规概览
-- `/mod clear [用户ID]` — 清空用户在当前群的违规记录（仅管理员）
-- `/mod toggle [nsfw|promo|auto]` — 查看或切换治理开关状态（仅管理员）
 
 ## LLM 工具
 
