@@ -6,6 +6,14 @@ import time
 from .speech_types import InteractionKind
 
 
+def _stat_key(key) -> str:
+    if key is None:
+        return ""
+    if hasattr(key, "value"):
+        return str(key.value)
+    return str(key)
+
+
 @dataclass
 class WindowedScopeStats:
     active_text_count: int = 0
@@ -32,10 +40,10 @@ class WindowedScopeStats:
             "passive_reaction_count": self.passive_reaction_count,
             "guard_blocked_count": self.guard_blocked_count,
             "degraded_to_emoji_count": self.degraded_to_emoji_count,
-            "anchor_type_counts": dict(self.anchor_type_counts),
-            "skip_reason_counts": dict(self.skip_reason_counts),
-            "degrade_reason_counts": dict(self.degrade_reason_counts),
-            "blocked_reason_counts": dict(self.blocked_reason_counts),
+            "anchor_type_counts": {_stat_key(k): v for k, v in self.anchor_type_counts.items()},
+            "skip_reason_counts": {str(k): v for k, v in self.skip_reason_counts.items()},
+            "degrade_reason_counts": {str(k): v for k, v in self.degrade_reason_counts.items()},
+            "blocked_reason_counts": {str(k): v for k, v in self.blocked_reason_counts.items()},
         }
 
     @classmethod
@@ -84,10 +92,10 @@ class ScopeStats:
             "passive_reaction_count": self.passive_reaction_count,
             "guard_blocked_count": self.guard_blocked_count,
             "degraded_to_emoji_count": self.degraded_to_emoji_count,
-            "anchor_type_counts": dict(self.anchor_type_counts),
-            "skip_reason_counts": dict(self.skip_reason_counts),
-            "degrade_reason_counts": dict(self.degrade_reason_counts),
-            "blocked_reason_counts": dict(self.blocked_reason_counts),
+            "anchor_type_counts": {_stat_key(k): v for k, v in self.anchor_type_counts.items()},
+            "skip_reason_counts": {str(k): v for k, v in self.skip_reason_counts.items()},
+            "degrade_reason_counts": {str(k): v for k, v in self.degrade_reason_counts.items()},
+            "blocked_reason_counts": {str(k): v for k, v in self.blocked_reason_counts.items()},
         }
 
     @classmethod
@@ -135,8 +143,9 @@ class EngagementStats:
             lt.active_text_count += 1
             wd.active_text_count += 1
             if anchor_type:
-                lt.anchor_type_counts[anchor_type] += 1
-                wd.anchor_type_counts[anchor_type] += 1
+                k = _stat_key(anchor_type)
+                lt.anchor_type_counts[k] += 1
+                wd.anchor_type_counts[k] += 1
         elif kind == InteractionKind.ACTIVE_EMOJI:
             lt.active_emoji_count += 1
             wd.active_emoji_count += 1
@@ -169,7 +178,9 @@ class EngagementStats:
                 lt.degrade_reason_counts[reason] += 1
                 wd.degrade_reason_counts[reason] += 1
 
-    record_active_text = lambda self, sid, anchor_type="": self.record(sid, InteractionKind.ACTIVE_TEXT, anchor_type=anchor_type)
+    record_active_text = lambda self, sid, anchor_type="": self.record(
+        sid, InteractionKind.ACTIVE_TEXT, anchor_type=anchor_type
+    )
     record_active_emoji = lambda self, sid: self.record(sid, InteractionKind.ACTIVE_EMOJI)
     record_active_reaction = lambda self, sid: self.record(sid, InteractionKind.ACTIVE_REACTION)
     record_passive_text = lambda self, sid: self.record(sid, InteractionKind.PASSIVE_TEXT)

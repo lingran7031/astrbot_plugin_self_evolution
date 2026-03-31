@@ -1195,3 +1195,25 @@ class EngagementStatsTests(IsolatedAsyncioTestCase):
         summary = stats.get_summary("5001")
         self.assertNotIn("无记录", summary)
         self.assertIn("被动", summary)
+
+    def test_enum_key_never_hits_json_serialization(self):
+        """AnchorType enum 作为 key 写入统计，to_dict() 不会炸。"""
+        import json
+        from engine.speech_types import AnchorType
+
+        stats = load_engine_module("engagement_stats").EngagementStats()
+        stats.record_active_text("5001", AnchorType.QUESTION_UNANSWERED)
+        stats.record_guard_blocked("5001", "AI语气")
+        stats.record_degraded("5001", "泛解释语气")
+
+        lifetime = stats.to_dict("5001")
+        json_str = json.dumps(lifetime)
+        self.assertIn("question_unanswered", json_str)
+        self.assertIn("guard_blocked_count", json_str)
+
+        windowed = stats.to_windowed_dict("5001")
+        json_w = json.dumps(windowed)
+        self.assertIn("question_unanswered", json_w)
+
+        summary = stats.get_summary("5001")
+        self.assertNotIn("无记录", summary)
