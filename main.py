@@ -11,6 +11,7 @@ from astrbot.api import logger
 from astrbot.api.all import AstrMessageEvent, Context, Star, register
 from astrbot.api.event import filter
 from astrbot.api.provider import ProviderRequest
+from astrbot.api.star import StarTools
 from astrbot.core.message.components import Plain, WechatEmoji
 
 from .commands.common import CommandContext, ensure_admin
