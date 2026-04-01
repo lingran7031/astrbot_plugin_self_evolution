@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 import time
 from dataclasses import dataclass, field
 
@@ -24,6 +25,10 @@ try:
     from astrbot.core.message.components import Face as AstrFace
 except ImportError:
     AstrFace = None
+try:
+    from astrbot.core.message.components import Video as AstrVideo
+except ImportError:
+    AstrVideo = None
 from astrbot.core.star.star_handler import EventType, star_handlers_registry
 
 from . import commands
@@ -51,6 +56,17 @@ from .engine.session_memory_summarizer import SessionMemorySummarizer
 from .engine.sticker_store import StickerStore
 from .engine.meal_store import MealStore
 from .engine.text_utils import clean_result_text, should_clean_result
+from .engine.caption_service import get_caption_for_target
+from .engine.media_extractor import extract_media_targets
+from .engine.moderation_classifier import (
+    classify_nsfw_caption,
+    classify_promo_caption,
+    init_moderation_keywords,
+    merge_moderation_results,
+    ModerationCategory,
+    RiskLevel,
+)
+from .engine.moderation_enforcer import enforce_moderation
 from .scheduler.register import register_tasks
 
 PROTECTED_TOOLS = frozenset(
@@ -129,6 +145,7 @@ class SelfEvolutionPlugin(Star):
         self.stickers_dir = self.data_dir / "stickers"
         self.stickers_dir.mkdir(parents=True, exist_ok=True)
         self.sticker_store = StickerStore(self.stickers_dir)
+        self._sticker_reply_timestamps: dict[str, list[float]] = {}
         self.meals_dir = self.data_dir / "meals"
         self.meals_dir.mkdir(parents=True, exist_ok=True)
         self.meal_store = MealStore(self.meals_dir)
@@ -136,6 +153,17 @@ class SelfEvolutionPlugin(Star):
 
         # 配置系统（提前初始化，以便后续使用）
         self.cfg = PluginConfig(self)
+
+        # 初始化审核关键词（从配置读取，支持用户自定义）
+        init_moderation_keywords(
+            self.cfg.moderation_nsfw_keywords,
+            self.cfg.moderation_promo_keywords,
+            self.cfg.moderation_refusal_keywords,
+            self.cfg.moderation_nsfw_refusal_confidence,
+            self.cfg.moderation_promo_refusal_confidence,
+            self.cfg.moderation_weak_keyword_confidence,
+            self.cfg.moderation_confidence_threshold,
+        )
 
         # 提示词注入配置
         self._prompts_injection = {}
@@ -631,6 +659,110 @@ class SelfEvolutionPlugin(Star):
         return ""
 
     @filter.event_message_type(filter.EventMessageType.ALL)
+    async def on_media_extraction_listener(self, event: AstrMessageEvent):
+        """Phase 1+2+4: 消息媒体目标抽取 -> Caption -> 审核分类。"""
+        group_id = event.get_group_id() or ""
+        user_id = str(event.get_sender_id() or "")
+        message_id = ""
+        try:
+            raw_msg = getattr(getattr(event, "message_obj", None), "raw_message", None)
+            if raw_msg and isinstance(raw_msg, dict):
+                message_id = str(raw_msg.get("message_id", ""))
+            if not message_id:
+                message_id = str(getattr(event, "message_id", ""))
+            if not message_id:
+                message_id = str(event.get_id() if hasattr(event, "get_id") else "")
+        except Exception:
+            pass
+        message_id = message_id or ""
+
+        msg_chain = event.get_messages()
+        if not msg_chain:
+            return
+
+        has_media = any(
+            getattr(c, "type", None) in ("image", "video", "forward", "reply", "Forward", "Reply")
+            or (AstrImage and isinstance(c, AstrImage))
+            or (AstrVideo and isinstance(c, AstrVideo))
+            for c in msg_chain
+        )
+        if not has_media:
+            return
+
+        try:
+            targets = await extract_media_targets(event)
+        except Exception as e:
+            logger.warning(f"[MediaExtractor] 抽取异常: {e}", exc_info=True)
+            return
+
+        logger.info(
+            f"[MediaExtractor] group={group_id} user={user_id} msg={message_id} "
+            f"targets={len(targets)} can_process={[t.can_process_now for t in targets]}"
+        )
+        for t in targets:
+            candidates_summary = [
+                {k: v[:40] if isinstance(v, str) else v}
+                for c in t.resource_candidates
+                for k, v in c.to_dict().items()
+                if v and k != "raw_component_type"
+            ]
+            logger.info(
+                f"[MediaExtractor] kind={t.kind.value} origin={t.origin.value} "
+                f"can={t.can_process_now} reason={t.reason} "
+                f"candidates={candidates_summary}"
+            )
+
+            cap_result = await get_caption_for_target(t, self.context, self.dao)
+            logger.info(
+                f"[CaptionService] kind={cap_result.kind.value} origin={cap_result.origin.value} "
+                f"success={cap_result.success} cached={getattr(cap_result, 'cache_hit', False)} provider={cap_result.provider_id} "
+                f"model={cap_result.model_name} resource={cap_result.resource_key[:30] if cap_result.resource_key else ''} "
+                f"reason={cap_result.reason} text={cap_result.text[:80] if cap_result.text else ''!r}"
+            )
+
+            if cap_result.success:
+                nsfw_res = classify_nsfw_caption(cap_result)
+                promo_res = classify_promo_caption(cap_result)
+                merged_res = merge_moderation_results(nsfw_res, promo_res)
+                logger.info(
+                    f"[Moderation] nsfw={nsfw_res.category}/{nsfw_res.confidence}/{nsfw_res.risk_level}/{nsfw_res.suggested_action} "
+                    f"promo={promo_res.category}/{promo_res.confidence}/{promo_res.risk_level}/{promo_res.suggested_action} "
+                    f"merged={merged_res.category}/{merged_res.confidence}/{merged_res.risk_level}/{merged_res.suggested_action} "
+                    f"reasons={merged_res.reasons}"
+                )
+
+                logger.info(
+                    f"[Moderation] 调用 enforce_moderation: message_id={message_id!r} group={group_id} user={user_id}"
+                )
+                enf_result = await enforce_moderation(
+                    event,
+                    group_id=group_id,
+                    user_id=user_id,
+                    message_id=message_id,
+                    caption_result=cap_result,
+                    nsfw_result=nsfw_res,
+                    promo_result=promo_res,
+                    merged_result=merged_res,
+                    enforcement_enabled=self.cfg.moderation_enforcement_enabled,
+                    dao=self.dao,
+                    escalation_threshold=self.cfg.moderation_escalation_threshold,
+                    ban_duration_minutes=self.cfg.moderation_ban_duration_minutes,
+                    nsfw_warning_message=self.cfg.moderation_nsfw_warning_message,
+                    nsfw_ban_reason_message=self.cfg.moderation_nsfw_ban_reason_message,
+                    promo_warning_message=self.cfg.moderation_promo_warning_message,
+                    promo_ban_reason_message=self.cfg.moderation_promo_ban_reason_message,
+                )
+                logger.info(
+                    f"[Moderation] mode={'dry-run' if enf_result.dry_run else 'execute'} "
+                    f"action={enf_result.final_action} "
+                    f"evidence={'ok' if enf_result.evidence_written else 'fail'} "
+                    f"group={group_id} user={user_id} msg={message_id} "
+                    f"category={merged_res.category} confidence={merged_res.confidence}"
+                )
+            else:
+                logger.info(f"[Moderation] skipped - caption failed: {cap_result.reason}")
+
+    @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message_listener(self, event: AstrMessageEvent):
         """CognitionCore 7.0: 被动监听 - 滑动上下文窗口"""
         group_id = event.get_group_id()
@@ -700,12 +832,58 @@ class SelfEvolutionPlugin(Star):
 
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
-        if not should_clean_result(event):
+        if not self.cfg.sticker_reply_enabled:
+            if not should_clean_result(event):
+                return
+            result = event.get_result()
+            if not result or not result.chain:
+                return
+            for comp in result.chain:
+                if isinstance(comp, Plain) and comp.text:
+                    comp.text = clean_result_text(comp.text)
             return
+
         result = event.get_result()
         if not result or not result.chain:
             return
 
+        group_id = event.get_group_id()
+        if not group_id:
+            return
+
+        if not all(isinstance(c, Plain) for c in result.chain):
+            return
+
+        plain_texts = [c.text for c in result.chain if isinstance(c, Plain) and c.text]
+        total_len = sum(len(t) for t in plain_texts)
+        if total_len < self.cfg.sticker_reply_min_text_length:
+            return
+
+        now = time.time()
+        hourly_limit = self.cfg.sticker_reply_max_per_hour
+        key = f"sticker_reply:{group_id}"
+        timestamps = self._sticker_reply_timestamps.get(key, [])
+        timestamps = [t for t in timestamps if now - t < 3600]
+        if len(timestamps) >= hourly_limit:
+            return
+        if random.randint(1, 100) > self.cfg.sticker_reply_chance:
+            return
+
+        sticker = await self.sticker_store.get_random_sticker()
+        if not sticker:
+            return
+
+        file_path = self.sticker_store.get_sticker_path(sticker)
+        if not file_path or not os.path.exists(file_path):
+            return
+
+        if AstrImage:
+            result.chain.append(AstrImage.fromFileSystem(file_path))
+        timestamps.append(now)
+        self._sticker_reply_timestamps[key] = timestamps
+
+        if not should_clean_result(event):
+            return
         for comp in result.chain:
             if isinstance(comp, Plain) and comp.text:
                 comp.text = clean_result_text(comp.text)

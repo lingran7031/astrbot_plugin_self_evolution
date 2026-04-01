@@ -358,6 +358,8 @@
 - `/affinity show`
 - `/san show`
 - `/今日老婆`
+- `/addmeal <菜名>`
+- `/delmeal <菜名>`
 - `/profile view [用户ID]`
 - `/profile create [用户ID]`
 - `/profile update [用户ID]`
@@ -391,7 +393,10 @@
 - `/sticker sync`
 - `/sticker add`
 - `/sticker migrate`
-- `/db <操作>`
+- `/db show`
+- `/db reset`
+- `/db rebuild`
+- `/db confirm`
 
 ## LLM 工具
 
