@@ -183,7 +183,7 @@ def make_todos(
         todos.append(
             PersonaTodo(
                 todo_type=TodoType.INTERNAL,
-                title="最近聊得有点意思，还想继续探",
+                title="最近聊得有点意思，还想继续探探",
                 reason="接触多了，对什么都想多知道点",
                 priority=4,
                 mood_bias=2.0,
@@ -219,7 +219,7 @@ def make_todos(
         todos.append(
             PersonaTodo(
                 todo_type=TodoType.SOCIAL,
-                title="想把这份好状态散出去",
+                title="想把这份好状态分享出去",
                 reason="最近什么都顺，想分享",
                 priority=4,
                 mood_bias=2.0,
