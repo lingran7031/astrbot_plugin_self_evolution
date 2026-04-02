@@ -1,9 +1,6 @@
-"""
-System Commands - 系统命令实现
-"""
+"""System command display helpers."""
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -19,7 +16,7 @@ except ImportError:
 async def _read_metadata_version() -> str:
     """Read version from metadata.yaml asynchronously."""
 
-    async def _read():
+    def _read():
         metadata_path = Path(__file__).resolve().parents[1] / "metadata.yaml"
         if metadata_path.exists():
             try:
@@ -31,7 +28,8 @@ async def _read_metadata_version() -> str:
                 pass
         return None
 
-    return await asyncio.to_thread(_read) or "未知"
+    version = await asyncio.to_thread(_read)
+    return version if version else "未知"
 
 
 async def handle_version(event, plugin):
@@ -47,7 +45,6 @@ async def handle_help(event, plugin):
     """显示帮助信息"""
     user_id = event.get_sender_id()
     is_admin = event.is_admin() or (plugin.admin_users and str(user_id) in plugin.admin_users)
-
     return format_text_help(is_admin=is_admin)
 
 
@@ -55,5 +52,4 @@ async def handle_help_text(event, plugin) -> str:
     """显示纯文本帮助信息"""
     user_id = event.get_sender_id()
     is_admin = event.is_admin() or (plugin.admin_users and str(user_id) in plugin.admin_users)
-
     return format_text_help(is_admin=is_admin)

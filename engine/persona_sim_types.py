@@ -27,6 +27,25 @@ class TodoType(Enum):
     SOCIAL = "social"
 
 
+class InteractionQuality(Enum):
+    GOOD = "good"
+    NORMAL = "normal"
+    BAD = "bad"
+    BRIEF = "brief"
+    AWKWARD = "awkward"
+    RELIEF = "relief"
+
+
+class InteractionMode(Enum):
+    ACTIVE = "active"
+    PASSIVE = "passive"
+
+
+class InteractionOutcome(Enum):
+    CONNECTED = "connected"
+    MISSED = "missed"
+
+
 # 四个核心数值，范围 0~100
 @dataclass
 class PersonaState:
@@ -36,6 +55,7 @@ class PersonaState:
     satiety: float = 80.0
     last_tick_at: float = field(default_factory=time.time)
     last_interaction_at: float = field(default_factory=time.time)
+    thought_process: str = ""
 
 
 @dataclass
@@ -49,6 +69,9 @@ class PersonaEffect:
     expires_at: float = 0.0
     prompt_hint: str = ""
     tags: list[str] = field(default_factory=list)
+    source_detail: str = ""
+    decay_style: str = "gradual"
+    recovery_style: str = "passive"
 
     def is_active(self, now: float) -> bool:
         if self.expires_at <= 0:
@@ -63,6 +86,8 @@ class PersonaEvent:
     causes: list[str] = field(default_factory=list)
     effects_applied: list[str] = field(default_factory=list)
     timestamp: float = field(default_factory=time.time)
+    interaction_mode: str = ""
+    interaction_outcome: str = ""
 
 
 @dataclass

@@ -1,40 +1,41 @@
 # 自我进化
 
-`astrbot_plugin_self_evolution` 是一个给 AstrBot 使用的认知增强插件，适配群聊、私聊和 NapCat 消息结构。
+`astrbot_plugin_self_evolution` 是一个给 AstrBot 使用的长期能力增强插件，适配群聊、私聊和 NapCat 消息结构。
 
-它的目标不是单独多几个命令，而是让机器人逐步具备更稳定的长期能力：
+它的目标不是只多几个命令，而是让 Bot 逐步具备更稳定的连续性：
 
-- 结构化人物画像
-- 会话记忆与每日总结
+- 用户画像与长期记忆
+- 会话事件与每日总结
 - 反思与自我校准
 - 群聊上下文注入
 - 主动与被动社交参与
+- Persona Sim 人格生活模拟
 - 图片 caption 与群聊图片审核
 - 情感积分、SAN、表情包、群菜单等行为增强
 
 ## 交流
 
 - QQ 群：`1087272376`
-- 群名：`self_evolution插件交流反馈群`
+- 群名：`self_evolution 插件交流反馈群`
 
 ## 功能概览
 
 ### 记忆与画像
 
 - 维护用户画像，记录身份、偏好、特征和补充备注
-- 维护会话事件与每日总结
+- 维护会话事件、每日总结与范围隔离的知识库
 - 支持按群聊 / 私聊自动隔离 scope
 - 支持长期知识库召回与 Prompt 注入
 
 相关文件：
 
-- [main.py](main.py)
-- [engine/profile.py](engine/profile.py)
-- [engine/profile_summary_service.py](engine/profile_summary_service.py)
-- [engine/memory_router.py](engine/memory_router.py)
-- [engine/memory_query_service.py](engine/memory_query_service.py)
-- [engine/session_memory_store.py](engine/session_memory_store.py)
-- [engine/session_memory_summarizer.py](engine/session_memory_summarizer.py)
+- [main.py](/D:/skills/GD/astrbot_plugin_self_evolution/main.py)
+- [profile.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/profile.py)
+- [profile_summary_service.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/profile_summary_service.py)
+- [memory_router.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/memory_router.py)
+- [memory_query_service.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/memory_query_service.py)
+- [session_memory_store.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/session_memory_store.py)
+- [session_memory_summarizer.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/session_memory_summarizer.py)
 
 ### 社交与行为
 
@@ -45,24 +46,53 @@
 
 相关文件：
 
-- [engine/eavesdropping.py](engine/eavesdropping.py)
-- [engine/social_state.py](engine/social_state.py)
-- [engine/engagement_planner.py](engine/engagement_planner.py)
-- [engine/reply_executor.py](engine/reply_executor.py)
-- [engine/output_guard.py](engine/output_guard.py)
-- [engine/affinity.py](engine/affinity.py)
-- [cognition/san.py](cognition/san.py)
-- [engine/entertainment.py](engine/entertainment.py)
-- [engine/meal_store.py](engine/meal_store.py)
+- [eavesdropping.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/eavesdropping.py)
+- [social_state.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/social_state.py)
+- [engagement_planner.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/engagement_planner.py)
+- [reply_executor.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/reply_executor.py)
+- [output_guard.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/output_guard.py)
+- [affinity.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/affinity.py)
+- [san.py](/D:/skills/GD/astrbot_plugin_self_evolution/cognition/san.py)
+- [entertainment.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/entertainment.py)
+- [meal_store.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/meal_store.py)
+
+### Persona Sim 人格生活模拟
+
+插件现在内置了一套轻量的人格生活模拟层，用来增强“她在你没找她时也在变化”的连续感。
+
+当前能力包括：
+
+- 维护每个 scope 的人格状态：`energy`、`mood`、`social_need`、`satiety`
+- 基于时间差做 delta 推演，不需要后台常驻线程
+- 根据状态触发短期 Buff / Debuff，例如疲惫、低落、孤独、饥饿等
+- 生成角色当前脑内待办，例如想休息、想聊天、想找点吃的
+- 将人格状态以极短片段注入 Prompt
+- 温和影响群聊参与意愿，但不取代现有 planner
+- 在低频调度中做 persona consolidation，生成当日人格经历摘要
+
+设计边界：
+
+- Persona Sim 不替代 SAN
+- Persona Sim 不替代 Affinity
+- Persona Sim 不污染 `session_event`
+- Persona Sim 的夜间固化写入独立 `persona_episodes`
+
+相关文件：
+
+- [persona_sim_types.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/persona_sim_types.py)
+- [persona_sim_rules.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/persona_sim_rules.py)
+- [persona_sim_engine.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/persona_sim_engine.py)
+- [persona_sim_injection.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/persona_sim_injection.py)
+- [persona_sim_consolidation.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/persona_sim_consolidation.py)
 
 ### 人格进化
 
-- 提供管理员审批流
+- 提供管理员审核流
 - 支持查看、批准、拒绝、清空、统计
 
 相关文件：
 
-- [engine/persona.py](engine/persona.py)
+- [persona.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/persona.py)
 
 ### 图片 caption 与群聊图片审核
 
@@ -80,26 +110,26 @@
 - caption 只表示“图里是什么”
 - 审核结果表示“这算不算违规”
 - caption cache 不存审核 JSON
-- 执行层支持 dry-run 和真实执行切换
+- 执行层支持 `dry-run` 和真实执行切换
 
 当前执行层能力：
 
 - `ignore`：只记录日志
-- `review`：删除消息，并按 24 小时内累计违规次数升级为禁言或踢出
-- `delete`：直接删除消息
+- `review`：记录 evidence，并按配置策略进入自动处理
+- `delete`：删除消息并按累计违规次数升级处罚
 
 相关文件：
 
-- [engine/media_extractor.py](engine/media_extractor.py)
-- [engine/caption_service.py](engine/caption_service.py)
-- [engine/moderation_classifier.py](engine/moderation_classifier.py)
-- [engine/moderation_enforcer.py](engine/moderation_enforcer.py)
-- [engine/moderation_executor.py](engine/moderation_executor.py)
+- [media_extractor.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/media_extractor.py)
+- [caption_service.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/caption_service.py)
+- [moderation_classifier.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/moderation_classifier.py)
+- [moderation_enforcer.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/moderation_enforcer.py)
+- [moderation_executor.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/moderation_executor.py)
 
 ## 最小安装步骤
 
 1. 在 AstrBot 后台安装 `astrbot_plugin_self_evolution`
-2. 创建一个基础知识库，并把名字设置为 `memory_kb_name`
+2. 创建一个基础知识库，并把名字设置给 `memory_kb_name`
 3. 确保 AstrBot 已配置可用模型
 4. 如需启用图片审核，请确保已配置可用的图片理解 provider
 5. 使用 NapCat 作为消息协议后端
@@ -115,8 +145,10 @@
 - `/affinity show`
 - `/san show`
 - `/今日老婆`
-- `/addmeal <菜名>`
-- `/delmeal <菜名>`
+- `/addmeal <菜名>` - 添加菜品到群菜单
+- `/delmeal <菜名>|all` - 删除菜品（all 仅管理员）
+- `/banuseraddmeal <用户ID>` - 禁止指定用户添加菜品（仅管理员）
+- `/unbanuseraddmeal <用户ID>` - 解除禁止（仅管理员）
 - `/profile view [用户ID]`
 - `/profile create [用户ID]`
 - `/profile update [用户ID]`
@@ -150,6 +182,14 @@
 - `/sticker sync`
 - `/sticker add`
 - `/sticker migrate`
+- `/persona state [scope]`
+- `/persona status [scope]`
+- `/persona tick [scope] [quality]`
+- `/persona todo [scope]`
+- `/persona effects [scope]`
+- `/persona apply [scope] [quality]`
+- `/persona today [scope]`
+- `/persona consolidate [scope] [date]`
 - `/db show`
 - `/db reset`
 - `/db rebuild`
@@ -173,7 +213,16 @@
 - 会话总结 / 会话事件：AstrBot 知识库
 - 图片 caption cache / 审核 evidence：SQLite
 - 反思 / SAN / 情感积分等运行数据：SQLite
+- Persona Sim：SQLite
 - 表情包：本地目录
+
+Persona Sim 当前会落这些表：
+
+- `persona_state`
+- `persona_effects`
+- `persona_events`
+- `persona_todos`
+- `persona_episodes`
 
 ## 配置分组
 
@@ -255,6 +304,8 @@
 - `[MemorySummary]`
 - `[MemoryStore]`
 - `[MemoryInject]`
+- `[PersonaSim]`
+- `[Consolidation]`
 - `[Engagement]`
 - `[Affinity]`
 - `[Moderation]`
@@ -280,12 +331,15 @@
 
 如果你要继续看代码，优先从这些入口开始：
 
-- [main.py](main.py)
-- [engine/memory_router.py](engine/memory_router.py)
-- [engine/memory_query_service.py](engine/memory_query_service.py)
-- [engine/profile.py](engine/profile.py)
-- [engine/session_memory_store.py](engine/session_memory_store.py)
-- [engine/engagement_planner.py](engine/engagement_planner.py)
-- [engine/caption_service.py](engine/caption_service.py)
-- [engine/moderation_classifier.py](engine/moderation_classifier.py)
-- [engine/moderation_enforcer.py](engine/moderation_enforcer.py)
+- [main.py](/D:/skills/GD/astrbot_plugin_self_evolution/main.py)
+- [memory_router.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/memory_router.py)
+- [memory_query_service.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/memory_query_service.py)
+- [profile.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/profile.py)
+- [session_memory_store.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/session_memory_store.py)
+- [engagement_planner.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/engagement_planner.py)
+- [reply_executor.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/reply_executor.py)
+- [persona_sim_engine.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/persona_sim_engine.py)
+- [persona_sim_consolidation.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/persona_sim_consolidation.py)
+- [caption_service.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/caption_service.py)
+- [moderation_classifier.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/moderation_classifier.py)
+- [moderation_enforcer.py](/D:/skills/GD/astrbot_plugin_self_evolution/engine/moderation_enforcer.py)
