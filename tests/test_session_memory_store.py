@@ -29,8 +29,6 @@ class EnsureScopeKbTests(IsolatedAsyncioTestCase):
         plugin.context.kb_manager = MagicMock()
         fake_helper = _fake_kb_helper()
         plugin.context.kb_manager.get_kb_by_name = AsyncMock(return_value=fake_helper)
-        plugin.context.kb_manager.create_kb_if_not_exists = AsyncMock()
-
         store = SessionMemoryStore(plugin)
         result = await store._ensure_scope_kb("g_123")
 
