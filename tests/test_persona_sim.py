@@ -182,3 +182,46 @@ class PersonaEffectActiveTests(IsolatedAsyncioTestCase):
         )
         self.assertTrue(e.is_active(500))
         self.assertFalse(e.is_active(1001))
+
+
+class TodoMakeTodosTests(IsolatedAsyncioTestCase):
+    """测试 make_todos（独立todo层）。"""
+
+    def _make_state(self, energy=80, mood=70, social=50, satiety=80):
+        s = MagicMock()
+        s.energy = energy
+        s.mood = mood
+        s.social_need = social
+        s.satiety = satiety
+        return s
+
+    def test_hungry_generates_eating_todo(self):
+        from engine.persona_sim_todo import make_todos
+
+        state = self._make_state(satiety=30)
+        todos = make_todos(state, [MagicMock(effect_id="hungry", tags=[])])
+        titles = [t.title for t in todos]
+        self.assertTrue(any("吃" in t for t in titles))
+
+    def test_wronged_generates_todo(self):
+        from engine.persona_sim_todo import make_todos
+
+        state = self._make_state()
+        todos = make_todos(state, [MagicMock(effect_id="wronged", tags=[])])
+        titles = [t.title for t in todos]
+        self.assertTrue(any("委屈" in t for t in titles))
+
+    def test_relieved_generates_todo(self):
+        from engine.persona_sim_todo import make_todos
+
+        state = self._make_state()
+        todos = make_todos(state, [MagicMock(effect_id="relieved", tags=[])])
+        titles = [t.title for t in todos]
+        self.assertTrue(any("轻松" in t or "保持" in t for t in titles))
+
+    def test_no_effects_returns_empty_or_minimal(self):
+        from engine.persona_sim_todo import make_todos
+
+        state = self._make_state(energy=80, mood=70, social=50, satiety=80)
+        todos = make_todos(state, [])
+        self.assertLessEqual(len(todos), 5)

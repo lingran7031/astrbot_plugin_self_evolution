@@ -1148,6 +1148,20 @@ class SelfEvolutionDAO:
             return [dict(zip(cols, row)) for row in rows]
 
     @with_db_retry()
+    async def get_all_persona_events_since(
+        self, scope_id: str, since_timestamp: float, limit: int = 1000
+    ) -> list[dict]:
+        db = await self.get_conn()
+        async with self._db_lock:
+            cursor = await db.execute(
+                "SELECT * FROM persona_events WHERE scope_id = ? AND timestamp >= ? ORDER BY timestamp ASC LIMIT ?",
+                (scope_id, since_timestamp, limit),
+            )
+            rows = await cursor.fetchall()
+            cols = [desc[0] for desc in cursor.description]
+            return [dict(zip(cols, row)) for row in rows]
+
+    @with_db_retry()
     async def add_persona_todo(self, scope_id: str, todo) -> None:
         db = await self.get_conn()
         now = time.time()

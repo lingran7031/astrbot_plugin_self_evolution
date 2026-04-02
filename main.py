@@ -43,6 +43,7 @@ from .engine.affinity import AffinityEngine
 from .engine.entertainment import EntertainmentEngine
 from .engine.event_context import extract_interaction_context
 from .engine.persona_sim_engine import PersonaSimEngine
+from .engine.persona_sim_consolidation import PersonaSimConsolidator
 from .engine.persona_sim_injection import snapshot_to_debug_str, snapshot_to_prompt
 from .engine.message_normalization import ensure_event_message_text
 from .engine.memory import MemoryManager
@@ -189,6 +190,7 @@ class SelfEvolutionPlugin(Star):
             self.entertainment = EntertainmentEngine(self)
             # Persona 生活模拟引擎
             self.persona_sim = PersonaSimEngine(self)
+            self.persona_consolidator = PersonaSimConsolidator(self)
             # 关系温度引擎
             self.affinity = AffinityEngine(self)
             # 认知系统模块
@@ -2075,6 +2077,36 @@ class SelfEvolutionPlugin(Star):
             debug_str = snapshot_to_debug_str(snapshot)
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim]\n{debug_str}")
+        except Exception as e:
+            event.set_extra("self_evolution_command_reply", True)
+            yield event.plain_result(f"[PersonaSim] 出错: {e}")
+
+    @persona_group.command("consolidate")
+    async def persona_consolidate_cmd(self, event: AstrMessageEvent, scope: str = "", date: str = ""):
+        """执行人格日结（手动），可指定 scope 和日期（YYYY-MM-DD）。"""
+        target_scope = scope or event.get_group_id()
+        if not target_scope:
+            yield event.plain_result("无法确定 scope，请传入 scope 参数。")
+            return
+        try:
+            event.set_extra("self_evolution_command_reply", True)
+            result = await self.persona_consolidator.consolidate_scope(target_scope, date or None)
+            yield event.plain_result(result)
+        except Exception as e:
+            event.set_extra("self_evolution_command_reply", True)
+            yield event.plain_result(f"[PersonaSim] 日结出错: {e}")
+
+    @persona_group.command("today")
+    async def persona_today_cmd(self, event: AstrMessageEvent, scope: str = ""):
+        """查看今日人格状态摘要（只读，不触发 drift）。"""
+        target_scope = scope or event.get_group_id()
+        if not target_scope:
+            yield event.plain_result("无法确定 scope，请传入 scope 参数。")
+            return
+        try:
+            summary = await self.persona_consolidator.get_today_summary(target_scope)
+            event.set_extra("self_evolution_command_reply", True)
+            yield event.plain_result(f"[PersonaSim 今日]\n{summary}")
         except Exception as e:
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim] 出错: {e}")
