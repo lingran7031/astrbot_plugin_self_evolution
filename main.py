@@ -59,6 +59,8 @@ from .engine.session_memory_summarizer import SessionMemorySummarizer
 from .engine.sticker_store import StickerStore
 from .engine.meal_store import MealStore
 from .engine.text_utils import clean_result_text, should_clean_result
+from .engine.help_theme_store import HelpThemeStore
+from .engine.help_renderer import render_help_image
 from .engine.caption_service import get_caption_for_target
 from .engine.media_extractor import extract_media_targets
 from .engine.moderation_classifier import (
@@ -109,6 +111,12 @@ class PromptContext:
     event: AstrMessageEvent | None = field(default=None)
 
 
+def _read_file_sync(path):
+    """Synchronous file read for use with asyncio.to_thread()."""
+    with open(path, "rb") as f:
+        return f.read()
+
+
 @register(
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
@@ -157,6 +165,9 @@ class SelfEvolutionPlugin(Star):
 
         # 配置系统（提前初始化，以便后续使用）
         self.cfg = PluginConfig(self)
+
+        # 帮助主题存储
+        self.help_theme_store = HelpThemeStore(self.data_dir)
 
         # 初始化审核关键词（从配置读取，支持用户自定义）
         init_moderation_keywords(
@@ -873,6 +884,7 @@ class SelfEvolutionPlugin(Star):
         plain_texts = [c.text for c in result.chain if isinstance(c, Plain) and c.text]
         total_len = sum(len(t) for t in plain_texts)
         if total_len < self.cfg.sticker_reply_min_text_length:
+            logger.debug(f"[Sticker] text too short: {total_len} < {self.cfg.sticker_reply_min_text_length}")
             return
 
         now = time.time()
@@ -881,20 +893,30 @@ class SelfEvolutionPlugin(Star):
         timestamps = self._sticker_reply_timestamps.get(key, [])
         timestamps = [t for t in timestamps if now - t < 3600]
         if len(timestamps) >= hourly_limit:
+            logger.debug(f"[Sticker] hourly limit reached: {len(timestamps)}/{hourly_limit}")
             return
-        if random.randint(1, 100) > self.cfg.sticker_reply_chance:
+        roll = random.randint(1, 100)
+        if roll > self.cfg.sticker_reply_chance:
+            logger.debug(f"[Sticker] roll {roll} > chance {self.cfg.sticker_reply_chance}")
             return
 
         sticker = await self.sticker_store.get_random_sticker()
         if not sticker:
+            logger.debug(f"[Sticker] no sticker from store")
             return
 
         file_path = self.sticker_store.get_sticker_path(sticker)
-        if not file_path or not os.path.exists(file_path):
+        if not file_path:
+            logger.debug(f"[Sticker] get_sticker_path returned None")
+            return
+        file_path_str = os.path.normpath(str(file_path))
+        if not os.path.exists(file_path_str):
+            logger.debug(f"[Sticker] file not found: {file_path_str}")
             return
 
+        logger.debug(f"[Sticker] appending: {file_path_str}")
         if AstrImage:
-            result.chain.append(AstrImage.fromFileSystem(file_path))
+            result.chain.append(AstrImage.fromFileSystem(file_path_str))
         timestamps.append(now)
         self._sticker_reply_timestamps[key] = timestamps
 
@@ -1059,9 +1081,127 @@ class SelfEvolutionPlugin(Star):
         """系统命令"""
 
     @system_group.command("help")
-    async def show_help(self, event: AstrMessageEvent):
+    async def show_help(self, event: AstrMessageEvent, subcmd: str = ""):
         """查看插件帮助"""
-        result = await commands.handle_help(event, self)
+        user_id = event.get_sender_id()
+        is_admin = event.is_admin() or (self.admin_users and str(user_id) in self.admin_users)
+
+        parts = subcmd.strip().split() if subcmd else []
+        if not parts or parts == [""]:
+            parts = []
+
+        if parts and parts[0] == "text":
+            result = await commands.handle_help_text(event, self)
+            event.set_extra("self_evolution_command_reply", True)
+            yield event.plain_result(result)
+            return
+
+        if parts and parts[0] == "bg":
+            if not is_admin:
+                event.set_extra("self_evolution_command_reply", True)
+                yield event.plain_result("权限拒绝：此操作仅限管理员执行。")
+                return
+
+            args = parts[1:]
+            if not args:
+                event.set_extra("self_evolution_command_reply", True)
+                yield event.plain_result(
+                    "【帮助背景管理】\n"
+                    "/system help bg list    - 列出可用背景\n"
+                    "/system help bg set <名称> - 切换背景\n"
+                    "/system help bg blur <数值> - 设置模糊强度 (0-30)\n"
+                    "/system help bg reset    - 恢复默认设置\n"
+                    "/system help bg preview  - 预览当前主题"
+                )
+                return
+
+            sub = args[0]
+
+            if sub == "list":
+                backgrounds = self.help_theme_store.list_backgrounds()
+                current = self.help_theme_store.theme.bg_name
+                lines = ["【可用背景】"]
+                for bg in backgrounds:
+                    marker = " *" if bg == current else ""
+                    lines.append(f"- {bg}{marker}")
+                lines.append("")
+                lines.append(f"当前使用: {current} (模糊: {self.help_theme_store.theme.blur})")
+                event.set_extra("self_evolution_command_reply", True)
+                yield event.plain_result("\n".join(lines))
+                return
+
+            if sub == "set":
+                if len(args) < 2:
+                    event.set_extra("self_evolution_command_reply", True)
+                    yield event.plain_result("请提供背景名称：/system help bg set <名称>")
+                    return
+                bg_name = args[1]
+                success, msg = self.help_theme_store.set_background(bg_name)
+                event.set_extra("self_evolution_command_reply", True)
+                yield event.plain_result(msg)
+                return
+
+            if sub == "blur":
+                if len(args) < 2:
+                    event.set_extra("self_evolution_command_reply", True)
+                    yield event.plain_result("请提供模糊值（0-30）：/system help bg blur <数值>")
+                    return
+                try:
+                    blur_val = int(args[1])
+                except ValueError:
+                    event.set_extra("self_evolution_command_reply", True)
+                    yield event.plain_result(f"无效的模糊值: {args[1]}，请输入 0-30 之间的整数")
+                    return
+                success, msg = self.help_theme_store.set_blur(blur_val)
+                event.set_extra("self_evolution_command_reply", True)
+                yield event.plain_result(msg)
+                return
+
+            if sub == "reset":
+                success, msg = self.help_theme_store.reset()
+                event.set_extra("self_evolution_command_reply", True)
+                yield event.plain_result(msg)
+                return
+
+            if sub == "preview":
+                img_path, success = render_help_image(self.help_theme_store, is_admin=True)
+                if success and img_path and img_path.exists():
+                    try:
+                        import base64
+
+                        data = await asyncio.to_thread(_read_file_sync, img_path)
+                        bs64 = base64.b64encode(data).decode()
+                        from astrbot.core.message.components import Image
+
+                        event.set_extra("self_evolution_command_reply", True)
+                        yield event.chain_result([Image(f"base64://{bs64}")])
+                        return
+                    except Exception as e:
+                        logger.warning(f"[HelpRenderer] Preview failed: {e}")
+                event.set_extra("self_evolution_command_reply", True)
+                yield event.plain_result("预览生成失败，请检查日志")
+                return
+
+            event.set_extra("self_evolution_command_reply", True)
+            yield event.plain_result(f"未知子命令: {sub}，可用: list, set, blur, reset, preview")
+            return
+
+        img_path, success = render_help_image(self.help_theme_store, is_admin=is_admin)
+        if success and img_path and img_path.exists():
+            try:
+                import base64
+
+                data = await asyncio.to_thread(_read_file_sync, img_path)
+                bs64 = base64.b64encode(data).decode()
+                from astrbot.core.message.components import Image
+
+                event.set_extra("self_evolution_command_reply", True)
+                yield event.chain_result([Image(f"base64://{bs64}")])
+                return
+            except Exception as e:
+                logger.warning(f"[HelpRenderer] Failed to send image: {e}")
+
+        result = await commands.handle_help_text(event, self)
         event.set_extra("self_evolution_command_reply", True)
         yield event.plain_result(result)
 
@@ -1107,6 +1247,11 @@ class SelfEvolutionPlugin(Star):
             return
 
         max_items = getattr(self.cfg, "meal_max_items", 100)
+        user_id = event.get_sender_id()
+        if await self.meal_store.is_user_banned(group_id, user_id):
+            event.set_extra("self_evolution_command_reply", True)
+            yield event.plain_result("你被管理员禁止添加菜品，如有异议请联系管理员。")
+            return
         success, message = await self.meal_store.add_meal(group_id, meal_name.strip(), max_items)
         event.set_extra("self_evolution_command_reply", True)
         yield event.plain_result(message)
@@ -1130,8 +1275,74 @@ class SelfEvolutionPlugin(Star):
             yield event.plain_result("娱乐模块当前已关闭。")
             return
 
+        if meal_name.strip().lower() == "all":
+            if not event.is_admin():
+                event.set_extra("self_evolution_command_reply", True)
+                yield event.plain_result("清空菜单仅限管理员使用。")
+                return
+            success, message = await self.meal_store.clear_meals(group_id)
+            event.set_extra("self_evolution_command_reply", True)
+            yield event.plain_result(message)
+            return
+
         success, message = await self.meal_store.del_meal(group_id, meal_name.strip())
         event.set_extra("self_evolution_command_reply", True)
+        yield event.plain_result(message)
+
+    @filter.command("banuseraddmeal")
+    async def ban_user_add_meal(self, event: AstrMessageEvent, target_user_id: str = ""):
+        """禁止某用户添加菜品（仅管理员）"""
+        if not event.is_admin():
+            yield event.plain_result("此指令仅限管理员使用。")
+            return
+        group_id = event.get_group_id()
+        if not group_id:
+            yield event.plain_result("此指令仅限群聊使用。")
+            return
+        raw = target_user_id.strip().lstrip("@")
+        if not raw:
+            yield event.plain_result("请 @ 要禁止的用户，例如：/banuseraddmeal @xxx")
+            return
+        if raw.isdigit():
+            qq = raw
+        else:
+            from .engine.event_context import extract_interaction_context
+
+            bot_id = self._get_bot_id()
+            interaction = extract_interaction_context(
+                event.get_messages(), persona_name=self.persona_name, bot_id=bot_id
+            )
+            at_targets = interaction.get("at_targets", [])
+            qq = at_targets[0] if at_targets else raw
+        success, message = await self.meal_store.ban_user(group_id, qq)
+        yield event.plain_result(message)
+
+    @filter.command("unbanuseraddmeal")
+    async def unban_user_add_meal(self, event: AstrMessageEvent, target_user_id: str = ""):
+        """解除某用户添加菜品的限制（仅管理员）"""
+        if not event.is_admin():
+            yield event.plain_result("此指令仅限管理员使用。")
+            return
+        group_id = event.get_group_id()
+        if not group_id:
+            yield event.plain_result("此指令仅限群聊使用。")
+            return
+        raw = target_user_id.strip().lstrip("@")
+        if not raw:
+            yield event.plain_result("请 @ 要解禁的用户，例如：/unbanuseraddmeal @xxx")
+            return
+        if raw.isdigit():
+            qq = raw
+        else:
+            from .engine.event_context import extract_interaction_context
+
+            bot_id = self._get_bot_id()
+            interaction = extract_interaction_context(
+                event.get_messages(), persona_name=self.persona_name, bot_id=bot_id
+            )
+            at_targets = interaction.get("at_targets", [])
+            qq = at_targets[0] if at_targets else raw
+        success, message = await self.meal_store.unban_user(group_id, qq)
         yield event.plain_result(message)
 
     @filter.command("reflect")
