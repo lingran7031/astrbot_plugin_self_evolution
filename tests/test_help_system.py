@@ -19,10 +19,8 @@ def _load_module(module_name: str, relative_path: str):
     return module
 
 
-help_assets = _load_module("help_assets_test", "engine/help_assets.py")
 help_catalog = _load_module("help_catalog_test", "engine/help_catalog.py")
 
-resolve_help_image_path = help_assets.resolve_help_image_path
 HELP_CATALOG_VERSION = help_catalog.HELP_CATALOG_VERSION
 get_admin_commands = help_catalog.get_admin_commands
 get_commands_by_group = help_catalog.get_commands_by_group
@@ -81,7 +79,7 @@ class TestHelpCatalog:
         assert "【基础】" in text
         assert "【互动】" in text
         assert "【数据库】" not in text
-        assert "/system help" in text
+        assert "/se help" in text
 
     def test_format_text_help_admin_version(self):
         text = format_text_help(is_admin=True)
@@ -96,46 +94,3 @@ class TestHelpCatalog:
         for cmd in all_cmds:
             assert cmd.command not in commands_seen
             commands_seen.add(cmd.command)
-
-
-class TestHelpAssets:
-    def test_resolve_help_image_path_returns_none_without_assets(self, monkeypatch):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            fake_file = Path(temp_dir) / "engine" / "help_assets.py"
-            fake_file.parent.mkdir(parents=True, exist_ok=True)
-            fake_file.write_text("# test", encoding="utf-8")
-
-            monkeypatch.setattr(help_assets, "__file__", str(fake_file))
-            assert resolve_help_image_path(is_admin=False) is None
-
-    def test_resolve_help_image_path_finds_common_help_png(self, monkeypatch):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            plugin_root = Path(temp_dir)
-            docs_dir = plugin_root / "docs"
-            docs_dir.mkdir(parents=True, exist_ok=True)
-            help_path = docs_dir / "help.png"
-            help_path.write_bytes(b"fake")
-
-            fake_file = plugin_root / "engine" / "help_assets.py"
-            fake_file.parent.mkdir(parents=True, exist_ok=True)
-            fake_file.write_text("# test", encoding="utf-8")
-
-            monkeypatch.setattr(help_assets, "__file__", str(fake_file))
-            assert resolve_help_image_path(is_admin=False) == help_path
-
-    def test_resolve_help_image_path_prefers_admin_specific_file(self, monkeypatch):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            plugin_root = Path(temp_dir)
-            docs_dir = plugin_root / "docs"
-            docs_dir.mkdir(parents=True, exist_ok=True)
-            common_path = docs_dir / "help.png"
-            admin_path = docs_dir / "help_admin.png"
-            common_path.write_bytes(b"common")
-            admin_path.write_bytes(b"admin")
-
-            fake_file = plugin_root / "engine" / "help_assets.py"
-            fake_file.parent.mkdir(parents=True, exist_ok=True)
-            fake_file.write_text("# test", encoding="utf-8")
-
-            monkeypatch.setattr(help_assets, "__file__", str(fake_file))
-            assert resolve_help_image_path(is_admin=True) == admin_path

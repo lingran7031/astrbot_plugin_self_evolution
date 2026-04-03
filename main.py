@@ -59,7 +59,6 @@ from .engine.session_memory_summarizer import SessionMemorySummarizer
 from .engine.sticker_store import StickerStore
 from .engine.meal_store import MealStore
 from .engine.text_utils import clean_result_text, should_clean_result
-from .engine.help_assets import resolve_help_image_path
 from .engine.caption_service import get_caption_for_target
 from .engine.media_extractor import extract_media_targets
 from .engine.moderation_classifier import (
@@ -1106,40 +1105,18 @@ class SelfEvolutionPlugin(Star):
 
         asyncio.create_task(self.sticker_store.sync_from_files())
 
-    @filter.command_group("system")
-    def system_group(self):
+    @filter.command_group("se")
+    def se_group(self):
         """系统命令"""
 
-    @system_group.command("help")
-    async def show_help(self, event: AstrMessageEvent, subcmd: str = ""):
+    @se_group.command("help")
+    async def show_help(self, event: AstrMessageEvent):
         """查看插件帮助"""
-        user_id = event.get_sender_id()
-        is_admin = event.is_admin() or (self.admin_users and str(user_id) in self.admin_users)
-
-        parts = subcmd.strip().split() if subcmd else []
-        if not parts or parts == [""]:
-            parts = []
-
-        if parts and parts[0] == "text":
-            result = await commands.handle_help_text(event, self)
-            event.set_extra("self_evolution_command_reply", True)
-            yield event.plain_result(result)
-            return
-
-        help_image_path = resolve_help_image_path(is_admin=is_admin)
-        if help_image_path and AstrImage:
-            try:
-                event.set_extra("self_evolution_command_reply", True)
-                yield event.chain_result([AstrImage.fromFileSystem(str(help_image_path))])
-                return
-            except Exception as e:
-                logger.warning(f"[HelpImage] Failed to send static help image: {e}")
-
         result = await commands.handle_help_text(event, self)
         event.set_extra("self_evolution_command_reply", True)
         yield event.plain_result(result)
 
-    @system_group.command("version")
+    @se_group.command("version")
     async def show_version(self, event: AstrMessageEvent):
         """查看插件版本"""
         result = await commands.handle_version(event, self)
@@ -1160,6 +1137,67 @@ class SelfEvolutionPlugin(Star):
         if isinstance(result, list) and len(result) == 2:
             event.set_extra("self_evolution_command_reply", True)
             yield event.chain_result([Image.fromURL(result[1]), Plain(result[0])])
+
+    @filter.command("meal")
+    def meal_group(self):
+        """群菜单管理"""
+        pass
+
+    @meal_group.command("ban")
+    async def meal_ban(self, event: AstrMessageEvent, target_user_id: str = ""):
+        """禁止某用户添加菜品（仅管理员）"""
+        if not event.is_admin():
+            yield event.plain_result("此指令仅限管理员使用。")
+            return
+        group_id = event.get_group_id()
+        if not group_id:
+            yield event.plain_result("此指令仅限群聊使用。")
+            return
+        raw = target_user_id.strip().lstrip("@")
+        if not raw:
+            yield event.plain_result("请 @ 要禁止的用户或提供 QQ 号，例如：/meal ban @xxx 或 /meal ban 123456")
+            return
+        if raw.isdigit():
+            qq = raw
+        else:
+            from .engine.event_context import extract_interaction_context
+
+            bot_id = self._get_bot_id()
+            interaction = extract_interaction_context(
+                event.get_messages(), persona_name=self.persona_name, bot_id=bot_id
+            )
+            at_targets = interaction.get("at_targets", [])
+            qq = at_targets[0] if at_targets else raw
+        success, message = await self.meal_store.ban_user(group_id, qq)
+        yield event.plain_result(message)
+
+    @meal_group.command("unban")
+    async def meal_unban(self, event: AstrMessageEvent, target_user_id: str = ""):
+        """解除某用户添加菜品的限制（仅管理员）"""
+        if not event.is_admin():
+            yield event.plain_result("此指令仅限管理员使用。")
+            return
+        group_id = event.get_group_id()
+        if not group_id:
+            yield event.plain_result("此指令仅限群聊使用。")
+            return
+        raw = target_user_id.strip().lstrip("@")
+        if not raw:
+            yield event.plain_result("请 @ 要解禁的用户或提供 QQ 号，例如：/meal unban @xxx 或 /meal unban 123456")
+            return
+        if raw.isdigit():
+            qq = raw
+        else:
+            from .engine.event_context import extract_interaction_context
+
+            bot_id = self._get_bot_id()
+            interaction = extract_interaction_context(
+                event.get_messages(), persona_name=self.persona_name, bot_id=bot_id
+            )
+            at_targets = interaction.get("at_targets", [])
+            qq = at_targets[0] if at_targets else raw
+        success, message = await self.meal_store.unban_user(group_id, qq)
+        yield event.plain_result(message)
 
     @filter.command("addmeal")
     async def add_meal(self, event: AstrMessageEvent, meal_name: str = ""):
@@ -1221,62 +1259,6 @@ class SelfEvolutionPlugin(Star):
 
         success, message = await self.meal_store.del_meal(group_id, meal_name.strip())
         event.set_extra("self_evolution_command_reply", True)
-        yield event.plain_result(message)
-
-    @filter.command("banuseraddmeal")
-    async def ban_user_add_meal(self, event: AstrMessageEvent, target_user_id: str = ""):
-        """禁止某用户添加菜品（仅管理员）"""
-        if not event.is_admin():
-            yield event.plain_result("此指令仅限管理员使用。")
-            return
-        group_id = event.get_group_id()
-        if not group_id:
-            yield event.plain_result("此指令仅限群聊使用。")
-            return
-        raw = target_user_id.strip().lstrip("@")
-        if not raw:
-            yield event.plain_result("请 @ 要禁止的用户，例如：/banuseraddmeal @xxx")
-            return
-        if raw.isdigit():
-            qq = raw
-        else:
-            from .engine.event_context import extract_interaction_context
-
-            bot_id = self._get_bot_id()
-            interaction = extract_interaction_context(
-                event.get_messages(), persona_name=self.persona_name, bot_id=bot_id
-            )
-            at_targets = interaction.get("at_targets", [])
-            qq = at_targets[0] if at_targets else raw
-        success, message = await self.meal_store.ban_user(group_id, qq)
-        yield event.plain_result(message)
-
-    @filter.command("unbanuseraddmeal")
-    async def unban_user_add_meal(self, event: AstrMessageEvent, target_user_id: str = ""):
-        """解除某用户添加菜品的限制（仅管理员）"""
-        if not event.is_admin():
-            yield event.plain_result("此指令仅限管理员使用。")
-            return
-        group_id = event.get_group_id()
-        if not group_id:
-            yield event.plain_result("此指令仅限群聊使用。")
-            return
-        raw = target_user_id.strip().lstrip("@")
-        if not raw:
-            yield event.plain_result("请 @ 要解禁的用户，例如：/unbanuseraddmeal @xxx")
-            return
-        if raw.isdigit():
-            qq = raw
-        else:
-            from .engine.event_context import extract_interaction_context
-
-            bot_id = self._get_bot_id()
-            interaction = extract_interaction_context(
-                event.get_messages(), persona_name=self.persona_name, bot_id=bot_id
-            )
-            at_targets = interaction.get("at_targets", [])
-            qq = at_targets[0] if at_targets else raw
-        success, message = await self.meal_store.unban_user(group_id, qq)
         yield event.plain_result(message)
 
     @filter.command("reflect")
@@ -1344,11 +1326,11 @@ class SelfEvolutionPlugin(Star):
         """
         return await self.persona.evolve_persona(event, new_system_prompt, reason)
 
-    @filter.command_group("affinity")
-    def affinity_group(self):
+    @filter.command_group("af")
+    def af_group(self):
         """好感度管理"""
 
-    @affinity_group.command("show")
+    @af_group.command("show")
     async def check_affinity(self, event: AstrMessageEvent):
         """查询机器人对你的当前好感度。"""
         user_id = event.get_sender_id()
@@ -1361,7 +1343,7 @@ class SelfEvolutionPlugin(Star):
         event.set_extra("self_evolution_command_reply", True)
         yield event.plain_result(f"UID: {user_id}\n{self.persona_name} 的情感矩阵评分: {score}/100\n分类状态: {status}")
 
-    @affinity_group.command("debug")
+    @af_group.command("debug")
     async def affinity_debug(self, event: AstrMessageEvent, user_id: str = ""):
         """[管理员] 查看指定用户的详细好感度状态。"""
         if not event.is_admin():
@@ -1390,7 +1372,7 @@ class SelfEvolutionPlugin(Star):
         event.set_extra("self_evolution_command_reply", True)
         yield event.plain_result(result)
 
-    @filter.command("set_affinity")
+    @af_group.command("set")
     async def set_affinity(self, event: AstrMessageEvent, user_id: str, score: int):
         """[管理员] 手动重置指定用户的好感度评分。"""
         if not event.is_admin():
@@ -1437,11 +1419,11 @@ class SelfEvolutionPlugin(Star):
         logger.warning(f"[SelfEvolution] 用户 {user_id} 积分变动 {delta}，原因: {reason}")
         return f"用户情感积分已更新。当前调整理由：{reason}"
 
-    @filter.command_group("evolution")
-    def evolution_group(self):
+    @filter.command_group("ev")
+    def ev_group(self):
         """人格进化管理"""
 
-    @evolution_group.command("review")
+    @ev_group.command("review")
     async def review_evolutions(self, event: AstrMessageEvent, page: int = 1):
         """查看待审核的人格进化"""
         if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
@@ -1451,7 +1433,7 @@ class SelfEvolutionPlugin(Star):
         event.set_extra("self_evolution_command_reply", True)
         yield event.plain_result(await self.persona.review_evolutions(event, page))
 
-    @evolution_group.command("approve")
+    @ev_group.command("approve")
     async def approve_evolution(self, event: AstrMessageEvent, request_id: int):
         """批准人格进化"""
         if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
@@ -1461,7 +1443,7 @@ class SelfEvolutionPlugin(Star):
         event.set_extra("self_evolution_command_reply", True)
         yield event.plain_result(await self.persona.approve_evolution(event, request_id))
 
-    @evolution_group.command("reject")
+    @ev_group.command("reject")
     async def reject_evolution(self, event: AstrMessageEvent, request_id: int):
         """拒绝人格进化"""
         if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
@@ -1471,7 +1453,7 @@ class SelfEvolutionPlugin(Star):
         event.set_extra("self_evolution_command_reply", True)
         yield event.plain_result(await self.persona.reject_evolution(event, request_id))
 
-    @evolution_group.command("clear")
+    @ev_group.command("clear")
     async def clear_evolutions(self, event: AstrMessageEvent):
         """清空待审核人格进化"""
         if not event.is_admin() and (not self.admin_users or str(event.get_sender_id()) not in self.admin_users):
@@ -1489,7 +1471,7 @@ class SelfEvolutionPlugin(Star):
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"清空审核列表时发生异常: {e}")
 
-    @evolution_group.command("stats")
+    @ev_group.command("stats")
     async def evolution_stats(self, event: AstrMessageEvent, scope_id: str = ""):
         """查看行为统计摘要。默认显示当前群组，可指定 scope_id。"""
         event.set_extra("self_evolution_command_reply", True)
@@ -2184,12 +2166,12 @@ class SelfEvolutionPlugin(Star):
         event.set_extra("self_evolution_command_reply", True)
         yield event.plain_result(result)
 
-    @filter.command_group("personasim")
-    def persona_group(self):
+    @filter.command_group("ps")
+    def ps_group(self):
         """人格生活模拟"""
         pass
 
-    @persona_group.command("status")
+    @ps_group.command("status")
     async def persona_status_cmd(self, event: AstrMessageEvent, scope: str = ""):
         """查看当前人格状态快照（手动 tick）"""
         target_scope = scope or event.get_group_id() or str(event.get_sender_id())
@@ -2206,7 +2188,7 @@ class SelfEvolutionPlugin(Star):
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim] 出错: {e}")
 
-    @persona_group.command("state")
+    @ps_group.command("state")
     async def persona_state_cmd(self, event: AstrMessageEvent, scope: str = ""):
         """只读取当前状态，不 tick"""
         target_scope = scope or event.get_group_id() or str(event.get_sender_id())
@@ -2226,7 +2208,7 @@ class SelfEvolutionPlugin(Star):
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim] 出错: {e}")
 
-    @persona_group.command("todo")
+    @ps_group.command("todo")
     async def persona_todo_cmd(self, event: AstrMessageEvent, scope: str = ""):
         """查看当前脑内待办（只读）"""
         target_scope = scope or event.get_group_id() or str(event.get_sender_id())
@@ -2255,7 +2237,7 @@ class SelfEvolutionPlugin(Star):
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim] 出错: {e}")
 
-    @persona_group.command("effects")
+    @ps_group.command("effects")
     async def persona_effects_cmd(self, event: AstrMessageEvent, scope: str = ""):
         """查看当前状态效果（只读）"""
         target_scope = scope or event.get_group_id() or str(event.get_sender_id())
@@ -2283,7 +2265,7 @@ class SelfEvolutionPlugin(Star):
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim] 出错: {e}")
 
-    @persona_group.command("apply")
+    @ps_group.command("apply")
     async def persona_apply_cmd(self, event: AstrMessageEvent, q: str = "normal", scope: str = ""):
         """应用一次互动影响（q: bad/awkward/normal/good/relief/brief）"""
         target_scope = scope or event.get_group_id() or str(event.get_sender_id())
@@ -2306,7 +2288,7 @@ class SelfEvolutionPlugin(Star):
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim] 出错: {e}")
 
-    @persona_group.command("tick")
+    @ps_group.command("tick")
     async def persona_tick_cmd(self, event: AstrMessageEvent, q: str = "none", scope: str = ""):
         """手动推进人格时间（q: none/negative/positive）"""
         target_scope = scope or event.get_group_id() or str(event.get_sender_id())
@@ -2329,7 +2311,7 @@ class SelfEvolutionPlugin(Star):
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim] 出错: {e}")
 
-    @persona_group.command("consolidate")
+    @ps_group.command("consolidate")
     async def persona_consolidate_cmd(self, event: AstrMessageEvent, scope: str = "", date: str = ""):
         """执行人格日结（手动），可指定 scope 和日期（YYYY-MM-DD）。"""
         target_scope = scope or event.get_group_id()
@@ -2344,7 +2326,7 @@ class SelfEvolutionPlugin(Star):
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim] 日结出错: {e}")
 
-    @persona_group.command("today")
+    @ps_group.command("today")
     async def persona_today_cmd(self, event: AstrMessageEvent, scope: str = ""):
         """查看今日人格状态摘要（只读，不触发 drift）。"""
         target_scope = scope or event.get_group_id()
@@ -2359,7 +2341,7 @@ class SelfEvolutionPlugin(Star):
             event.set_extra("self_evolution_command_reply", True)
             yield event.plain_result(f"[PersonaSim] 出错: {e}")
 
-    @persona_group.command("think")
+    @ps_group.command("think")
     async def persona_think_cmd(self, event: AstrMessageEvent, scope: str = ""):
         """手动触发 LLM 生成内心独白（覆盖旧的）"""
         target_scope = scope or event.get_group_id() or str(event.get_sender_id())

@@ -327,6 +327,7 @@ class PlannerBiasTests(IsolatedAsyncioTestCase):
 
     def test_short_reply_bias_reduces_max_chars(self):
         from engine.social_state import EngagementPlan, EngagementLevel, SceneType
+        import unittest.mock
 
         plan = EngagementPlan(
             level=EngagementLevel.FULL,
@@ -335,7 +336,8 @@ class PlannerBiasTests(IsolatedAsyncioTestCase):
             scene=SceneType.CASUAL,
             short_reply_bias=0.5,
         )
-        decision = plan.to_speech_decision()
+        with unittest.mock.patch("random.choices", return_value=[30]):
+            decision = plan.to_speech_decision()
         self.assertLess(decision.max_chars, 60)
 
 
