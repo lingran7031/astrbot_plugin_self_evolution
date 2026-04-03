@@ -395,7 +395,7 @@ class SelfEvolutionPlugin(Star):
         if self.cfg.disable_framework_contexts:
             req.contexts = []
 
-        if self.san_enabled and not self.san_system.update():
+        if self.san_enabled and not await self.san_system.update():
             logger.warning(f"[SAN] 精力耗尽，拒绝服务: {user_id}")
             req.system_prompt = "我现在很累，脑容量超载了。让我安静一会。"
             return None
