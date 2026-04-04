@@ -613,5 +613,30 @@
                 "hint": "回复文字长度 ≥ 此值时才触发表情包，短回复不触发。"
             }
         }
+    },
+    "update_notify": {
+        "type": "object",
+        "description": "GitHub 更新通知",
+        "hint": "插件仓库更新时自动通知指定群聊。",
+        "items": {
+            "update_notify_group_id": {
+                "description": "通知群号列表",
+                "type": "list",
+                "default": [],
+                "hint": "留空则不启用通知。填入群号后，检测到新 commit 会自动发送通知。"
+            },
+            "update_notify_repo": {
+                "description": "仓库路径",
+                "type": "string",
+                "default": "Renyus/astrbot_plugin_self_evolution",
+                "hint": "格式：owner/repo，不填默认当前仓库。"
+            },
+            "update_check_interval": {
+                "description": "检查间隔（分钟）",
+                "type": "int",
+                "default": 30,
+                "hint": "每多少分钟检查一次 GitHub 新提交。"
+            }
+        }
     }
 }
