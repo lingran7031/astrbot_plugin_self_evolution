@@ -470,14 +470,12 @@ async def _persona_thought_impl(plugin):
 
 async def scheduled_github_check(plugin):
     """检查 GitHub 仓库更新，有新 commit 则发群通知。"""
-    notify_group_ids = getattr(plugin.cfg, "update_notify_group_id", []) or []
+    notify_group_ids = plugin.cfg.update_notify_group_id
     if not notify_group_ids:
         logger.debug("[Scheduler] GitHub 检查跳过：未配置通知群")
         return
 
-    repo = getattr(plugin.cfg, "update_notify_repo", None)
-    if not repo:
-        repo = "Renyus/astrbot_plugin_self_evolution"
+    repo = plugin.cfg.update_notify_repo
 
     import urllib.request
     import json

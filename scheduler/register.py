@@ -125,7 +125,7 @@ async def register_tasks(plugin):
             )
             logger.info(f"[SelfEvolution] 已注册 Interject: {interject_cron}")
 
-        check_interval = getattr(plugin.cfg, "update_check_interval", 30)
+        check_interval = plugin.cfg.update_check_interval
         check_cron = f"*/{check_interval} * * * *"
         await cron_mgr.add_basic_job(
             name="SelfEvolution_GitHubCheck",
