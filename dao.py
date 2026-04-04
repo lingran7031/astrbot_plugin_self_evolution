@@ -1052,6 +1052,7 @@ class SelfEvolutionDAO:
     async def get_caption_cache(self, cache_key: str) -> tuple[str, str, str] | None:
         """返回 (caption_text, provider_id, model_name) 或 None。"""
         if not cache_key:
+            logger.debug("[DAO] get_caption_cache: 空 cache_key，跳过")
             return None
         db = await self.get_conn()
         async with self._db_lock:
@@ -1075,6 +1076,7 @@ class SelfEvolutionDAO:
     ) -> None:
         """写入 caption 缓存。ttl_seconds=0 表示永久缓存。"""
         if not cache_key:
+            logger.debug("[DAO] set_caption_cache: 空 cache_key，跳过")
             return
         db = await self.get_conn()
         now = datetime.now().isoformat()
