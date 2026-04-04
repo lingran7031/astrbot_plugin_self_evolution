@@ -487,6 +487,9 @@ async def scheduled_github_check(plugin):
             async with session.get(
                 url, headers={"User-Agent": "AstrBot-SelfEvolution"}, timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
+                if resp.status != 200:
+                    logger.warning(f"[Scheduler] GitHub API 返回错误状态码: {resp.status} {resp.reason}")
+                    return
                 commits = await resp.json()
     except Exception as e:
         logger.warning(f"[Scheduler] GitHub API 请求失败: {e}")
