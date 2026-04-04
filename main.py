@@ -29,7 +29,7 @@ try:
     from astrbot.core.message.components import Video as AstrVideo
 except ImportError:
     AstrVideo = None
-from astrbot.core.star.star_handler import EventType, star_handlers_registry
+from astrbot.core.star.star_handler import EventType, StarHandlerMetadata, star_handlers_registry
 
 from . import commands
 from .cognition import SANSystem
