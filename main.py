@@ -113,10 +113,12 @@ class PokeEventFilter:
     """Filter for poke (戳一戳) notice events."""
 
     def filter(self, event: AstrMessageEvent, cfg) -> bool:
-        raw = getattr(event, "raw_info", None)
-        if not isinstance(raw, dict):
+        msg_obj = getattr(event, "message_obj", None)
+        if not msg_obj:
             return False
-        return raw.get("post_type") == "notice" and raw.get("sub_type") == "poke"
+        post_type = getattr(msg_obj, "post_type", None)
+        sub_type = getattr(msg_obj, "sub_type", None)
+        return post_type == "notice" and sub_type == "poke"
 
 
 async def _poke_reply_async(plugin, target_id: str, user_id: str, group_id: str, sender_id: str):
@@ -163,14 +165,14 @@ def _handle_poke_event(plugin, event: AstrMessageEvent):
     if not plugin.cfg.poke_reply_enabled:
         return
 
-    raw = getattr(event, "raw_info", None)
-    if not isinstance(raw, dict):
+    msg_obj = getattr(event, "message_obj", None)
+    if not msg_obj:
         return
 
-    target_id = str(raw.get("target_id", ""))
-    user_id = str(raw.get("user_id", ""))
-    group_id = str(raw.get("group_id", ""))
-    sender_id = str(raw.get("sender_id", ""))
+    target_id = str(getattr(msg_obj, "target_id", ""))
+    user_id = str(getattr(msg_obj, "user_id", ""))
+    group_id = str(getattr(msg_obj, "group_id", ""))
+    sender_id = str(getattr(msg_obj, "sender_id", ""))
 
     bot_id = plugin._get_bot_id()
     if target_id != bot_id:
