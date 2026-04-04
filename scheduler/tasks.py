@@ -516,7 +516,7 @@ async def scheduled_github_check(plugin):
         date = commit["commit"]["author"]["date"][:10]
         commit_lines.append(f"- {msg} ({author}, {date})")
 
-    notify_text = f"【插件更新通知】\n仓库有新提交：\n" + "\n".join(commit_lines)
+    notify_text = f"【插件更新通知】\n[{branch}] 有新提交：\n" + "\n".join(commit_lines)
 
     try:
         platform_insts = plugin.context.platform_manager.platform_insts
