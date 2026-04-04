@@ -183,7 +183,7 @@ def _handle_poke_event(plugin, event: AstrMessageEvent):
     "astrbot_plugin_self_evolution",
     "自我进化 (Self-Evolution)",
     "CognitionCore 7.0 数字生命。",
-    "Ver 5.1.2",
+    "Ver 5.1.3",
 )
 class SelfEvolutionPlugin(Star):
     @staticmethod
@@ -2056,7 +2056,7 @@ class SelfEvolutionPlugin(Star):
 
         group_id = event.get_group_id()
         if not group_id:
-            yield event.plain_result("此功能仅限群聊使用")
+            logger.debug("[Sticker] send_sticker tool skipped in private chat")
             return
 
         max_retries = 3
