@@ -466,3 +466,63 @@ async def _persona_thought_impl(plugin):
             logger.warning(f"[Scheduler] PersonaThought scope={scope_id} 失败: {e}")
 
     logger.info(f"[Scheduler] PersonaThought 完成: {success_count}/{len(scopes)} 个 scope")
+
+
+async def scheduled_github_check(plugin):
+    """检查 GitHub 仓库更新，有新 commit 则发群通知。"""
+    notify_group_id = getattr(plugin.cfg, "update_notify_group_id", None)
+    if not notify_group_id:
+        logger.debug("[Scheduler] GitHub 检查跳过：未配置通知群")
+        return
+
+    repo = getattr(plugin.cfg, "update_notify_repo", None)
+    if not repo:
+        repo = "Renyus/astrbot_plugin_self_evolution"
+
+    import urllib.request
+    import json
+
+    url = f"https://api.github.com/repos/{repo}/commits?per_page=3"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "AstrBot-SelfEvolution"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            commits = json.loads(resp.read())
+    except Exception as e:
+        logger.warning(f"[Scheduler] GitHub API 请求失败: {e}")
+        return
+
+    if not commits:
+        return
+
+    latest_sha = commits[0]["sha"]
+    cache_key = "self_evolution_github_last_sha"
+
+    from astrbot.core import sp
+
+    last_sha = await sp.get_async(scope="plugin", scope_id="global", key=cache_key, default="")
+    if last_sha == latest_sha:
+        logger.debug(f"[Scheduler] GitHub 无新 commit: {latest_sha[:7]}")
+        return
+
+    await sp.set_async(scope="plugin", scope_id="global", key=cache_key, value=latest_sha)
+
+    commit_lines = []
+    for commit in commits[:3]:
+        msg = commit["commit"]["message"].split("\n")[0]
+        author = commit["commit"]["author"]["name"]
+        date = commit["commit"]["author"]["date"][:10]
+        commit_lines.append(f"- {msg} ({author}, {date})")
+
+    notify_text = f"【插件更新通知】\n仓库有新提交：\n" + "\n".join(commit_lines)
+
+    try:
+        platform_insts = plugin.context.platform_manager.platform_insts
+        if platform_insts:
+            bot = platform_insts[0].get_client()
+            if bot:
+                await bot.send_group_msg(
+                    group_id=int(notify_group_id), message=[{"type": "text", "data": {"text": notify_text}}]
+                )
+                logger.info(f"[Scheduler] GitHub 更新已通知群 {notify_group_id}")
+    except Exception as e:
+        logger.warning(f"[Scheduler] GitHub 更新通知发送失败: {e}")
