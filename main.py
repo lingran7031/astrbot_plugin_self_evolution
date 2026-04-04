@@ -865,7 +865,7 @@ class SelfEvolutionPlugin(Star):
                     return
                 logger.debug(f"[SelfEvolution] 管理员跳过闭嘴拦截")
             else:
-                del self._shut_until_by_group[group_id]
+                self._shut_until_by_group.pop(group_id, None)
 
         logger.debug(f"[SelfEvolution] 收到消息: {event.message_str[:30] if event.message_str else '(空)'}")
 
