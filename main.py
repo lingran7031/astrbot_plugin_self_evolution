@@ -1969,8 +1969,11 @@ class SelfEvolutionPlugin(Star):
                     skipped += 1
                     continue
 
-                with open(file_path, "rb") as f:
-                    data = f.read()
+                def _read():
+                    with open(file_path, "rb") as f:
+                        return f.read()
+
+                data = await asyncio.to_thread(_read)
                 bs64 = base64.b64encode(data).decode()
                 from astrbot.core.message.components import Image
 
@@ -2023,8 +2026,11 @@ class SelfEvolutionPlugin(Star):
                     yield event.plain_result(f"表情包文件不存在: {result['image_path']}")
                     return
 
-                with open(file_path, "rb") as f:
-                    data = f.read()
+                def _read():
+                    with open(file_path, "rb") as f:
+                        return f.read()
+
+                data = await asyncio.to_thread(_read)
                 bs64 = base64.b64encode(data).decode()
                 from astrbot.core.message.components import Image
 
