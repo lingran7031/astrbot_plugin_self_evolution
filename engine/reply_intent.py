@@ -1,5 +1,5 @@
 import time as time_module
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -7,6 +7,8 @@ from typing import Optional
 from astrbot.api import logger
 
 from .engagement_planner import EngagementPlanner
+from .interject_preferences import InterjectPreferenceStore, InterjectPreferences
+from .opportunity_cache import ActiveMotive
 from .reply_executor import ReplyExecutor
 from .reply_policy import ReplyPolicy
 from .reply_recorder import ReplyRecorder
@@ -44,6 +46,12 @@ class ReplyIntent:
     is_active_trigger: bool = False
     created_at: float = 0.0
     thread_anchor: Optional[ThreadAnchor] = None
+    active_motive: Optional[ActiveMotive] = None
+    recent_keywords: set = field(default_factory=set)
+    pending_anchor_type: str = ""
+    pending_anchor_text: str = ""
+    pending_trigger_reason: str = ""
+    pending_message_ids: list = field(default_factory=list)
 
     def __post_init__(self):
         if self.created_at == 0.0:
@@ -103,7 +111,21 @@ async def process_intent(
         emotion_count_window=momentum.emotion_count_window,
         consecutive_bot_replies=momentum.consecutive_bot_replies,
         thread_anchor=intent.thread_anchor,
+        recent_keywords=getattr(intent, "recent_keywords", set()),
+        wave_fresh=getattr(momentum, "wave_fresh", False),
+        trigger_user_affinity=await plugin.dao.get_affinity(intent.user_id) if intent.user_id else 0,
+        last_unanswered_question=getattr(momentum, "last_unanswered_question", ""),
+        last_unfinished_joke=getattr(momentum, "last_unfinished_joke", ""),
     )
+
+    motive = getattr(intent, "active_motive", None)
+
+    interject_pref: InterjectPreferences | None = None
+    if intent.is_active_trigger:
+        pref_store = InterjectPreferenceStore()
+        pref_data = await plugin.dao.get_interject_preferences(scope_id)
+        pref_store.load_from_dict(scope_id, pref_data or {})
+        interject_pref = pref_store.get(scope_id)
 
     if intent.is_passive_trigger:
         state.message_count_window = max(int(state.message_count_window), 0) + 1
@@ -119,8 +141,9 @@ async def process_intent(
         min_new_messages=1,
     )
     if not eligibility.allowed:
+        motive_info = f" motive={motive.motive.value}" if motive and motive.motive.value != "none" else ""
         logger.debug(
-            f"[ReplyIntent] scope={scope_id} source={intent.source.value} eligible=no reason={eligibility.reason_code} {eligibility.reason_text}"
+            f"[ReplyIntent] scope={scope_id} source={intent.source.value} eligible=no reason={eligibility.reason_code} {eligibility.reason_text}{motive_info}"
         )
         momentum.consecutive_bot_replies = 0
         await recorder.record(scope_id, executed=False, momentum=momentum)
@@ -132,10 +155,15 @@ async def process_intent(
         has_mention=intent.has_mention,
         has_reply_to_bot=intent.has_reply_to_bot,
         trigger_text=intent.trigger_text,
+        motive=motive,
+        pending_anchor_text=getattr(intent, "pending_anchor_text", ""),
+        pending_trigger_reason=getattr(intent, "pending_trigger_reason", ""),
+        interject_pref=interject_pref,
     )
     if plan.level == EngagementLevel.IGNORE:
+        motive_info = f" motive={motive.motive.value}" if motive and motive.motive.value != "none" else ""
         logger.debug(
-            f"[ReplyIntent] scope={scope_id} source={intent.source.value} level=IGNORE scene={plan.scene.value}"
+            f"[ReplyIntent] scope={scope_id} source={intent.source.value} level=IGNORE scene={plan.scene.value}{motive_info}"
         )
         momentum.consecutive_bot_replies = 0
         await recorder.record(scope_id, executed=False, momentum=momentum)
@@ -157,6 +185,8 @@ async def process_intent(
         message_id=intent.message_id,
         has_reply_to_bot=intent.has_reply_to_bot,
         has_mention=intent.has_mention,
+        pending_anchor_type=getattr(intent, "pending_anchor_type", ""),
+        pending_trigger_reason=getattr(intent, "pending_trigger_reason", ""),
     )
 
     momentum.message_count_window = state.message_count_window
@@ -175,6 +205,10 @@ async def process_intent(
         executed=result.executed,
         momentum=momentum,
         level=result.level.value if result.executed else None,
+        is_active_trigger=is_active,
+        posture_value=plan.posture.value if result.executed else "",
+        scene_value=plan.scene.value if result.executed else "",
+        motive_value=motive.motive.value if (result.executed and motive) else "",
     )
 
     if result.executed:

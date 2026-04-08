@@ -4,14 +4,16 @@ import re
 
 from astrbot.api import logger
 
+from .opportunity_cache import ActiveMotive, MotiveType, OpportunityScore, PendingOpportunity
 from .social_state import (
     EngagementEligibility,
     EngagementLevel,
     EngagementPlan,
     GroupSocialState,
+    SceneSubType,
     SceneType,
 )
-from .speech_types import AnchorType, OpportunityKind, SpeechOpportunity, ThreadAnchor
+from .speech_types import AnchorType, OpportunityKind, ResponsePosture, SpeechOpportunity, ThreadAnchor
 
 
 QUESTION_WORDS = {"吗", "呢", "怎么", "如何", "为什么", "啥", "什么", "是不是", "能不能", "要不要", "?", "？"}
@@ -195,7 +197,8 @@ class EngagementPlanner:
                     silence_seconds=bot_silence,
                 )
 
-        if silence_seconds < 5:
+        wave_fresh = getattr(state, "wave_fresh", False)
+        if silence_seconds < 5 and state.message_count_window > 0 and not wave_fresh:
             self._debug(
                 f"[Engagement] eligible=no scope={getattr(state, 'scope_id', '?')} reason=silence_too_short {int(silence_seconds)}s"
             )
@@ -240,6 +243,34 @@ class EngagementPlanner:
             silence_seconds=silence_seconds,
         )
 
+    async def _enrich_state_with_recent_interaction(
+        self, state: GroupSocialState, motive: ActiveMotive | None = None
+    ) -> None:
+        """从 PersonaSim 读取最近互动余味，填充到 state.recent_interaction_outcome。"""
+        try:
+            persona_sim = getattr(self.plugin, "persona_sim", None)
+            if not persona_sim:
+                return
+            snapshot = await persona_sim.get_snapshot(state.scope_id)
+            if not snapshot:
+                return
+            recent = snapshot.recent_events
+            interaction_events = [e for e in recent if e.event_type.name == "INTERACTION"]
+            if interaction_events:
+                last = interaction_events[-1]
+                outcome = getattr(last, "interaction_outcome", "") or ""
+                if outcome in ("connected", "missed", "awkward", "relief"):
+                    state.recent_interaction_outcome = outcome
+
+            if not state.unfinished_topic:
+                social_todos = [t for t in snapshot.pending_todos if t.todo_type.value == "social"]
+                for todo in social_todos:
+                    if "话题" in todo.title or "继续聊" in todo.title or "没说完" in todo.title:
+                        state.unfinished_topic = todo.title
+                        break
+        except Exception:
+            pass
+
     async def plan_engagement(
         self,
         state: GroupSocialState,
@@ -247,29 +278,81 @@ class EngagementPlanner:
         has_mention: bool = False,
         has_reply_to_bot: bool = False,
         trigger_text: str = "",
+        motive: ActiveMotive | None = None,
+        pending_anchor_text: str = "",
+        pending_trigger_reason: str = "",
+        interject_pref=None,
     ) -> EngagementPlan:
         scene = self.classify_scene_from_state(state)
+        sub_scene = self.classify_sub_scene(state, scene)
+
+        await self._enrich_state_with_recent_interaction(state, motive)
+
         confidence = min(eligibility.silence_seconds / 120.0, 1.0) * 0.5 + 0.5
 
-        plan = self._build_base_plan(scene, eligibility, confidence, has_mention, has_reply_to_bot, trigger_text, state)
+        plan = self._build_base_plan(
+            scene, sub_scene, eligibility, confidence, has_mention, has_reply_to_bot, trigger_text, state, motive=motive
+        )
+
+        if pending_anchor_text and plan.level == EngagementLevel.FULL:
+            plan.anchor_text = pending_anchor_text
 
         drive = await self._get_persona_drive(state.scope_id)
-        plan = self._apply_persona_drive(plan, drive)
+
+        from datetime import datetime
+
+        is_night = 23 <= datetime.now().hour or datetime.now().hour < 6
+        plan = self._apply_persona_drive(plan, drive, motive=motive, is_night=is_night)
+
+        warmth = getattr(plan, "warmth_bias", 0.0)
+        playfulness = getattr(plan, "playfulness_bias", 0.0)
+        score_for_posture = min(getattr(plan, "confidence", 0.5), 0.9)
+        posture = self._compute_posture(
+            scene,
+            sub_scene,
+            score_for_posture,
+            motive,
+            warmth,
+            playfulness,
+            is_night=is_night,
+            interject_pref=interject_pref,
+        )
+        plan = EngagementPlan(
+            level=plan.level,
+            reason=plan.reason,
+            confidence=plan.confidence,
+            scene=plan.scene,
+            suggested_text=plan.suggested_text,
+            use_sticker=plan.use_sticker,
+            sticker_id=plan.sticker_id,
+            anchor_type=plan.anchor_type,
+            anchor_text=plan.anchor_text,
+            short_reply_bias=plan.short_reply_bias,
+            warmth_bias=plan.warmth_bias,
+            initiative_bias=plan.initiative_bias,
+            playfulness_bias=plan.playfulness_bias,
+            posture=posture,
+            pending_anchor_text=pending_anchor_text,
+            pending_trigger_reason=pending_trigger_reason,
+            sub_scene=sub_scene,
+        )
 
         self._debug(
-            f"[Engagement] scene={scene.value} eligible={'yes' if eligibility.allowed else 'no'} level={plan.level.value} reason={plan.reason}"
+            f"[Engagement] scene={scene.value} eligible={'yes' if eligibility.allowed else 'no'} level={plan.level.value} reason={plan.reason} posture={plan.posture.value}"
         )
         return plan
 
     def _build_base_plan(
         self,
         scene: SceneType,
+        sub_scene: SceneSubType,
         eligibility: EngagementEligibility,
         confidence: float,
         has_mention: bool,
         has_reply_to_bot: bool,
         trigger_text: str,
         state: GroupSocialState,
+        motive: ActiveMotive | None = None,
     ) -> EngagementPlan:
         if scene == SceneType.IDLE:
             if has_mention or has_reply_to_bot:
@@ -326,11 +409,22 @@ class EngagementPlanner:
                     confidence=0.7,
                     scene=scene,
                 )
-            opportunity = self.recognize_opportunity(state, False, False, trigger_text)
+            opportunity = self.recognize_opportunity(
+                state, False, False, trigger_text, motive=motive, sub_scene=sub_scene
+            )
             if opportunity.kind == OpportunityKind.EMOJI_REACT:
                 return EngagementPlan(
                     level=EngagementLevel.REACT,
                     reason=f"emoji参与: {opportunity.reason}",
+                    confidence=opportunity.confidence,
+                    scene=scene,
+                    anchor_type=opportunity.anchor_type,
+                    anchor_text=opportunity.anchor_text,
+                )
+            elif opportunity.kind == OpportunityKind.TEXT_LITE:
+                return EngagementPlan(
+                    level=EngagementLevel.TEXT_LITE,
+                    reason=f"简短文本: {opportunity.reason}",
                     confidence=opportunity.confidence,
                     scene=scene,
                     anchor_type=opportunity.anchor_type,
@@ -367,6 +461,33 @@ class EngagementPlanner:
         if state.message_count_window < 3 and state.last_message_time > 0:
             return SceneType.IDLE
         return SceneType.CASUAL
+
+    def classify_sub_scene(self, state: GroupSocialState, scene: SceneType = None) -> SceneSubType:
+        """在 CASUAL 场景内细分软标签。
+
+        - joyful_bustle: 高情绪(>=3) + 低问题(<2)，群里热闹兴奋
+        - awkward_gap: 长沉默(>60s)，群里冷场或刚恢复
+        - topic_focus: 有未回答的问题或 thread_anchor，话题还在延续
+        - light_smalltalk: 普通闲聊，无明显特征
+        """
+        if scene is None:
+            scene = state.scene
+        if scene != SceneType.CASUAL:
+            return SceneSubType.NONE
+
+        silence = time.time() - state.last_message_time if state.last_message_time > 0 else 0
+
+        if state.emotion_count_window >= 3 and state.question_count_window < 2:
+            return SceneSubType.JOYFUL_BUSTLE
+
+        if silence > 60 and state.message_count_window >= 1:
+            return SceneSubType.AWKWARD_GAP
+
+        thread_anchor = getattr(state, "thread_anchor", None)
+        if (thread_anchor and thread_anchor.is_sufficient()) or state.question_count_window >= 1:
+            return SceneSubType.TOPIC_FOCUS
+
+        return SceneSubType.LIGHT_SMALLTALK
 
     async def _get_persona_drive(self, scope_id: str) -> dict | None:
         """读取 persona sim snapshot，返回 drive 信息用于影响 engagement plan。
@@ -459,7 +580,96 @@ class EngagementPlanner:
         except Exception:
             return None
 
-    def _apply_persona_drive(self, plan: EngagementPlan, drive: dict | None) -> EngagementPlan:
+    async def _compute_motive(
+        self,
+        scope_id: str,
+        state: GroupSocialState | None = None,
+        trigger_text: str = "",
+    ) -> ActiveMotive:
+        try:
+            persona_sim = getattr(self.plugin, "persona_sim", None)
+            if not persona_sim:
+                return ActiveMotive(motive=MotiveType.NONE, strength=0.0, source="no_persona_sim")
+
+            snapshot = await persona_sim.get_snapshot(scope_id)
+            if not snapshot:
+                return ActiveMotive(motive=MotiveType.NONE, strength=0.0, source="no_snapshot")
+
+            top_motive = MotiveType.NONE
+            max_score = 0.0
+            source_detail = ""
+
+            social_todos = [t for t in snapshot.pending_todos if t.todo_type.value == "social"]
+            if social_todos:
+                top = social_todos[0]
+                title = top.title.lower()
+                if "没说完" in title or "继续聊" in title or "想聊" in title:
+                    score = 0.7
+                    if score > max_score:
+                        max_score = score
+                        top_motive = MotiveType.CONTINUE_THREAD
+                        source_detail = f"social_todo:{top.title}"
+                elif "想找人" in title or "寂寞" in title:
+                    score = 0.8
+                    if score > max_score:
+                        max_score = score
+                        top_motive = MotiveType.SEEK_CONNECTION
+                        source_detail = f"social_todo:{top.title}"
+                elif "问" in title or "好奇" in title:
+                    score = 0.6
+                    if score > max_score:
+                        max_score = score
+                        top_motive = MotiveType.CURIOUS_PROBE
+                        source_detail = f"social_todo:{top.title}"
+
+            effect_ids = {e.effect_id for e in snapshot.active_effects}
+            if "lonely" in effect_ids or snapshot.state.social_need > 80:
+                score = min(0.6 + (snapshot.state.social_need - 80) / 100, 0.9)
+                if score > max_score:
+                    max_score = score
+                    top_motive = MotiveType.SEEK_CONNECTION
+                    source_detail = "lonely_or_high_social_need"
+
+            if "curious" in effect_ids:
+                score = 0.65
+                if score > max_score:
+                    max_score = score
+                    top_motive = MotiveType.CURIOUS_PROBE
+                    source_detail = "effect:curious"
+
+            if "irritated" in effect_ids or "wronged" in effect_ids:
+                score = 0.5
+                if score > max_score:
+                    max_score = score
+                    top_motive = MotiveType.SELF_PROTECTIVE
+                    source_detail = "effect:irritated_or_wronged"
+
+            recent = snapshot.recent_events
+            interaction_events = [e for e in recent if e.event_type.name == "INTERACTION"]
+            if interaction_events:
+                last = interaction_events[-1]
+                outcome = getattr(last, "interaction_outcome", "")
+                mode = getattr(last, "interaction_mode", "")
+                if outcome == "missed" and mode == "active" and max_score < 0.4:
+                    max_score = 0.35
+                    top_motive = MotiveType.LIGHT_RELIEF
+                    source_detail = "missed_active_interaction"
+
+            if max_score < 0.3 and snapshot.state.energy < 50:
+                score = 0.3
+                if score > max_score:
+                    max_score = score
+                    top_motive = MotiveType.AVOID_SILENCE
+                    source_detail = "low_energy_avoid_silence"
+
+            return ActiveMotive(motive=top_motive, strength=max_score, source=source_detail)
+
+        except Exception:
+            return ActiveMotive(motive=MotiveType.NONE, strength=0.0, source="error")
+
+    def _apply_persona_drive(
+        self, plan: EngagementPlan, drive: dict | None, motive: ActiveMotive | None = None, is_night: bool = False
+    ) -> EngagementPlan:
         """根据 persona drive 调整 engagement plan。"""
         if not drive:
             return plan
@@ -477,6 +687,25 @@ class EngagementPlanner:
         confidence_adjustment = 0.0
         level_override = False
 
+        if is_night:
+            confidence_adjustment -= 0.10
+            initiative_bias = max(initiative_bias - 0.2, -0.3)
+            if plan.level == EngagementLevel.FULL and plan.scene != SceneType.HELP:
+                adjusted = EngagementPlan(
+                    level=EngagementLevel.REACT,
+                    reason=plan.reason + " (夜间保守)",
+                    confidence=max(0.25, plan.confidence - 0.10),
+                    scene=plan.scene,
+                    anchor_type=plan.anchor_type,
+                    anchor_text=plan.anchor_text,
+                    short_reply_bias=short_reply_bias + 0.15,
+                    warmth_bias=warmth_bias,
+                    initiative_bias=initiative_bias,
+                    playfulness_bias=max(playfulness_bias - 0.1, -0.2),
+                    posture=plan.posture,
+                )
+                level_override = True
+
         if energy < 30:
             confidence_adjustment -= 0.15
             if plan.level == EngagementLevel.FULL and plan.scene != SceneType.HELP:
@@ -491,6 +720,7 @@ class EngagementPlanner:
                     warmth_bias=warmth_bias,
                     initiative_bias=initiative_bias,
                     playfulness_bias=playfulness_bias,
+                    posture=plan.posture,
                 )
                 level_override = True
 
@@ -510,6 +740,7 @@ class EngagementPlanner:
                     warmth_bias=warmth_bias,
                     initiative_bias=initiative_bias,
                     playfulness_bias=playfulness_bias,
+                    posture=plan.posture,
                 )
                 level_override = True
 
@@ -527,6 +758,7 @@ class EngagementPlanner:
                     warmth_bias=warmth_bias,
                     initiative_bias=initiative_bias,
                     playfulness_bias=playfulness_bias,
+                    posture=plan.posture,
                 )
 
         if "thriving" in effect_ids:
@@ -546,6 +778,7 @@ class EngagementPlanner:
                     warmth_bias=warmth_bias,
                     initiative_bias=initiative_bias,
                     playfulness_bias=playfulness_bias,
+                    posture=plan.posture,
                 )
 
         self._debug(
@@ -556,19 +789,95 @@ class EngagementPlanner:
         )
         return adjusted
 
+    def _compute_posture(
+        self,
+        scene: SceneType,
+        sub_scene: SceneSubType,
+        score: float,
+        motive: ActiveMotive | None,
+        warmth: float,
+        playfulness: float,
+        is_night: bool = False,
+        interject_pref=None,
+    ) -> ResponsePosture:
+        if is_night:
+            if score >= 0.45:
+                return ResponsePosture.GENTLE_ANSWER
+            return ResponsePosture.QUIET_ACK
+
+        if motive:
+            m = motive.motive
+            s = motive.strength
+            if m == MotiveType.LIGHT_RELIEF and s >= 0.5:
+                return ResponsePosture.PLAYFUL_NUDGE
+            if m == MotiveType.SELF_PROTECTIVE:
+                return ResponsePosture.QUIET_ACK
+            if m == MotiveType.SEEK_CONNECTION and s >= 0.6:
+                return ResponsePosture.SOFT_CONTINUE
+            if m == MotiveType.CURIOUS_PROBE:
+                return ResponsePosture.GENTLE_ANSWER
+
+        if scene == SceneType.HELP:
+            return ResponsePosture.GENTLE_ANSWER
+
+        if scene == SceneType.DEBATE:
+            if playfulness > 0.1:
+                return ResponsePosture.PLAYFUL_NUDGE
+            return ResponsePosture.QUIET_ACK
+
+        if sub_scene == SceneSubType.JOYFUL_BUSTLE:
+            if playfulness >= 0.0 or warmth >= 0.0:
+                return ResponsePosture.PLAYFUL_NUDGE
+            return ResponsePosture.SOFT_CONTINUE
+
+        if sub_scene == SceneSubType.AWKWARD_GAP:
+            if score >= 0.35:
+                return ResponsePosture.GENTLE_ANSWER
+            return ResponsePosture.QUIET_ACK
+
+        if sub_scene == SceneSubType.TOPIC_FOCUS:
+            if score >= 0.40:
+                return ResponsePosture.GENTLE_ANSWER
+            return ResponsePosture.SOFT_CONTINUE
+
+        posture_order = [
+            ResponsePosture.FULL_JOIN,
+            ResponsePosture.PLAYFUL_NUDGE,
+            ResponsePosture.SOFT_CONTINUE,
+            ResponsePosture.QUIET_ACK,
+            ResponsePosture.GENTLE_ANSWER,
+        ]
+
+        if interject_pref and interject_pref.posture_bias:
+            best_posture = None
+            best_bias = -999.0
+            for p in posture_order:
+                bias = interject_pref.get_posture_modifier(p.value)
+                if bias > best_bias:
+                    best_bias = bias
+                    best_posture = p
+            if best_posture and best_bias > 0.05:
+                return best_posture
+
+        if playfulness > 0.2 and warmth > 0.1:
+            return ResponsePosture.PLAYFUL_NUDGE
+        if warmth > 0.2 and score < 0.40:
+            return ResponsePosture.SOFT_CONTINUE
+        if score >= 0.50:
+            return ResponsePosture.FULL_JOIN
+        if score >= 0.30:
+            return ResponsePosture.SOFT_CONTINUE
+        return ResponsePosture.QUIET_ACK
+
     def recognize_opportunity(
         self,
         state: GroupSocialState,
         has_mention: bool = False,
         has_reply_to_bot: bool = False,
         trigger_text: str = "",
+        motive: ActiveMotive | None = None,
+        sub_scene: SceneSubType = SceneSubType.NONE,
     ) -> SpeechOpportunity:
-        """识别当前是否存在说话机会。
-
-        主动文本发言必须有锚点，没有锚点时只能 IGNORE 或 EMOJI_REACT。
-        顺序：先检查负面过滤 -> 再检查锚点 -> 最后才到 emoji/react。
-        线程锚点（thread_anchor）已在 plan_engagement 中构建并传入 state。
-        """
         scope_id = state.scope_id
         silence_seconds = time.time() - state.last_message_time if state.last_message_time > 0 else 999
 
@@ -586,67 +895,354 @@ class EngagementPlanner:
         if self._is_negative_filter(trigger_text, state):
             return SpeechOpportunity.ignore(scope_id, reason="负面信号，不插嘴")
 
+        score = self._compute_opportunity_score(state, trigger_text, motive, sub_scene)
+
+        if score.is_blocked:
+            return SpeechOpportunity.ignore(scope_id, reason="评分模型否决")
+
+        level = score.level_from_score()
+
+        motive_str = (
+            f" motive={motive.motive.value}({motive.strength:.2f})" if motive and motive.motive.value != "none" else ""
+        )
+        self._debug(
+            f"[OpportunityScore] scope={scope_id} sub_scene={sub_scene.value} total={score.total:.2f} level={level} "
+            f"q={score.question:.2f} t={score.thread:.2f} h={score.topic_hook:.2f} "
+            f"l={score.natural_landing:.2f} e={score.emotion:.2f} "
+            f"pd={score.persona_drive:.2f} ba={score.bot_activity:.2f} rel={score.relation:.2f} nov={score.novelty:.2f}{motive_str}"
+        )
+
+        if level == "ignore":
+            if state.emotion_count_window >= 2 and not score.is_blocked:
+                return SpeechOpportunity.emoji_react(
+                    scope_id,
+                    reason=f"情绪活跃可react（score={score.total:.2f}）",
+                    confidence=min(score.total + 0.1, 0.55),
+                )
+            return SpeechOpportunity.ignore(scope_id, reason=f"机会分不足（score={score.total:.2f}）")
+
+        if level == "react":
+            return SpeechOpportunity(
+                scope_id=scope_id,
+                kind=OpportunityKind.EMOJI_REACT,
+                anchor_type=AnchorType.NONE,
+                confidence=min(score.total + 0.1, 0.6),
+                reason=f"评分触react（score={score.total:.2f}）",
+                anchor_text=trigger_text,
+            )
+
+        if level == "text_lite":
+            thread_anchor = getattr(state, "thread_anchor", None)
+            anchor_type, anchor_text = self._best_anchor_for_score(state, trigger_text, thread_anchor, score, motive)
+            return SpeechOpportunity(
+                scope_id=scope_id,
+                kind=OpportunityKind.TEXT_LITE,
+                anchor_type=anchor_type,
+                confidence=min(score.total, 0.6),
+                reason=f"评分触text_lite（score={score.total:.2f}）",
+                anchor_text=anchor_text,
+            )
+
         thread_anchor = getattr(state, "thread_anchor", None)
+        anchor_type, anchor_text = self._best_anchor_for_score(state, trigger_text, thread_anchor, score, motive)
+        reason = self._reason_for_score(score)
 
-        if self._is_question_unanswered(trigger_text, state):
-            return SpeechOpportunity(
-                scope_id=scope_id,
-                kind=OpportunityKind.ACTIVE_CONTINUATION,
-                anchor_type=AnchorType.QUESTION_UNANSWERED,
-                confidence=0.55,
-                reason="检测到值得接话的真问题",
-                anchor_text=trigger_text,
-            )
+        return SpeechOpportunity(
+            scope_id=scope_id,
+            kind=OpportunityKind.ACTIVE_CONTINUATION,
+            anchor_type=anchor_type,
+            confidence=min(score.total, 0.9),
+            reason=reason,
+            anchor_text=anchor_text,
+        )
 
-        if self._is_persona_hook(trigger_text):
-            return SpeechOpportunity(
-                scope_id=scope_id,
-                kind=OpportunityKind.TOPIC_HOOK,
-                anchor_type=AnchorType.PERSONA_HOOK,
-                confidence=0.65,
-                reason="话题触发角色关注点",
-                anchor_text=trigger_text,
-            )
+    def _compute_opportunity_score(
+        self,
+        state: GroupSocialState,
+        trigger_text: str,
+        motive: ActiveMotive | None = None,
+        sub_scene: SceneSubType = SceneSubType.NONE,
+    ) -> OpportunityScore:
+        s = OpportunityScore()
 
-        if self._is_memorable_hook(trigger_text, state):
-            return SpeechOpportunity(
-                scope_id=scope_id,
-                kind=OpportunityKind.TOPIC_HOOK,
-                anchor_type=AnchorType.MEMORABLE_HOOK,
-                confidence=0.55,
-                reason="触发值得接梗的内容",
-                anchor_text=trigger_text,
-            )
+        s.question = self._score_question(trigger_text, state, sub_scene)
+        s.thread = self._score_thread(state, sub_scene)
+        s.topic_hook = self._score_topic_hook(trigger_text, state, sub_scene)
+        s.natural_landing = self._score_natural_landing(state, sub_scene)
+        s.emotion = self._score_emotion(state, sub_scene)
+        s.novelty = self._score_novelty(trigger_text, state)
+        s.bot_activity = self._score_bot_activity(state)
+        s.relation = self._score_relation(state)
 
-        if thread_anchor and thread_anchor.is_sufficient() and self._is_natural_landing(state):
-            combined_confidence = min(0.4 + thread_anchor.confidence * 0.3, 0.7)
-            return SpeechOpportunity(
-                scope_id=scope_id,
-                kind=OpportunityKind.ACTIVE_CONTINUATION,
-                anchor_type=thread_anchor.anchor_type,
-                confidence=combined_confidence,
-                reason=f"线程锚点支撑: {thread_anchor.anchor_text[:30]}",
-                anchor_text=thread_anchor.anchor_text,
-            )
+        if motive:
+            s.persona_drive = self._score_persona_drive(motive, state)
 
-        if self._is_natural_landing(state):
-            return SpeechOpportunity(
-                scope_id=scope_id,
-                kind=OpportunityKind.ACTIVE_CONTINUATION,
-                anchor_type=AnchorType.NATURAL_LANDING,
-                confidence=0.4,
-                reason="存在自然落点",
-                anchor_text="",
-            )
+        if self._is_negative_filter(trigger_text, state):
+            s.negative_override = -1.0
 
-        if state.emotion_count_window >= 2:
-            return SpeechOpportunity.emoji_react(
-                scope_id,
-                reason="情绪活跃，可发表情包",
-                confidence=0.4,
-            )
+        total = (
+            s.question
+            + s.thread
+            + s.topic_hook
+            + s.natural_landing
+            + s.emotion
+            + s.persona_drive
+            + s.bot_activity
+            + s.relation
+            + s.novelty
+        )
+        s.total = max(0.0, min(total, 1.0))
+        return s
 
-        return SpeechOpportunity.ignore(scope_id, reason="无锚点，不主动插嘴")
+    def _score_question(self, text: str, state: GroupSocialState, sub_scene: SceneSubType = SceneSubType.NONE) -> float:
+        if not text or not self._is_question_unanswered(text, state):
+            return 0.0
+        base = 0.0
+        if state.question_count_window >= 3:
+            base = 0.25
+        elif state.question_count_window >= 1:
+            base = 0.15 + 0.05 * min(state.question_count_window - 1, 2)
+        else:
+            return 0.0
+        if sub_scene == SceneSubType.TOPIC_FOCUS:
+            base = min(base * 1.3, 0.28)
+        elif sub_scene == SceneSubType.AWKWARD_GAP:
+            base = min(base * 1.1, 0.26)
+        elif sub_scene == SceneSubType.JOYFUL_BUSTLE:
+            base = base * 0.8
+        return base
+
+    def _score_thread(self, state: GroupSocialState, sub_scene: SceneSubType = SceneSubType.NONE) -> float:
+        anchor = getattr(state, "thread_anchor", None)
+        if not anchor or not anchor.is_sufficient():
+            return 0.0
+        base = min(0.15 + anchor.confidence * 0.05, 0.20)
+        if sub_scene == SceneSubType.TOPIC_FOCUS:
+            base = min(base * 1.25, 0.25)
+        elif sub_scene == SceneSubType.JOYFUL_BUSTLE:
+            base = base * 0.85
+        return base
+
+    def _score_topic_hook(
+        self, text: str, state: GroupSocialState, sub_scene: SceneSubType = SceneSubType.NONE
+    ) -> float:
+        score = 0.0
+        if self._is_persona_hook(text):
+            score += 0.15
+        if self._is_memorable_hook(text, state):
+            score += 0.10
+        if sub_scene == SceneSubType.JOYFUL_BUSTLE:
+            score = min(score * 1.2, 0.22)
+        elif sub_scene == SceneSubType.TOPIC_FOCUS:
+            score = min(score * 1.1, 0.21)
+        return min(score, 0.22)
+
+    def _score_natural_landing(self, state: GroupSocialState, sub_scene: SceneSubType = SceneSubType.NONE) -> float:
+        if not self._is_natural_landing(state):
+            return 0.0
+        silence = time.time() - state.last_message_time
+        base = 0.0
+        if silence >= 30:
+            base = 0.10
+        elif silence >= 15:
+            base = 0.07
+        else:
+            base = 0.04
+        if sub_scene == SceneSubType.AWKWARD_GAP:
+            base = min(base * 1.3, 0.12)
+        elif sub_scene == SceneSubType.LIGHT_SMALLTALK:
+            base = min(base * 1.1, 0.11)
+        return base
+
+    def _score_emotion(self, state: GroupSocialState, sub_scene: SceneSubType = SceneSubType.NONE) -> float:
+        ecw = state.emotion_count_window
+        base = 0.0
+        if ecw >= 5:
+            base = 0.05
+        elif ecw >= 3:
+            base = 0.07
+        elif ecw >= 2:
+            base = 0.08
+        elif ecw >= 1:
+            base = 0.04
+        if sub_scene == SceneSubType.JOYFUL_BUSTLE:
+            base = min(base * 1.4, 0.10)
+        elif sub_scene == SceneSubType.AWKWARD_GAP:
+            base = base * 0.7
+        return base
+
+    def _score_novelty(self, text: str, state: GroupSocialState) -> float:
+        if not text or len(text.strip()) < 4:
+            return 0.0
+        pattern = re.compile(r"[\u4e00-\u9fa5]{2,}")
+        words = set(pattern.findall(text.strip()))
+        keyword_set = getattr(state, "recent_keywords", set())
+        if not keyword_set:
+            return 0.05
+        overlap = len(words & keyword_set)
+        if overlap / max(len(words), 1) < 0.3:
+            return 0.08
+        return 0.0
+
+    def _score_persona_drive(self, motive: ActiveMotive, state: GroupSocialState) -> float:
+        if motive.motive == MotiveType.SEEK_CONNECTION:
+            return 0.10 * motive.strength
+        if motive.motive == MotiveType.CONTINUE_THREAD:
+            return 0.08 * motive.strength
+        if motive.motive == MotiveType.LIGHT_RELIEF:
+            return 0.06 * motive.strength
+        if motive.motive == MotiveType.AVOID_SILENCE:
+            return 0.05 * motive.strength
+        if motive.motive == MotiveType.CURIOUS_PROBE:
+            return 0.12 * motive.strength
+        if motive.motive == MotiveType.SELF_PROTECTIVE:
+            return -0.05 * motive.strength
+        return 0.0
+
+    def _score_bot_activity(self, state: GroupSocialState) -> float:
+        """基于 bot 最近连续发言次数的互动节奏信号。
+
+        consecutive_bot_replies 反映的是 bot 近期是否活跃。
+        这不是"关系维度"，而是"入场时机"——bot 最近说过话，
+        说明群里有互动节奏，此时入场插嘴更容易被接受。
+        """
+        cbr = getattr(state, "consecutive_bot_replies", 0)
+        if cbr >= 5:
+            return 0.08
+        if cbr >= 3:
+            return 0.05
+        if cbr >= 1:
+            return 0.03
+        return 0.0
+
+    def _score_relation(self, state: GroupSocialState) -> float:
+        """基于触发者与 bot 关系强度的关系维度信号。
+
+        同时考虑：
+        1. 静态关系：trigger_user_affinity
+        2. 近期互动余味：recent_interaction_outcome（connected/missed/awkward/relief）
+        若无有效关系信息（affinity=0 且无余味），安全退回 0。
+        """
+        affinity = getattr(state, "trigger_user_affinity", 0)
+        recent_outcome = getattr(state, "recent_interaction_outcome", "") or ""
+
+        base = 0.0
+        if affinity > 0:
+            if affinity >= 80:
+                base = 0.12
+            elif affinity >= 50:
+                base = 0.08
+            elif affinity >= 20:
+                base = 0.05
+            else:
+                base = 0.03
+
+        if recent_outcome == "connected" and affinity >= 20:
+            base = min(base * 1.25, 0.15)
+        elif recent_outcome == "missed":
+            base = base * 0.6
+        elif recent_outcome == "awkward":
+            base = base * 0.5
+        elif recent_outcome == "relief":
+            base = min(base * 1.15, 0.13)
+
+        if affinity <= 0 and not recent_outcome:
+            return 0.0
+        return base
+
+    def _best_anchor_for_score(
+        self,
+        state: GroupSocialState,
+        trigger_text: str,
+        thread_anchor,
+        score: OpportunityScore,
+        motive: ActiveMotive | None = None,
+    ) -> tuple[AnchorType, str]:
+        unfinished_cues = getattr(state, "unfinished_cues", [])
+        unfinished_question = getattr(state, "last_unanswered_question", "")
+        unfinished_joke = getattr(state, "last_unfinished_joke", "")
+        unfinished_topic = getattr(state, "unfinished_topic", "")
+
+        motive_type = motive.motive if motive else None
+
+        if motive_type == MotiveType.CONTINUE_THREAD:
+            if unfinished_question and score.question >= 0.10:
+                return AnchorType.QUESTION_UNANSWERED, unfinished_question
+            if unfinished_topic:
+                return AnchorType.TOPIC_CONCLUSION, unfinished_topic
+            if thread_anchor and thread_anchor.is_sufficient():
+                return thread_anchor.anchor_type, thread_anchor.anchor_text
+            if unfinished_joke:
+                return AnchorType.NATURAL_LANDING, unfinished_joke
+
+        elif motive_type == MotiveType.CURIOUS_PROBE:
+            if unfinished_question:
+                return AnchorType.QUESTION_UNANSWERED, unfinished_question
+            if score.question >= 0.15 and trigger_text:
+                return AnchorType.QUESTION_UNANSWERED, trigger_text
+
+        elif motive_type == MotiveType.SEEK_CONNECTION:
+            if trigger_text and len(trigger_text) >= 4:
+                return AnchorType.NATURAL_LANDING, trigger_text
+            if unfinished_joke:
+                return AnchorType.NATURAL_LANDING, unfinished_joke
+            if thread_anchor and thread_anchor.is_sufficient():
+                return thread_anchor.anchor_type, thread_anchor.anchor_text
+
+        elif motive_type == MotiveType.SELF_PROTECTIVE:
+            if unfinished_joke and score.natural_landing >= 0.04:
+                return AnchorType.NATURAL_LANDING, unfinished_joke
+            if score.natural_landing >= 0.04:
+                return AnchorType.NATURAL_LANDING, ""
+            if trigger_text and len(trigger_text) < 20:
+                return AnchorType.NATURAL_LANDING, trigger_text
+
+        elif motive_type == MotiveType.LIGHT_RELIEF:
+            if unfinished_joke:
+                return AnchorType.NATURAL_LANDING, unfinished_joke
+            if trigger_text:
+                return AnchorType.MEMORABLE_HOOK, trigger_text
+
+        if score.question >= 0.15 and self._is_question_unanswered(trigger_text, state):
+            return AnchorType.QUESTION_UNANSWERED, trigger_text
+        if score.topic_hook >= 0.15 and self._is_persona_hook(trigger_text):
+            return AnchorType.PERSONA_HOOK, trigger_text
+        if score.topic_hook >= 0.10 and self._is_memorable_hook(trigger_text, state):
+            return AnchorType.MEMORABLE_HOOK, trigger_text
+        if thread_anchor and thread_anchor.is_sufficient() and score.thread >= 0.15:
+            return thread_anchor.anchor_type, thread_anchor.anchor_text
+        if score.natural_landing >= 0.04:
+            return AnchorType.NATURAL_LANDING, ""
+        if unfinished_question and score.question >= 0.10:
+            return AnchorType.QUESTION_UNANSWERED, unfinished_question
+        if unfinished_joke:
+            return AnchorType.NATURAL_LANDING, unfinished_joke
+        return AnchorType.NONE, trigger_text
+
+    def _reason_for_score(self, score: OpportunityScore) -> str:
+        parts = []
+        if score.question >= 0.15:
+            parts.append(f"question+{score.question:.2f}")
+        if score.thread >= 0.10:
+            parts.append(f"thread+{score.thread:.2f}")
+        if score.topic_hook >= 0.10:
+            parts.append(f"hook+{score.topic_hook:.2f}")
+        if score.natural_landing >= 0.04:
+            parts.append(f"landing+{score.natural_landing:.2f}")
+        if score.emotion >= 0.04:
+            parts.append(f"emotion+{score.emotion:.2f}")
+        if score.persona_drive > 0.05:
+            parts.append(f"motive+{score.persona_drive:.2f}")
+        if score.novelty >= 0.04:
+            parts.append(f"novelty+{score.novelty:.2f}")
+        return f"评分触full（{' '.join(parts) if parts else f'total={score.total:.2f}'}）"
+
+    def _is_joyful_bustle(self, state: GroupSocialState) -> bool:
+        if state.emotion_count_window >= 4 and state.question_count_window <= 2:
+            return True
+        if state.message_count_window >= 6 and state.emotion_count_window >= 3:
+            return True
+        return False
 
     def _is_negative_filter(self, text: str, state: GroupSocialState) -> bool:
         """负面信号：不该插嘴的情况。"""
@@ -656,6 +1252,9 @@ class EngagementPlanner:
 
         if len(text_stripped) <= 2:
             return True
+
+        if self._is_joyful_bustle(state):
+            return False
 
         if state.emotion_count_window >= 5 and state.message_count_window >= 8:
             return True
@@ -764,7 +1363,7 @@ class EngagementPlanner:
 
     async def _analyze_thread(self, scope_id: str, count: int = 10) -> ThreadAnchor:
         """轻量线程分析：复用 context_injection 的缓存，
-        从原始消息提取关键词集合、问句特征和 message_ids。不用 LLM。
+        从原始消息提取关键词集合、问句特征、待续话头和 message_ids。不用 LLM。
         """
         import re
 
@@ -783,14 +1382,12 @@ class EngagementPlanner:
                 topic_keywords=set(),
             )
 
-        # 从原始消息提取文本和 message_ids
         texts: list[str] = []
         msg_ids: list[str] = []
         for msg in raw_messages:
             mid = str(msg.get("message_id", ""))
             if mid:
                 msg_ids.append(mid)
-            # 拼接消息段文本
             segments = msg.get("message", [])
             parts = []
             for seg in segments:
@@ -799,7 +1396,6 @@ class EngagementPlanner:
             if parts:
                 texts.append("".join(parts))
 
-        # 过滤虚词/功能词，避免 confidence 虚高
         _STOPWORDS = {
             "什么",
             "怎么",
@@ -808,7 +1404,6 @@ class EngagementPlanner:
             "是不是",
             "能不能",
             "要不要",
-            "的是",
             "一个",
             "这个",
             "那个",
@@ -841,17 +1436,56 @@ class EngagementPlanner:
 
         keywords: set[str] = set()
         question_in_thread = False
+        last_question_text = ""
+        last_question_index = -1
+        best_continuation_text = ""
+        best_continuation_score = 0
 
         topic_word_pattern = re.compile(r"[\u4e00-\u9fa5]{2,}")
-        for text in texts[-6:]:
+        rhetorical_patterns = [
+            re.compile(r"^真的吗[？?。.]?$"),
+            re.compile(r"^不是吧[。.]?$"),
+            re.compile(r"^不会吧[。.]?$"),
+            re.compile(r"^真的假的[？?。.]?$"),
+        ]
+        greeting_question_patterns = [
+            re.compile(r"^[吃喝睡在去哪好没].{0,4}[吗呢嘛]$"),
+            re.compile(r"^吃了没"),
+            re.compile(r"^在吗$"),
+            re.compile(r"^在不在$"),
+        ]
+
+        for i, text in enumerate(texts[-8:]):
+            actual_idx = len(texts) - 8 + i
             found = topic_word_pattern.findall(text)
             for word in found:
                 if word not in _STOPWORDS:
                     keywords.add(word)
 
+            text_lower = text.lower().strip()
+            if len(text_lower) < 3:
+                continue
+
+            is_question = bool(
+                "?" in text_lower or "？" in text_lower or any(qw in text_lower for qw in QUESTION_WORDS)
+            )
+
+            is_rhetorical = any(p.match(text_lower) for p in rhetorical_patterns)
+            is_greeting_q = any(p.match(text_lower) for p in greeting_question_patterns)
+
+            if is_question and not is_rhetorical and not is_greeting_q and len(text_lower) >= 4:
+                last_question_text = text_lower
+                last_question_index = actual_idx
+
+            if not is_question and not is_rhetorical and len(text_lower) >= 6:
+                word_count = len(topic_word_pattern.findall(text_lower))
+                if word_count > best_continuation_score:
+                    best_continuation_score = word_count
+                    best_continuation_text = text_lower
+
         for text in texts[-4:]:
             text_lower = text.lower()
-            if "?" in text_lower or "？" in text_lower or any(qw in text_lower for qw in QUESTION_WORDS):
+            if "?" in text_lower or "：" in text_lower or any(qw in text_lower for qw in QUESTION_WORDS):
                 question_in_thread = True
                 break
 
@@ -862,13 +1496,23 @@ class EngagementPlanner:
             confidence = min(confidence + 0.15, 0.7)
         if len(texts) >= 3:
             confidence = min(confidence + 0.1, 0.7)
+        if last_question_text:
+            confidence = min(confidence + 0.10, 0.75)
 
-        anchor_type = AnchorType.TOPIC_CONCLUSION if confidence >= 0.5 else AnchorType.NONE
+        if last_question_text and last_question_index < len(texts) - 2:
+            anchor_type = AnchorType.QUESTION_UNANSWERED
+            anchor_text = last_question_text
+        elif best_continuation_text and confidence >= 0.4:
+            anchor_type = AnchorType.NATURAL_LANDING
+            anchor_text = best_continuation_text
+        else:
+            anchor_type = AnchorType.TOPIC_CONCLUSION if confidence >= 0.5 else AnchorType.NONE
+            anchor_text = " ".join(list(keywords)[:10])
 
         return ThreadAnchor(
             anchor_type=anchor_type,
-            anchor_text=" ".join(list(keywords)[:10]),
+            anchor_text=anchor_text,
             confidence=confidence,
             topic_keywords=keywords,
-            message_ids=msg_ids[-6:],  # 保留最近 6 条的 message_id
+            message_ids=msg_ids[-6:],
         )

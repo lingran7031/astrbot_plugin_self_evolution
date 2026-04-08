@@ -85,7 +85,7 @@ class ReplyPolicy:
                     silence_seconds=bot_silence,
                 )
 
-        if silence_seconds < 5:
+        if silence_seconds < 5 and momentum.message_count_window > 0 and not momentum.wave_fresh:
             return ReplyPolicyDecision(
                 allow=False,
                 reason_code="E_SILENCE",
