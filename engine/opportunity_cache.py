@@ -131,6 +131,13 @@ class OpportunityCache:
             return
         self._data[scope_id] = [o for o in self._data[scope_id] if o is not opp]
 
+    def remove_by_anchor(self, scope_id: str, anchor_type: str, anchor_text: str) -> None:
+        if scope_id not in self._data:
+            return
+        self._data[scope_id] = [
+            o for o in self._data[scope_id] if not (o.anchor_type == anchor_type and o.anchor_text == anchor_text)
+        ]
+
     def consume_high_score(self, scope_id: str) -> list[PendingOpportunity]:
         now = time.time()
         if scope_id not in self._data:

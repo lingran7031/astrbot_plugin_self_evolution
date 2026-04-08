@@ -296,7 +296,8 @@ class EavesdroppingEngine:
             )
             score = planner._compute_opportunity_score(state_for_score, msg_text, motive)
 
-            if score.total >= 0.20 and not score.is_blocked:
+            did_warm = score.total >= 0.20 and not score.is_blocked
+            if did_warm:
                 self._opportunity_cache.warm(
                     scope_id=group_id,
                     score=score,
@@ -337,7 +338,9 @@ class EavesdroppingEngine:
 
             policy = ReplyPolicy(self.plugin)
 
-            await process_intent(self.plugin, intent, momentum, planner, executor, policy, self._recorder)
+            executed = await process_intent(self.plugin, intent, momentum, planner, executor, policy, self._recorder)
+            if executed and did_warm:
+                self._opportunity_cache.remove_by_anchor(group_id, "passive_message", msg_text)
             await self.persist_stats(group_id)
         except Exception as e:
             logger.warning(f"[PassiveEngagement] 群 {group_id} 处理失败: {e}", exc_info=True)
