@@ -1130,6 +1130,7 @@ class SelfEvolutionPlugin(Star):
         anchor_text: str = "",
         quoted_info: str = "",
         at_info: str = "",
+        pending_trigger_hint: str = "",
     ) -> ProviderRequest | None:
         """Build ProviderRequest using unified ContextBuilder.
 
@@ -1170,7 +1171,7 @@ class SelfEvolutionPlugin(Star):
             from .engine.generation_context import ContextBuilder
 
             builder = ContextBuilder(self)
-            gc = await builder.build(ctx, decision, anchor_text, scene)
+            gc = await builder.build(ctx, decision, anchor_text, scene, pending_trigger_hint=pending_trigger_hint)
             if self.cfg.debug_log_enabled and gc.persona_prompt:
                 logger.debug(f"[BuildSpec] persona_prompt ({len(gc.persona_prompt)} chars): {gc.persona_prompt}")
             spec = builder.build_generation_spec(gc, decision)

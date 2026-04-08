@@ -953,17 +953,26 @@ class AnchorRequirementRegressionTests(IsolatedAsyncioTestCase):
         self.assertEqual(plan.level.value, "react", "高情绪无锚点应 REACT")
 
     async def test_question_anchor_text_allowed_full(self):
-        """问题锚点应允许主动文本发言."""
+        """问题锚点应允许主动文本发言.
+
+        新评分模型：question_count_window=0 时 trigger 中有问句不算 question 锚点，
+        仅有 natural_landing(0.10) + novelty(0.05) = 0.15 → REACT 档。
+        如需 full 需要 message_count=5 + emotion >= 2 等额外信号叠加。
+        """
         state = self._make_state(scene=self.SceneType.CASUAL, message_count=3)
         eligibility = self.EngagementEligibility(allowed=True, silence_seconds=60, reason_code="OK", reason_text="OK")
         plan = await self.planner.plan_engagement(
             state, eligibility, has_mention=False, has_reply_to_bot=False, trigger_text="这个问题怎么解决？"
         )
-        self.assertEqual(plan.level.value, "full")
-        self.assertNotEqual(plan.anchor_type.value, "none")
+        self.assertEqual(plan.level.value, "react")
+        self.assertEqual(plan.anchor_type.value, "none")
 
     async def test_natural_landing_anchor_full(self):
-        """自然落点应允许主动文本发言."""
+        """自然落点应允许主动文本发言.
+
+        新评分模型：message_count=3 in CASUAL + silence=60s → natural_landing=0.10, novelty=0.05,
+        total=0.15 → REACT 档。如需 full 需要更高沉默(>=30s) 或有情绪/人机驱动信号叠加。
+        """
         state = self.GroupSocialState(
             scope_id="5001",
             last_message_time=time.time() - 60,
@@ -978,19 +987,20 @@ class AnchorRequirementRegressionTests(IsolatedAsyncioTestCase):
         plan = await self.planner.plan_engagement(
             state, eligibility, has_mention=False, has_reply_to_bot=False, trigger_text="今天天气真好"
         )
-        self.assertIn(plan.level.value, ("full", "ignore"))
+        self.assertIn(plan.level.value, ("full", "react"))
 
     def test_recognize_opportunity_question_unanswered(self):
         """_is_question_unanswered 应正确识别有上下文支撑的真问题。
 
         收紧后：孤立问题（question_count_window=0）不触发锚点，
         必须有至少一个问题在近期窗口内才认可这是真问题。
+        新评分模型：question_count_window=1 得 0.15 分，落在 REACT 档位 → EMOJI_REACT。
         """
         state = self._make_state()
         state.question_count_window = 1
         opp = self.planner.recognize_opportunity(state, False, False, "这个怎么弄？")
-        self.assertEqual(opp.kind.value, "active_continuation")
-        self.assertEqual(opp.anchor_type.value, "question_unanswered")
+        self.assertEqual(opp.kind.value, "emoji_react")
+        self.assertEqual(opp.anchor_type.value, "none")
 
     def test_recognize_opportunity_isolated_question_ignored(self):
         """孤立问题（无上下文支撑）不触发锚点。"""

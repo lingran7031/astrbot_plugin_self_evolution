@@ -170,7 +170,10 @@ class SelfEvolutionDAO:
                 last_bot_message_kind TEXT DEFAULT 'normal',
                 wave_started_at REAL DEFAULT 0,
                 bot_has_spoken_in_current_wave INTEGER DEFAULT 0,
-                new_user_message_after_bot INTEGER DEFAULT 0
+                new_user_message_after_bot INTEGER DEFAULT 0,
+                last_unanswered_question TEXT DEFAULT '',
+                last_unfinished_joke TEXT DEFAULT '',
+                unfinished_cues TEXT DEFAULT '[]'
             )
         """)
         async with db.execute("PRAGMA table_info(engagement_state)") as cursor:
@@ -182,6 +185,9 @@ class SelfEvolutionDAO:
             ("wave_started_at", "REAL", 0),
             ("bot_has_spoken_in_current_wave", "INTEGER", 0),
             ("new_user_message_after_bot", "INTEGER", 0),
+            ("last_unanswered_question", "TEXT", "''"),
+            ("last_unfinished_joke", "TEXT", "''"),
+            ("unfinished_cues", "TEXT", "'[]'"),
         ]:
             if col not in columns:
                 await db.execute(f"ALTER TABLE engagement_state ADD COLUMN {col} {dtype} DEFAULT {default}")
@@ -331,6 +337,13 @@ class SelfEvolutionDAO:
                 mood_bias REAL NOT NULL DEFAULT 0.0,
                 expires_at REAL NOT NULL DEFAULT 0.0,
                 created_at REAL NOT NULL DEFAULT 0.0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS interject_preferences (
+                scope_id TEXT PRIMARY KEY,
+                preferences_json TEXT NOT NULL DEFAULT '{}',
+                updated_at REAL NOT NULL DEFAULT 0.0
             )
         """)
 
@@ -896,6 +909,8 @@ class SelfEvolutionDAO:
     async def save_engagement_state(self, scope_id: str, state: dict):
         db = await self.get_conn()
         now = datetime.now().isoformat()
+        import json
+
         async with self._write_lock:
             await db.execute(
                 """INSERT OR REPLACE INTO engagement_state
@@ -903,8 +918,9 @@ class SelfEvolutionDAO:
                     last_seen_message_seq, scene_type, message_count_window,
                     question_count_window, emotion_count_window, consecutive_bot_replies, updated_at,
                     last_bot_message_at, last_bot_message_kind,
-                    wave_started_at, bot_has_spoken_in_current_wave, new_user_message_after_bot)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    wave_started_at, bot_has_spoken_in_current_wave, new_user_message_after_bot,
+                    last_unanswered_question, last_unfinished_joke, unfinished_cues)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     scope_id,
                     state.get("last_message_time", 0),
@@ -922,7 +938,40 @@ class SelfEvolutionDAO:
                     state.get("wave_started_at", 0),
                     int(state.get("bot_has_spoken_in_current_wave", False)),
                     int(state.get("new_user_message_after_bot", False)),
+                    state.get("last_unanswered_question", ""),
+                    state.get("last_unfinished_joke", ""),
+                    json.dumps(state.get("unfinished_cues", [])),
                 ),
+            )
+            await db.commit()
+
+    @with_db_retry()
+    async def get_interject_preferences(self, scope_id: str) -> Optional[dict]:
+        db = await self.get_conn()
+        async with self._db_lock:
+            cursor = await db.execute(
+                "SELECT preferences_json FROM interject_preferences WHERE scope_id = ?",
+                (scope_id,),
+            )
+            row = await cursor.fetchone()
+            if row:
+                import json
+
+                try:
+                    return json.loads(row[0])
+                except Exception:
+                    return None
+            return None
+
+    @with_db_retry()
+    async def save_interject_preferences(self, scope_id: str, preferences_json: str):
+        db = await self.get_conn()
+        now = time.time()
+        async with self._write_lock:
+            await db.execute(
+                """INSERT OR REPLACE INTO interject_preferences (scope_id, preferences_json, updated_at)
+                   VALUES (?, ?, ?)""",
+                (scope_id, preferences_json, now),
             )
             await db.commit()
 

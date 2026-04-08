@@ -1,3 +1,4 @@
+import re
 import time
 from dataclasses import dataclass
 
@@ -6,6 +7,7 @@ from astrbot.api.all import AstrMessageEvent
 
 from .engagement_planner import EngagementPlanner
 from .engagement_stats import EngagementStats
+from .opportunity_cache import ActiveMotive, MotiveType, OpportunityCache, OpportunityScore
 from .output_guard import OutputGuard
 from .reply_executor import ReplyExecutor
 from .reply_intent import IntentSource, ReplyIntent, process_intent
@@ -37,6 +39,7 @@ class ActiveScopeStore:
     def get_active_scopes(self) -> list[str]:
         now = time.time()
         result = []
+        dead_scopes = []
         for scope_id, users in self._data.items():
             expired = [uid for uid, end in users.items() if now > end]
             for uid in expired:
@@ -44,7 +47,9 @@ class ActiveScopeStore:
             if users:
                 result.append(scope_id)
             else:
-                del self._data[scope_id]
+                dead_scopes.append(scope_id)
+        for scope_id in dead_scopes:
+            del self._data[scope_id]
         return result
 
 
@@ -55,6 +60,7 @@ class EavesdroppingEngine:
         self._recorder = ReplyRecorder(plugin)
         self._output_guard = OutputGuard(plugin)
         self._stats = EngagementStats()
+        self._opportunity_cache = OpportunityCache()
 
     def record_activity(self, scope_id: str, user_id: str, now: float | None = None):
         self._active_scopes.record(scope_id, user_id, now)
@@ -138,10 +144,43 @@ class EavesdroppingEngine:
                 ConversationMomentum.from_dict(state_dict) if state_dict else ConversationMomentum(scope_id=group_id)
             )
 
+            reply_received = bool(momentum.message_count_window > 0 and momentum.consecutive_bot_replies == 0)
+            silence_seconds = now - momentum.last_message_time if momentum.last_message_time > 0 else 999
+            await self._recorder.check_and_record_outcome(group_id, reply_received, silence_seconds)
+
             if not momentum.is_wave_active(now, _MESSAGE_WINDOW_SECONDS):
                 momentum.reset_wave(now)
 
             planner = EngagementPlanner(self.plugin)
+
+            pending = self._opportunity_cache.peek(group_id)
+            motive = None
+            pending_anchor_type = ""
+            pending_trigger_reason = ""
+            pending_message_ids: list[str] = []
+            pending_anchor_text = ""
+            trigger_text = ""
+            trigger_user_id = ""
+            trigger_user_name = ""
+            if pending:
+                top = pending[0]
+                if top.is_high_score():
+                    motive = top.motive
+                    trigger_text = top.anchor_text
+                    pending_anchor_type = top.anchor_type
+                    pending_trigger_reason = top.trigger_reason
+                    pending_message_ids = top.message_ids
+                    pending_anchor_text = top.anchor_text
+                    trigger_user_id = top.trigger_user_id
+                    trigger_user_name = top.trigger_user_name
+                    logger.debug(
+                        f"[ActiveEngagement] 使用预热机会 group={group_id} score={top.score.total:.2f} motive={motive.motive.value} reason={top.trigger_reason}"
+                    )
+                else:
+                    pending = []
+            if not pending:
+                motive = await planner._compute_motive(group_id)
+
             thread_anchor = await planner._analyze_thread(group_id)
 
             intent = ReplyIntent(
@@ -149,11 +188,21 @@ class EavesdroppingEngine:
                 scope_id=group_id,
                 is_active_trigger=True,
                 thread_anchor=thread_anchor,
+                active_motive=motive,
+                trigger_text=trigger_text,
+                pending_anchor_type=pending_anchor_type,
+                pending_anchor_text=pending_anchor_text,
+                pending_trigger_reason=pending_trigger_reason,
+                pending_message_ids=pending_message_ids,
+                user_id=trigger_user_id,
+                sender_name=trigger_user_name or "群成员",
             )
             executor = ReplyExecutor(self.plugin, planner, output_guard=self._output_guard, stats=self._stats)
             policy = ReplyPolicy(self.plugin)
 
             result = await process_intent(self.plugin, intent, momentum, planner, executor, policy, self._recorder)
+            if result and pending:
+                self._opportunity_cache.remove_one(group_id, top)
             await self.persist_stats(group_id)
             return result
         except Exception as e:
@@ -185,13 +234,20 @@ class EavesdroppingEngine:
             if momentum.bot_has_spoken_in_current_wave:
                 momentum.new_user_after_bot()
 
-            is_at = event.get_extra("is_at", False)
-            has_reply = event.get_extra("has_reply", False)
-            has_mention = is_at or has_reply
-
             msg_text = event.message_str or ""
             if not msg_text.strip():
                 msg_text = "[图片]"
+
+            if "?？" in msg_text or "?" in msg_text or "？" in msg_text:
+                if len(msg_text.strip()) >= 4:
+                    momentum.set_unanswered_question(msg_text)
+            joke_starters = ["为什么", "你知道吗", "猜猜", "笑话", "讲个", "段子", "哈哈哈", "笑死我了", "笑死"]
+            if any(kw in msg_text for kw in joke_starters) and len(msg_text) < 30:
+                momentum.set_unfinished_joke(msg_text)
+
+            is_at = event.get_extra("is_at", False)
+            has_reply = event.get_extra("has_reply", False)
+            has_mention = is_at or has_reply
 
             # 提取 message_id 供 emoji reaction 和 reply 引用使用
             message_id = ""
@@ -226,6 +282,43 @@ class EavesdroppingEngine:
                     "emotion_count_window", 0
                 )
 
+            motive = await planner._compute_motive(group_id)
+            state_for_score = GroupSocialState(
+                scope_id=group_id,
+                last_message_time=momentum.last_message_time,
+                last_bot_message_time=momentum.last_bot_message_at,
+                message_count_window=momentum.message_count_window,
+                question_count_window=momentum.question_count_window,
+                emotion_count_window=momentum.emotion_count_window,
+                consecutive_bot_replies=momentum.consecutive_bot_replies,
+                last_unanswered_question=getattr(momentum, "last_unanswered_question", ""),
+                last_unfinished_joke=getattr(momentum, "last_unfinished_joke", ""),
+            )
+            score = planner._compute_opportunity_score(state_for_score, msg_text, motive)
+
+            if score.total >= 0.20 and not score.is_blocked:
+                self._opportunity_cache.warm(
+                    scope_id=group_id,
+                    score=score,
+                    anchor_text=msg_text,
+                    anchor_type="passive_message",
+                    motive=motive,
+                    message_ids=[message_id] if message_id else [],
+                    trigger_reason=f"被动触发了{score.total:.2f}分机会",
+                    trigger_user_id=user_id,
+                    trigger_user_name=sender_name,
+                )
+                logger.debug(
+                    f"[PassiveEngagement] 预热机会 group={group_id} score={score.total:.2f} motive={motive.motive.value}"
+                )
+
+            recent_kw: set[str] = set()
+            if msg_text and len(msg_text.strip()) >= 2:
+                words = re.findall(r"[\u4e00-\u9fa5]{2,}", msg_text.strip())
+                for word in words:
+                    if len(word) >= 2:
+                        recent_kw.add(word)
+
             intent = ReplyIntent(
                 source=IntentSource.PASSIVE,
                 scope_id=group_id,
@@ -238,6 +331,8 @@ class EavesdroppingEngine:
                 has_reply_to_bot=has_reply,
                 message_id=message_id,
                 is_passive_trigger=False,
+                active_motive=motive,
+                recent_keywords=recent_kw,
             )
 
             policy = ReplyPolicy(self.plugin)

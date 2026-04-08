@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .speech_types import GenerationSpec, OutputResult, SpeechDecision
+from .speech_types import GenerationSpec, OutputResult, SpeechDecision, ResponsePosture, TextLiteVariant
 from .context_injection import get_group_history
 
 
@@ -35,6 +35,7 @@ class ContextBuilder:
         decision: SpeechDecision,
         anchor_text: str = "",
         scene: str = "",
+        pending_trigger_hint: str = "",
     ) -> GenerationContext:
         """构建完整的 GenerationContext.
 
@@ -52,7 +53,7 @@ class ContextBuilder:
         gc.profile_block = await self._build_profile(ctx)
         gc.memory_block = await self._build_memory(ctx)
         gc.behavior_block = await self._build_behavior(ctx, decision)
-        gc.decision_block = self._build_decision_block(decision, scene)
+        gc.decision_block = self._build_decision_block(decision, scene, pending_trigger_hint)
         gc.anchor_block = self._build_anchor_block(anchor_text, decision)
 
         return gc
@@ -254,6 +255,15 @@ class ContextBuilder:
 
         hints: list[str] = []
 
+        text_lite_variant_hints = {
+            "quick_touch": "存在感要低，一句话带过即可，轻一点",
+            "quiet_follow": "轻声跟一句，不要抢话头，低调自然",
+            "small_probe": "轻微试探，可以稍微问一句，篇幅偏短",
+        }
+        variant_hint = text_lite_variant_hints.get(decision.text_lite_variant.value, "")
+        if variant_hint:
+            hints.append(variant_hint)
+
         if decision.warmth_hint < -0.1:
             hints.append("语气偏冷淡收敛")
         elif decision.warmth_hint > 0.1:
@@ -269,11 +279,22 @@ class ContextBuilder:
         elif decision.playfulness_hint < -0.1:
             hints.append("表达收敛一些")
 
+        posture_hints = {
+            ResponsePosture.QUIET_ACK: "简短回应即可，不要过度展开",
+            ResponsePosture.QUICK_COMMENT: "极简一句话，轻描淡写带过",
+            ResponsePosture.SOFT_CONTINUE: "顺着话题轻轻接一句，篇幅简短",
+            ResponsePosture.PLAYFUL_NUDGE: "语气轻松一些，带点俏皮感",
+            ResponsePosture.GENTLE_ANSWER: "温和细致地回应，可以稍微展开",
+            ResponsePosture.FULL_JOIN: "积极融入对话，表达完整充分",
+        }
+        if decision.posture != ResponsePosture.NONE and decision.posture in posture_hints:
+            hints.append(posture_hints[decision.posture])
+
         if hints:
             return "[风格提示] " + " ".join(hints)
         return ""
 
-    def _build_decision_block(self, decision: SpeechDecision, scene: str = "") -> str:
+    def _build_decision_block(self, decision: SpeechDecision, scene: str = "", pending_trigger_hint: str = "") -> str:
         if decision.delivery_mode != "text":
             return ""
 
@@ -282,6 +303,8 @@ class ContextBuilder:
             lines.append(f"场景：{scene}")
         if decision.reason:
             lines.append(f"起因：{decision.reason}")
+        if pending_trigger_hint:
+            lines.append(f"背景：{pending_trigger_hint}")
 
         mode = decision.text_mode
         max_chars = decision.max_chars

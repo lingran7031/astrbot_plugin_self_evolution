@@ -1,7 +1,9 @@
+import json
 import time
 
 from astrbot.api import logger
 
+from .interject_preferences import InterjectOutcome, InterjectPreferenceStore, InterjectPreferences
 from .reply_state import BotMessageKind, ConversationMomentum
 
 
@@ -17,6 +19,7 @@ class ReplyRecorder:
 
     def __init__(self, plugin):
         self.plugin = plugin
+        self._pref_store = InterjectPreferenceStore()
 
     async def record(
         self,
@@ -25,6 +28,10 @@ class ReplyRecorder:
         momentum: ConversationMomentum,
         *,
         level: str = None,
+        is_active_trigger: bool = False,
+        posture_value: str = "",
+        scene_value: str = "",
+        motive_value: str = "",
     ) -> None:
         """记录 bot 发言后的状态。
 
@@ -35,6 +42,10 @@ class ReplyRecorder:
             executed: 是否成功发送
             momentum: 已经过 bot_spoke() 更新后的 momentum
             level: engagement level
+            is_active_trigger: 是否为主动插嘴
+            posture_value: ResponsePosture enum value
+            scene_value: SceneType enum value
+            motive_value: ActiveMotive enum value
         """
         now = time.time()
 
@@ -47,6 +58,46 @@ class ReplyRecorder:
             saved["last_bot_engagement_at"] = now
 
         await self.plugin.dao.save_engagement_state(scope_id, saved)
+
+        if is_active_trigger:
+            await self._update_interject_preferences(scope_id, executed, posture_value, scene_value, motive_value)
+
+    async def _update_interject_preferences(
+        self,
+        scope_id: str,
+        success: bool,
+        posture_value: str,
+        scene_value: str,
+        motive_value: str = "",
+    ) -> None:
+        data = await self.plugin.dao.get_interject_preferences(scope_id)
+        self._pref_store.load_from_dict(scope_id, data or {})
+        pref = self._pref_store.get(scope_id)
+
+        if success and posture_value and motive_value:
+            pref.record_interjection(posture_value, motive_value)
+        elif success:
+            pref.record_outcome(InterjectOutcome.CONNECTED, success=True)
+        else:
+            pref.record_outcome(InterjectOutcome.IGNORED, success=False)
+
+        if posture_value and success:
+            delta = 0.01 if scene_value == "casual" else 0.005
+            pref.adjust_posture_bias(posture_value, delta)
+
+        await self.plugin.dao.save_interject_preferences(scope_id, json.dumps(pref.to_dict()))
+
+    async def check_and_record_outcome(self, scope_id: str, reply_received: bool, silence_seconds: float) -> None:
+        """在被动事件或下次主动检查时调用，判断上一次主动插嘴的结果并记录。"""
+        now = time.time()
+        data = await self.plugin.dao.get_interject_preferences(scope_id)
+        self._pref_store.load_from_dict(scope_id, data or {})
+        pref = self._pref_store.get(scope_id)
+
+        outcome = pref.check_and_record_outcome(now, reply_received, silence_seconds)
+        if outcome is not None:
+            await self.plugin.dao.save_interject_preferences(scope_id, json.dumps(pref.to_dict()))
+            logger.debug(f"[InterjectOutcome] scope={scope_id} outcome={outcome.value}")
 
     async def record_framework_normal(
         self,

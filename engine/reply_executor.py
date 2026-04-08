@@ -168,6 +168,8 @@ class ReplyExecutor:
         message_id: str = "",
         has_reply_to_bot: bool = False,
         has_mention: bool = False,
+        pending_anchor_type: str = "",
+        pending_trigger_reason: str = "",
     ) -> EngagementExecutionResult:
         if plan.level == EngagementLevel.IGNORE:
             self._debug(
@@ -186,6 +188,23 @@ class ReplyExecutor:
         if plan.level == EngagementLevel.REACT:
             return await self._execute_react(plan, state, is_active_trigger, message_id)
 
+        if plan.level == EngagementLevel.TEXT_LITE:
+            return await self._execute_text(
+                plan,
+                state,
+                trigger_text,
+                user_id,
+                sender_name,
+                quoted_info,
+                at_info,
+                is_active_trigger,
+                message_id=message_id,
+                has_reply_to_bot=has_reply_to_bot,
+                has_mention=has_mention,
+                pending_anchor_type=pending_anchor_type,
+                pending_trigger_reason=pending_trigger_reason,
+            )
+
         if plan.level == EngagementLevel.FULL:
             return await self._execute_text(
                 plan,
@@ -199,6 +218,8 @@ class ReplyExecutor:
                 message_id=message_id,
                 has_reply_to_bot=has_reply_to_bot,
                 has_mention=has_mention,
+                pending_anchor_type=pending_anchor_type,
+                pending_trigger_reason=pending_trigger_reason,
             )
 
         return EngagementExecutionResult(
@@ -312,12 +333,15 @@ class ReplyExecutor:
         message_id: str = "",
         has_reply_to_bot: bool = False,
         has_mention: bool = False,
+        pending_anchor_type: str = "",
+        pending_trigger_reason: str = "",
     ) -> EngagementExecutionResult:
+        exec_level = plan.level
         final_prob = getattr(self.cfg, "interject_trigger_probability", 0.5)
         if random.random() > final_prob:
             return EngagementExecutionResult(
                 executed=False,
-                level=EngagementLevel.FULL,
+                level=exec_level,
                 action="none",
                 reason=f"概率门未通过({final_prob})",
             )
@@ -333,7 +357,7 @@ class ReplyExecutor:
             if not umo:
                 return EngagementExecutionResult(
                     executed=False,
-                    level=EngagementLevel.FULL,
+                    level=exec_level,
                     action="none",
                     reason="无umo",
                 )
@@ -356,14 +380,15 @@ class ReplyExecutor:
                 trigger_text=trigger_text,
                 scene=plan.scene.value,
                 decision=decision,
-                anchor_text=plan.anchor_text,
+                anchor_text=plan.pending_anchor_text or plan.anchor_text,
                 quoted_info=quoted_info,
                 at_info=at_info,
+                pending_trigger_hint=pending_trigger_reason or getattr(plan, "pending_trigger_reason", ""),
             )
             if not req:
                 return EngagementExecutionResult(
                     executed=False,
-                    level=EngagementLevel.FULL,
+                    level=exec_level,
                     action="none",
                     reason="prompt构建失败",
                 )
@@ -408,7 +433,7 @@ class ReplyExecutor:
 
                         return EngagementExecutionResult(
                             executed=True,
-                            level=EngagementLevel.FULL,
+                            level=exec_level,
                             action="text",
                             reason=plan.reason,
                             actual_text=text,
@@ -442,7 +467,7 @@ class ReplyExecutor:
 
                             return EngagementExecutionResult(
                                 executed=True,
-                                level=EngagementLevel.FULL,
+                                level=exec_level,
                                 action="emoji_reaction",
                                 reason=f"内容审查降级→emoji: {result.reason}",
                             )
@@ -468,14 +493,14 @@ class ReplyExecutor:
 
                         return EngagementExecutionResult(
                             executed=True,
-                            level=EngagementLevel.FULL,
+                            level=exec_level,
                             action="sticker",
                             reason=f"内容审查降级: {result.reason}",
                             actual_text=sticker,
                         )
                     return EngagementExecutionResult(
                         executed=False,
-                        level=EngagementLevel.FULL,
+                        level=exec_level,
                         action="none",
                         reason=f"内容审查降级但无表情包",
                     )
@@ -485,7 +510,7 @@ class ReplyExecutor:
                         self._stats.record_guard_blocked(group_id, result.reason)
                     return EngagementExecutionResult(
                         executed=False,
-                        level=EngagementLevel.FULL,
+                        level=exec_level,
                         action="none",
                         reason=f"内容审查需缩短: {result.reason}",
                     )
@@ -495,7 +520,7 @@ class ReplyExecutor:
                         self._stats.record_guard_blocked(group_id, result.reason)
                     return EngagementExecutionResult(
                         executed=False,
-                        level=EngagementLevel.FULL,
+                        level=exec_level,
                         action="none",
                         reason=f"内容审查丢弃: {result.reason}",
                     )
@@ -522,7 +547,7 @@ class ReplyExecutor:
 
             return EngagementExecutionResult(
                 executed=True,
-                level=EngagementLevel.FULL,
+                level=exec_level,
                 action="sticker",
                 reason="LLM失败降级",
                 actual_text=sticker,

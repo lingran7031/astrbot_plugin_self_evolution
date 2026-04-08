@@ -23,7 +23,24 @@ class OpportunityKind(Enum):
     ACTIVE_CONTINUATION = "active_continuation"
     TOPIC_HOOK = "topic_hook"
     EMOJI_REACT = "emoji_react"
+    TEXT_LITE = "text_lite"
     IGNORE = "ignore"
+
+
+class TextLiteVariant(Enum):
+    QUICK_TOUCH = "quick_touch"
+    QUIET_FOLLOW = "quiet_follow"
+    SMALL_PROBE = "small_probe"
+
+
+class ResponsePosture(Enum):
+    QUIET_ACK = "quiet_ack"
+    QUICK_COMMENT = "quick_comment"
+    SOFT_CONTINUE = "soft_continue"
+    PLAYFUL_NUDGE = "playful_nudge"
+    GENTLE_ANSWER = "gentle_answer"
+    FULL_JOIN = "full_join"
+    NONE = "none"
 
 
 class AnchorType(Enum):
@@ -108,6 +125,8 @@ class SpeechDecision:
     warmth_hint: float = 0.0
     initiative_hint: float = 0.0
     playfulness_hint: float = 0.0
+    posture: ResponsePosture = ResponsePosture.NONE
+    text_lite_variant: TextLiteVariant = TextLiteVariant.QUICK_TOUCH
 
     IGNORE = "ignore"
     EMOJI = "emoji"
@@ -124,6 +143,7 @@ class SpeechDecision:
             anchor_type=AnchorType.NONE,
             confidence=0.0,
             reason=reason,
+            posture=ResponsePosture.NONE,
         )
 
     @classmethod
@@ -135,6 +155,7 @@ class SpeechDecision:
             anchor_type=AnchorType.NONE,
             confidence=confidence,
             reason=reason,
+            posture=ResponsePosture.NONE,
         )
 
     @classmethod
@@ -151,6 +172,8 @@ class SpeechDecision:
         warmth_hint: float = 0.0,
         initiative_hint: float = 0.0,
         playfulness_hint: float = 0.0,
+        posture: ResponsePosture = ResponsePosture.NONE,
+        text_lite_variant: TextLiteVariant = TextLiteVariant.QUICK_TOUCH,
     ) -> "SpeechDecision":
         return cls(
             delivery_mode="text",
@@ -166,6 +189,8 @@ class SpeechDecision:
             warmth_hint=warmth_hint,
             initiative_hint=initiative_hint,
             playfulness_hint=playfulness_hint,
+            posture=posture,
+            text_lite_variant=text_lite_variant,
         )
 
 
